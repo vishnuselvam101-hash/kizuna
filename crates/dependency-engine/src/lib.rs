@@ -59,7 +59,7 @@ pub struct Dep {
     pub snapshot: Snapshot,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Change {
     /// A claim was corrected by a newer claim.
     Superseded {

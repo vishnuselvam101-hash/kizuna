@@ -21,10 +21,19 @@ Semantics are unchanged. The order of evaluation stays breadth-first rather than
 BFS is what fixes each decision's explanation path (shortest from a seed) and reason in v1, and the graph may
 contain cycles, where no topological order exists. Changing the order would change paths and reasons.
 
-Server: `on_claim_change` (per claim version and the merged total) and decision revocation use a bound of
-10 000 decisions. Beyond it the request fails with `409 Conflict` ("invalidation would flag too many decisions:
-needs a review batch"), the transaction rolls back and a warning is logged. Evidence never commits without its
-flags, and the request does no unbounded work.
+Server: an evidence change or revocation is applied inline when it affects at most
+`KIZUNA_INVALIDATION_INLINE_LIMIT` decisions (default 10 000). Above that bound it is never refused. The change
+commits and an audited **review batch** is recorded with it (`review_batches`, migration 0021). A background job
+(`review_batches::spawn_worker`, every 2 s) first computes and stores the full impact list, then applies it in
+chunks of `KIZUNA_REVIEW_BATCH_CHUNK` (default 500) and marks decisions potentially_affected as it goes. Each
+chunk applies its impacts and marks them applied in one transaction, so a restart resumes exactly where the last
+committed chunk ended and nothing is applied twice. Progress (`total`, `processed`, `flagged`, `status`) is visible
+at `GET /api/v1/review-batches[/{id}]`. While a batch is open its subject (canonical key and aliases) is "impact
+analysis in progress": creating a decision about that subject, citing evidence about it or depending on a decision
+about it is refused with `409 impact_analysis_in_progress`. Tested in `crates/kizuna-api/tests/review_batches.rs`,
+including a chunk whose transaction never commits (crash mid-batch) followed by a fresh worker run.
+Limitation: the job materialises the impact list in one transaction. That is linear and fast (≈ 2 s for
+250k impacts in the engine), but it is not chunked.
 
 ## Equivalence and tests
 

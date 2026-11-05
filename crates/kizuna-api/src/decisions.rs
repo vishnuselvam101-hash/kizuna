@@ -3,6 +3,7 @@
 //! KIZUNA never re-decides: affected decisions are flagged for human review and earlier results are preserved.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -120,21 +121,79 @@ async fn load_deps(tx: &mut Tx, claim: Option<Uuid>, subject_pred: Option<(&str,
     Ok(rows.into_iter().map(to_dep).collect())
 }
 
-/// Most decisions one evidence change or revocation may flag inline. Beyond it the engine stops with an explicit
-/// result instead of unbounded work, and the request fails (nothing is committed) so the change is handled as a
-/// reviewed batch rather than silently leaving dependants unflagged.
-const FANOUT_LIMIT: usize = 10_000;
+/// Most decisions one change may flag inline, in the request's transaction (KIZUNA_INVALIDATION_INLINE_LIMIT,
+/// set from the config at startup). Beyond it the change still commits and its invalidation becomes a review batch.
+static INLINE_LIMIT: AtomicUsize = AtomicUsize::new(10_000);
 
-fn review_batch(e: NeedsReviewBatch) -> ApiError {
-    tracing::warn!(
-        limit = e.limit,
-        reached = e.reached,
-        "invalidation fan-out bound reached"
-    );
-    ApiError::Conflict("invalidation would flag too many decisions: needs a review batch")
+pub fn set_inline_limit(n: usize) {
+    INLINE_LIMIT.store(n.max(1), Ordering::Relaxed);
 }
 
-async fn apply_impacts(
+/// What an invalidation is about. Stored with a review batch so the job can recompute the impacts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum Cause {
+    Claim { change: Change },
+    Revoked { decision: Uuid },
+}
+
+pub(crate) struct Computed {
+    pub(crate) impacts: Vec<Impact>,
+    pub(crate) cause_claim: Option<Uuid>,
+    pub(crate) cause_decision: Option<Uuid>,
+}
+
+/// Canonical identity of a subject plus its confirmed aliases (the keys dependencies may have been recorded under).
+async fn identity_keys(tx: &mut Tx, stype: &str, key: &str) -> ApiResult<(String, Vec<String>)> {
+    let canonical = crate::verification::canonical_key_of(tx, stype, key).await?;
+    let mut keys: Vec<String> =
+        sqlx::query_scalar("SELECT alias_key FROM entity_aliases WHERE subject_type = $2 AND canonical_key = $1")
+            .bind(&canonical)
+            .bind(stype)
+            .fetch_all(&mut **tx)
+            .await?;
+    keys.push(canonical.clone());
+    Ok((canonical, keys))
+}
+
+/// The subject whose impact analysis a review batch covers: (subject type, canonical key and aliases).
+pub(crate) async fn subject_of(tx: &mut Tx, cause: &Cause) -> ApiResult<(String, Vec<String>)> {
+    let (stype, key): (String, String) = match cause {
+        Cause::Claim {
+            change: Change::Superseded { old_claim: c, .. } | Change::Withdrawn { old_claim: c, .. },
+        }
+        | Cause::Claim {
+            change: Change::NewEvidence { new_claim: c, .. },
+        } => {
+            sqlx::query_as("SELECT subject_type, subject_key FROM claims WHERE id = $1")
+                .bind(Uuid::parse_str(c).map_err(ApiError::internal)?)
+                .fetch_one(&mut **tx)
+                .await?
+        }
+        Cause::Revoked { decision } => {
+            sqlx::query_as("SELECT subject_type, subject_key FROM decisions WHERE id = $1")
+                .bind(decision)
+                .fetch_one(&mut **tx)
+                .await?
+        }
+    };
+    let (_, keys) = identity_keys(tx, &stype, &key).await?;
+    Ok((stype, keys))
+}
+
+/// Applies an invalidation inline when it stays within the bound; otherwise records a review batch for the
+/// background job (the change itself still commits with the caller's transaction).
+pub(crate) async fn invalidate(tx: &mut Tx, tenant: Uuid, actor: Uuid, cause: Cause) -> ApiResult<usize> {
+    match impacts_of(tx, &cause, INLINE_LIMIT.load(Ordering::Relaxed)).await? {
+        Ok(c) => apply_impacts(tx, tenant, actor, c.impacts, c.cause_claim, c.cause_decision).await,
+        Err(e) => {
+            crate::review_batches::enqueue(tx, tenant, actor, &cause, &e).await?;
+            Ok(0)
+        }
+    }
+}
+
+pub(crate) async fn apply_impacts(
     tx: &mut Tx,
     tenant: Uuid,
     actor: Uuid,
@@ -201,7 +260,31 @@ async fn apply_impacts(
 /// A correction or withdrawal also reaches decisions that depend on earlier versions of the same claim, and is
 /// assessed against the value those decisions actually used (cumulative drift is not hidden by small steps).
 pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Change) -> ApiResult<usize> {
-    match &change {
+    invalidate(tx, tenant, actor, Cause::Claim { change }).await
+}
+
+/// Impacts of a cause, or `NeedsReviewBatch` when more than `limit` decisions would be affected.
+pub(crate) async fn impacts_of(
+    tx: &mut Tx,
+    cause: &Cause,
+    limit: usize,
+) -> ApiResult<Result<Computed, NeedsReviewBatch>> {
+    let change = match cause {
+        Cause::Claim { change } => change,
+        Cause::Revoked { decision } => {
+            let deps = load_deps(tx, None, None).await?;
+            return Ok(
+                upstream_withdrawn_bounded(&deps, &decision.to_string(), "was revoked", limit).map(|impacts| {
+                    Computed {
+                        impacts,
+                        cause_claim: None,
+                        cause_decision: Some(*decision),
+                    }
+                }),
+            );
+        }
+    };
+    match change {
         Change::Superseded { old_claim, .. } | Change::Withdrawn { old_claim, .. } => {
             let old = Uuid::parse_str(old_claim).map_err(ApiError::internal)?;
             let mut versions: Vec<Uuid> = sqlx::query_scalar(
@@ -216,7 +299,7 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
             let mut impacts: BTreeMap<String, Impact> = BTreeMap::new();
             for v in versions {
                 let deps = load_deps(tx, Some(v), None).await?;
-                let ch = match &change {
+                let ch = match change {
                     Change::Superseded { new_claim, new, .. } => Change::Superseded {
                         old_claim: v.to_string(),
                         new_claim: new_claim.clone(),
@@ -228,7 +311,11 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
                     },
                     Change::NewEvidence { .. } => unreachable!("matched above"),
                 };
-                for i in assess_bounded(&deps, &ch, FANOUT_LIMIT).map_err(review_batch)? {
+                let found = match assess_bounded(&deps, &ch, limit) {
+                    Ok(f) => f,
+                    Err(e) => return Ok(Err(e)),
+                };
+                for i in found {
                     match impacts.get(&i.decision) {
                         Some(prev) if prev.material || !i.material => {}
                         _ => {
@@ -237,13 +324,17 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
                     }
                 }
             }
-            if impacts.len() > FANOUT_LIMIT {
-                return Err(review_batch(NeedsReviewBatch {
-                    limit: FANOUT_LIMIT,
+            if impacts.len() > limit {
+                return Ok(Err(NeedsReviewBatch {
+                    limit,
                     reached: impacts.len(),
                 }));
             }
-            apply_impacts(tx, tenant, actor, impacts.into_values().collect(), Some(old), None).await
+            Ok(Ok(Computed {
+                impacts: impacts.into_values().collect(),
+                cause_claim: Some(old),
+                cause_decision: None,
+            }))
         }
         Change::NewEvidence {
             new_claim,
@@ -253,25 +344,11 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
         } => {
             // Match on subject type and canonical identity (safe normalisation + confirmed aliases), as conflict
             // detection does (L1); a supplier and a part with the same key never match (bughunt).
-            let stype: String = match &change {
-                Change::NewEvidence { new_claim, .. } => {
-                    let id = Uuid::parse_str(new_claim).map_err(ApiError::internal)?;
-                    sqlx::query_scalar("SELECT subject_type FROM claims WHERE id = $1")
-                        .bind(id)
-                        .fetch_one(&mut **tx)
-                        .await?
-                }
-                _ => "part".into(),
-            };
-            let canonical = crate::verification::canonical_key_of(tx, &stype, subject).await?;
-            let mut keys: Vec<String> = sqlx::query_scalar(
-                "SELECT alias_key FROM entity_aliases WHERE subject_type = $2 AND canonical_key = $1",
-            )
-            .bind(&canonical)
-            .bind(&stype)
-            .fetch_all(&mut **tx)
-            .await?;
-            keys.push(canonical.clone());
+            let stype: String = sqlx::query_scalar("SELECT subject_type FROM claims WHERE id = $1")
+                .bind(Uuid::parse_str(new_claim).map_err(ApiError::internal)?)
+                .fetch_one(&mut **tx)
+                .await?;
+            let (canonical, keys) = identity_keys(tx, &stype, subject).await?;
             let mut deps = Vec::new();
             for k in &keys {
                 for mut d in load_deps(tx, None, Some((&stype, k, predicate))).await? {
@@ -283,7 +360,7 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
                     }
                 }
             }
-            let ch = match &change {
+            let ch = match change {
                 Change::NewEvidence {
                     new_claim,
                     predicate,
@@ -297,9 +374,11 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
                 },
                 other => other.clone(),
             };
-            let cause = Uuid::parse_str(new_claim).ok();
-            let impacts = assess_bounded(&deps, &ch, FANOUT_LIMIT).map_err(review_batch)?;
-            apply_impacts(tx, tenant, actor, impacts, cause, None).await
+            Ok(assess_bounded(&deps, &ch, limit).map(|impacts| Computed {
+                impacts,
+                cause_claim: Uuid::parse_str(new_claim).ok(),
+                cause_decision: None,
+            }))
         }
     }
 }
@@ -394,6 +473,23 @@ pub(crate) async fn insert_decision(
     let id = Uuid::now_v7();
     let decided_at = crate::audit::now_us();
     let claim_ids: Vec<Uuid> = evidence.iter().map(|e| e.claim.id).collect();
+    // No decision may rely on a subject whose impact analysis is still running in a review batch.
+    let mut subjects = vec![(req.subject_type.clone(), req.subject_key.clone())];
+    subjects.extend(
+        evidence
+            .iter()
+            .map(|e| (e.claim.subject_type.clone(), e.claim.subject_key.clone())),
+    );
+    subjects.extend(
+        upstream
+            .iter()
+            .map(|(d, _)| (d.subject_type.clone(), d.subject_key.clone())),
+    );
+    for (stype, key) in subjects {
+        if crate::review_batches::subject_in_progress(tx, &stype, &key).await? {
+            return Err(ApiError::Conflict("impact_analysis_in_progress"));
+        }
+    }
     let open_conflicts: Vec<Value> = sqlx::query_scalar(
         "SELECT json_build_object('id', id, 'kind', kind, 'status', status) FROM conflicts \
          WHERE status IN ('open', 'needs_evidence') AND (claim_a = ANY($1) OR claim_b = ANY($1)) ORDER BY id",
@@ -964,16 +1060,7 @@ pub async fn revoke(
         Record::user(p.user_id, "decision.revoked", "decision", id, json!({})),
     )
     .await?;
-    let deps = load_deps(&mut tx, None, None).await?;
-    apply_impacts(
-        &mut tx,
-        p.tenant_id,
-        p.user_id,
-        upstream_withdrawn_bounded(&deps, &id.to_string(), "was revoked", FANOUT_LIMIT).map_err(review_batch)?,
-        None,
-        Some(id),
-    )
-    .await?;
+    invalidate(&mut tx, p.tenant_id, p.user_id, Cause::Revoked { decision: id }).await?;
     let out = fetch(&mut tx, id).await?;
     tx.commit().await?;
     Ok(Json(out))

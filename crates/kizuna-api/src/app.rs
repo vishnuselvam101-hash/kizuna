@@ -44,6 +44,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(pool: PgPool, cfg: Config) -> Self {
         let store: Arc<dyn ObjectStore> = Arc::new(FsStore::new(cfg.storage_dir.clone()));
+        crate::decisions::set_inline_limit(cfg.invalidation_inline_limit);
         // Validated in Config::from_lookup.
         let webauthn = crate::webauthn::build(&cfg.webauthn_rp_id, &cfg.webauthn_origin)
             .expect("webauthn relying party validated by Config");
@@ -132,6 +133,8 @@ pub fn router(st: AppState) -> Router {
         .route("/decisions/{id}/report", get(decisions::report))
         .route("/decisions/{id}/reconfirm", post(decisions::reconfirm))
         .route("/decisions/{id}/revoke", post(decisions::revoke))
+        .route("/review-batches", get(crate::review_batches::list))
+        .route("/review-batches/{id}", get(crate::review_batches::get))
         .route("/match/lines", get(crate::matching::list))
         .route("/match/line", get(crate::matching::get))
         .route("/match/line/runs", post(crate::matching::record))

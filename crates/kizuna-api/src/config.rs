@@ -57,6 +57,10 @@ pub struct Config {
     pub reauth_ttl_secs: i64,
     pub max_body_bytes: usize,
     pub max_upload_bytes: usize,
+    /// Most decisions one evidence change may flag inline; beyond it the change becomes a review batch.
+    pub invalidation_inline_limit: usize,
+    /// Impacts a review-batch job applies per transaction.
+    pub review_batch_chunk: usize,
     /// Number of trusted reverse proxies in front of the server (0 = ignore X-Forwarded-For).
     pub trusted_proxy_hops: usize,
     pub lockout_threshold: i32,
@@ -170,6 +174,8 @@ impl Config {
             reauth_ttl_secs: num("KIZUNA_REAUTH_TTL_SECS", 900, 60, 24 * 3600)?,
             max_body_bytes: num("KIZUNA_MAX_BODY_BYTES", 64 * 1024, 1024, 1024 * 1024)? as usize,
             max_upload_bytes: num("KIZUNA_MAX_UPLOAD_BYTES", 25 * 1024 * 1024, 1024, 200 * 1024 * 1024)? as usize,
+            invalidation_inline_limit: num("KIZUNA_INVALIDATION_INLINE_LIMIT", 10_000, 1, 1_000_000)? as usize,
+            review_batch_chunk: num("KIZUNA_REVIEW_BATCH_CHUNK", 500, 1, 100_000)? as usize,
             trusted_proxy_hops: num("KIZUNA_TRUSTED_PROXY_HOPS", 0, 0, 5)? as usize,
             lockout_threshold: num("KIZUNA_LOCKOUT_THRESHOLD", 5, 3, 20)? as i32,
             lockout_secs: num("KIZUNA_LOCKOUT_SECS", 900, 60, 86400)?,
