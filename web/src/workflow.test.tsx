@@ -270,6 +270,22 @@ test("organisation report: POST /reports shows hash and signature and offers the
   expect(JSON.parse(await created[0].text()).report_sha256).toBe("9f".repeat(32));
 });
 
+test("organisation report 'To' date includes that whole day", async () => {
+  let sent: unknown = null;
+  const { api } = fakeApi({
+    "GET /decisions": [],
+    "GET /audit/events?limit=200": [],
+    "POST /reports": (b: unknown) => ((sent = b), orgReport),
+  });
+  renderWithSession(<ReportsView />, { api });
+  fireEvent.change(await screen.findByLabelText("From (optional)"), { target: { value: "2026-11-05" } });
+  fireEvent.change(screen.getByLabelText("To (optional)"), { target: { value: "2026-11-05" } });
+  fireEvent.click(screen.getByRole("button", { name: "Generate organisation report" }));
+  await screen.findByText("1 conflicts · 1 decisions · audit chain Intact");
+  // The server's upper bound is exclusive: "to 5 Nov" must reach the start of 6 Nov, not an empty range.
+  expect(sent).toEqual({ scope: "open_findings", from: "2026-11-05T00:00:00Z", to: "2026-11-06T00:00:00Z" });
+});
+
 test("organisation report without a server signing key says it is unsigned", async () => {
   const { signature: _s, ...unsigned } = orgReport;
   const { api } = fakeApi({ "GET /decisions": [], "GET /audit/events?limit=200": [], "POST /reports": unsigned });

@@ -95,7 +95,16 @@ function OrgReportPanel() {
     setBusy(true);
     try {
       const day = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
-      setReport(await api.request<OrgReport>("POST", "/reports", { scope: q.scope, from: day(q.from), to: day(q.to) }));
+      // The server's `to` is exclusive; the picked end date is inclusive, so send the start of the next day.
+      const dayAfter = (d: string) => {
+        if (!d) return undefined;
+        const n = new Date(`${d}T00:00:00Z`);
+        n.setUTCDate(n.getUTCDate() + 1);
+        return Number.isNaN(n.getTime()) ? undefined : `${n.toISOString().slice(0, 10)}T00:00:00Z`;
+      };
+      setReport(
+        await api.request<OrgReport>("POST", "/reports", { scope: q.scope, from: day(q.from), to: dayAfter(q.to) }),
+      );
     } catch (x) {
       setErr(x);
     } finally {
