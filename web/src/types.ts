@@ -20,6 +20,7 @@ export interface Claim {
   value_unit: string | null;
   revision: string | null;
   artifact_id: string | null;
+  artifact_display_name?: string | null;
   source_location: Record<string, string | number>;
   extraction_method: string;
   confidence_bps: number;
@@ -113,6 +114,7 @@ export interface Decision {
   status: string;
   decided_at: string;
   derivation_sha256: string;
+  evidence_claim_ids?: string[];
 }
 
 export interface Snap {
@@ -161,4 +163,35 @@ export interface EntityCandidate {
   right: string;
   outcome: string;
   reasons: string[];
+}
+
+/** `GET /dashboard/summary`: counts keyed by status (or kind / subject type). */
+export interface DashboardSummary {
+  artifacts: Record<string, number>;
+  claims: Record<string, number>;
+  conflicts: Record<string, number>;
+  conflict_kinds_open: Record<string, number>;
+  decisions: Record<string, number>;
+  subjects: Record<string, number>;
+}
+
+/** `GET /subjects?type=` row. */
+export interface Subject {
+  subject_type: string;
+  subject_key: string;
+  claims: number;
+  predicates: number;
+}
+
+/** `POST /reports` organisation-level report. */
+export interface OrgReport {
+  report_version: string;
+  generated_at: string;
+  scope: string;
+  findings: { id: string; kind: string; subject: string; status: string; why: string | null; detected_at: string }[];
+  decisions: { id: string; title: string; subject: string; outcome: string; status: string; derivation_sha256: string }[];
+  audit_chain: { intact: boolean; events: number; head_sha256: string | null };
+  statement: string;
+  report_sha256: string;
+  signature?: { algorithm: string; public_key: string; signature: string };
 }

@@ -1,4 +1,4 @@
-import type { Artifact, Claim, Conflict, ConflictDetail, Decision, Trace, User } from "./types";
+import type { Artifact, Claim, Conflict, ConflictDetail, DashboardSummary, Decision, OrgReport, Subject, Trace, User } from "./types";
 
 export const claim = (id: string, v: string, over: Partial<Claim> = {}): Claim => ({
   id,
@@ -10,6 +10,7 @@ export const claim = (id: string, v: string, over: Partial<Claim> = {}): Claim =
   value_unit: null,
   revision: "C",
   artifact_id: "art-1",
+  artifact_display_name: "BRK-100 spec rev C.pdf",
   source_location: { page: 2 },
   extraction_method: "manual",
   confidence_bps: 9000,
@@ -63,6 +64,7 @@ export const decision: Decision = {
   status: "potentially_affected",
   decided_at: "2026-11-01T10:00:00Z",
   derivation_sha256: "ef".repeat(32),
+  evidence_claim_ids: ["c-a"],
 };
 
 export const trace: Trace = {
@@ -80,3 +82,26 @@ export const users: User[] = [
   { id: "u-admin", email: "admin@example.test", display_name: "Aiko Admin", role: "tenant_admin", status: "active", totp_enabled: true, locked_until: null },
   { id: "u-2", email: "rev@example.test", display_name: "Ren Reviewer", role: "reviewer", status: "active", totp_enabled: true, locked_until: null },
 ];
+
+export const dashboardSummary: DashboardSummary = {
+  artifacts: { accepted: 1, quarantined: 1 },
+  claims: { unreviewed: 3, accepted: 1 },
+  conflicts: { open: 1, needs_evidence: 2, resolved: 4 },
+  conflict_kinds_open: { value_mismatch: 1 },
+  decisions: { valid: 2, potentially_affected: 1 },
+  subjects: { part: 1, supplier: 1 },
+};
+
+export const subjects: Subject[] = [{ subject_type: "part", subject_key: "BRK-100", claims: 4, predicates: 2 }];
+
+export const orgReport: OrgReport = {
+  report_version: "kizuna-org-report@1",
+  generated_at: "2026-11-05T00:00:00Z",
+  scope: "open_findings",
+  findings: [{ id: "cf-1", kind: "value_mismatch", subject: "BRK-100", status: "open", why: "S355 vs S275", detected_at: "2026-11-02T00:00:00Z" }],
+  decisions: [{ id: "d-1", title: "Release BRK-100 from Supplier A", subject: "BRK-100", outcome: "approved", status: "potentially_affected", derivation_sha256: "ef".repeat(32) }],
+  audit_chain: { intact: true, events: 7, head_sha256: "aa".repeat(32) },
+  statement: "Hashes show integrity since capture, not that document contents are true or authentic.",
+  report_sha256: "9f".repeat(32),
+  signature: { algorithm: "ed25519", public_key: "12".repeat(32), signature: "34".repeat(64) },
+};

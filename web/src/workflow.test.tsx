@@ -2,7 +2,10 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { App } from "./App";
 import { DecisionsView } from "./DecisionsView";
 import { DocumentsView } from "./DocumentsView";
-import { artifact, claim, conflict, conflictDetail, decision, trace, users } from "./fixtures";
+import { CompareView } from "./CompareView";
+import { orgGraph } from "./DashboardView";
+import { RecordsView } from "./RecordsView";
+import { artifact, claim, conflict, conflictDetail, dashboardSummary, decision, orgReport, subjects, trace, users } from "./fixtures";
 import { ReportsView } from "./ReportsView";
 import { UsersView } from "./UsersView";
 import { fakeApi, ME, renderWithSession, type Handler } from "./test-utils";
@@ -17,7 +20,7 @@ function backend(extra: Record<string, Handler | unknown> = {}) {
     "GET /artifacts": [artifact],
     "GET /claims": [claim("c-a", "S355")],
     "GET /conflicts?status=open": [conflict],
-    "GET /conflicts?status=needs_evidence": [],
+    "GET /dashboard/summary": dashboardSummary,
     "GET /decisions": [decision],
     "GET /audit/verify": { intact: true, events_checked: 42, problem: null, head_seq: 42, head_hash: "aa".repeat(32) },
     "GET /conflicts/cf-1": conflictDetail,
@@ -185,4 +188,92 @@ test("audit report: markdown report is generated for the chosen decision and off
   fireEvent.click(screen.getByRole("button", { name: "Verify hash chain" }));
   await screen.findByText(/Hash chain intact: 1 events checked/);
   expect(calls.some((c) => c.path === "/decisions/d-1/report?format=markdown")).toBe(true);
+});
+
+test("overview counts come from /dashboard/summary; graph links decisions to the claims they cite", async () => {
+  const { api, calls } = backend();
+  render(<App api={api} lang="en" />);
+  await signIn();
+  const kpis = screen.getByRole("list", { name: "Key figures" });
+  const kpi = (name: string) => within(kpis).getByText(name).closest("button")!.textContent;
+  expect(kpi("Documents")).toContain("2");
+  expect(kpi("Documents")).toContain("1 not accepted");
+  expect(kpi("Open conflicts")).toContain("2 awaiting evidence");
+  expect(kpi("Valid decisions")).toContain("of 3 recorded");
+  expect(calls.some((c) => c.path === "/dashboard/summary")).toBe(true);
+  expect(calls.some((c) => c.path === "/claims?limit=301")).toBe(true);
+  expect(calls.some((c) => c.path.includes("needs_evidence"))).toBe(false);
+  const g = orgGraph({ artifacts: [artifact], claims: [claim("c-a", "S355")], decisions: [decision], open: [] });
+  expect(g.edges).toContainEqual(["claim:c-a", "dec:d-1"]);
+  expect(g.edges).not.toContainEqual(["subj:part:BRK-100", "dec:d-1"]);
+  const fallback = orgGraph({ artifacts: [], claims: [claim("c-a", "S355")], decisions: [{ ...decision, evidence_claim_ids: [] }], open: [] });
+  expect(fallback.edges).toContainEqual(["subj:part:BRK-100", "dec:d-1"]);
+});
+
+test("records: subjects listed and paged from /subjects; supplier duplicates can be decided", async () => {
+  const page1 = Array.from({ length: 200 }, (_, i) => ({ subject_type: "part", subject_key: `P-${String(i).padStart(3, "0")}`, claims: 1, predicates: 1 }));
+  const posted: unknown[] = [];
+  const { api, calls } = fakeApi({
+    "GET /subjects?type=part&limit=200": page1,
+    "GET /subjects?type=part&limit=200&after=P-199": subjects,
+    "GET /subjects?type=supplier&limit=200": [{ subject_type: "supplier", subject_key: "ACME STEEL", claims: 2, predicates: 2 }],
+    "GET /entities/candidates?subject_type=part": { candidates: [] },
+    "GET /entities/candidates?subject_type=supplier": { candidates: [{ left: "ACME STEEL", right: "ACME-STEEL", outcome: "possible_match", reasons: ["separator_difference"] }] },
+    "POST /entities/decisions": (b: unknown) => (posted.push(b), { ok: true }),
+  });
+  renderWithSession(<RecordsView />, { api });
+  await screen.findByText("P-000");
+  fireEvent.click(screen.getByRole("button", { name: "Load more records" }));
+  await screen.findByText("BRK-100");
+  expect(screen.getByText("4 current claims · 2 fields")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Load more records" })).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "Suppliers" }));
+  await screen.findAllByText("ACME-STEEL");
+  fireEvent.click(screen.getByRole("button", { name: "Same supplier" }));
+  await waitFor(() => expect(posted).toEqual([{ subject_type: "supplier", left_key: "ACME STEEL", right_key: "ACME-STEEL", outcome: "same" }]));
+  expect(calls.some((c) => c.path === "/artifacts" || c.path.startsWith("/claims"))).toBe(false);
+});
+
+test("comparison works for suppliers via /compare/{subject_type}/{key}", async () => {
+  const { api, calls } = fakeApi({
+    "GET /compare/supplier/ACME%20STEEL?from=A&to=B": { differences: [{ predicate: "mfg.material", from: "S275", to: "S355", change: "changed" }] },
+  });
+  renderWithSession(<CompareView />, { api });
+  fireEvent.change(screen.getByLabelText("Record type"), { target: { value: "supplier" } });
+  fireEvent.change(screen.getByLabelText("Identifier"), { target: { value: "ACME STEEL" } });
+  fireEvent.change(screen.getByLabelText("From revision"), { target: { value: "A" } });
+  fireEvent.change(screen.getByLabelText("To revision"), { target: { value: "B" } });
+  fireEvent.click(screen.getByRole("button", { name: "Compare" }));
+  await screen.findByText("S355");
+  expect(calls.map((c) => c.path)).toContain("/compare/supplier/ACME%20STEEL?from=A&to=B");
+});
+
+test("organisation report: POST /reports shows hash and signature and offers the JSON for download", async () => {
+  let sent: unknown = null;
+  const { api } = fakeApi({
+    "GET /decisions": [decision],
+    "GET /audit/events?limit=200": [],
+    "POST /reports": (b: unknown) => ((sent = b), orgReport),
+  });
+  const created: Blob[] = [];
+  URL.createObjectURL = ((b: Blob) => (created.push(b), "blob:x")) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = () => {};
+  renderWithSession(<ReportsView />, { api });
+  fireEvent.change(await screen.findByLabelText("Scope"), { target: { value: "all" } });
+  fireEvent.change(screen.getByLabelText("From (optional)"), { target: { value: "2026-11-01" } });
+  fireEvent.click(screen.getByRole("button", { name: "Generate organisation report" }));
+  await screen.findByText("1 conflicts · 1 decisions · audit chain Intact");
+  expect(sent).toEqual({ scope: "all", from: "2026-11-01T00:00:00Z" });
+  expect(screen.getByText("9f".repeat(32))).toBeTruthy();
+  expect(screen.getByText(/Signed \(ed25519\), public key 1212/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Download report JSON" }));
+  expect(JSON.parse(await created[0].text()).report_sha256).toBe("9f".repeat(32));
+});
+
+test("organisation report without a server signing key says it is unsigned", async () => {
+  const { signature: _s, ...unsigned } = orgReport;
+  const { api } = fakeApi({ "GET /decisions": [], "GET /audit/events?limit=200": [], "POST /reports": unsigned });
+  renderWithSession(<ReportsView />, { api });
+  fireEvent.click(await screen.findByRole("button", { name: "Generate organisation report" }));
+  await screen.findByText("Not signed: no signing key is configured on the server.");
 });

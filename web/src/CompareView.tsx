@@ -7,7 +7,7 @@ import { Badge, Empty, Notice, PageTitle, Panel } from "./ui";
 export function CompareView() {
   const { api } = useSession();
   const { t } = useI18n();
-  const [q, setQ] = useState({ key: "", from: "", to: "" });
+  const [q, setQ] = useState({ type: "part", key: "", from: "", to: "" });
   const [rows, setRows] = useState<Difference[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
   async function go(e: React.FormEvent) {
@@ -16,7 +16,7 @@ export function CompareView() {
     try {
       const r = await api.request<{ differences: Difference[] }>(
         "GET",
-        `/compare/part/${encodeURIComponent(q.key)}?from=${encodeURIComponent(q.from)}&to=${encodeURIComponent(q.to)}`,
+        `/compare/${q.type}/${encodeURIComponent(q.key)}?from=${encodeURIComponent(q.from)}&to=${encodeURIComponent(q.to)}`,
       );
       setRows(r.differences);
     } catch (x) {
@@ -34,7 +34,14 @@ export function CompareView() {
       <PageTitle title={t("nav.revisions")} lead={t("compare.lead")} />
       <Panel title={t("compare.query")} id="cmp-q">
         <form onSubmit={go} className="form-row">
-          {field("key", t("compare.part"))}
+          <label>
+            {t("compare.type")}
+            <select value={q.type} onChange={(e) => setQ({ ...q, type: e.target.value })}>
+              <option value="part">{t("records.components")}</option>
+              <option value="supplier">{t("records.suppliers")}</option>
+            </select>
+          </label>
+          {field("key", t("compare.key"))}
           {field("from", t("compare.from"))}
           {field("to", t("compare.to"))}
           <button className="primary">{t("compare.run")}</button>

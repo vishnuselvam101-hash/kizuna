@@ -2,10 +2,10 @@ import { useMemo, useState } from "react";
 import { claimValue, confidence, sourceLocation } from "./format";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
-import type { Artifact, Claim, EntityCandidate, PredicateEvidence } from "./types";
+import type { EntityCandidate, PredicateEvidence, Subject } from "./types";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, short, useLoad } from "./ui";
 
-export function EvidenceTable({ groups, names }: { groups: PredicateEvidence[]; names?: Map<string, string> }) {
+export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
   const { t, tv } = useI18n();
   if (!groups.length) return <Empty text={t("evidence.none")} />;
   return (
@@ -33,7 +33,7 @@ export function EvidenceTable({ groups, names }: { groups: PredicateEvidence[]; 
                 <td className="mono">{claimValue(c)}</td>
                 <td className="mono">{c.revision ?? "—"}</td>
                 <td>
-                  {c.artifact_id ? (names?.get(c.artifact_id) ?? t("evidence.artifactRef", { id: short(c.artifact_id) })) : t("evidence.manual")} · {sourceLocation(t, c.source_location)}
+                  {c.artifact_id ? (c.artifact_display_name ?? t("evidence.artifactRef", { id: short(c.artifact_id) })) : t("evidence.manual")} · {sourceLocation(t, c.source_location)}
                 </td>
                 <td>
                   {tv("method", c.extraction_method)} · {confidence(t, c.confidence_bps)}
@@ -51,6 +51,7 @@ export function EvidenceTable({ groups, names }: { groups: PredicateEvidence[]; 
 }
 
 type RecordType = "supplier" | "part";
+const PAGE = 200;
 
 export function RecordsView() {
   const { api } = useSession();
@@ -58,7 +59,27 @@ export function RecordsView() {
   const [type, setType] = useState<RecordType>("part");
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
-  const claims = useLoad(() => api.request<Claim[]>("GET", `/claims?subject_type=${type}`), [type]);
+  // Server-side distinct records with counts, paged by subject_key (keyset).
+  const [rows, setRows] = useState<Subject[]>([]);
+  const [moreErr, setMoreErr] = useState<unknown>(null);
+  const [done, setDone] = useState(false);
+  const page = (after?: string) =>
+    api.request<Subject[]>("GET", `/subjects?type=${type}&limit=${PAGE}${after ? `&after=${encodeURIComponent(after)}` : ""}`);
+  const claims = useLoad(async () => {
+    const r = await page();
+    setRows(r);
+    return r;
+  }, [type]);
+  async function more() {
+    setMoreErr(null);
+    try {
+      const r = await page(rows[rows.length - 1]?.subject_key);
+      setRows((x) => [...x, ...r]);
+      if (r.length < PAGE) setDone(true);
+    } catch (x) {
+      setMoreErr(x);
+    }
+  }
   const evidence = useLoad<PredicateEvidence[] | null>(
     async () =>
       selected
@@ -67,22 +88,11 @@ export function RecordsView() {
     [type, selected],
   );
 
-  const artifacts = useLoad(() => api.request<Artifact[]>("GET", "/artifacts"), []);
-  const names = useMemo(() => new Map((artifacts.data ?? []).map((a) => [a.id, a.display_name])), [artifacts.data]);
-
   const records = useMemo(() => {
-    const m = new Map<string, { claims: number; revisions: Set<string>; unreviewed: number }>();
-    for (const c of claims.data ?? []) {
-      if (c.superseded_at) continue;
-      const r = m.get(c.subject_key) ?? { claims: 0, revisions: new Set(), unreviewed: 0 };
-      r.claims++;
-      if (c.revision) r.revisions.add(c.revision);
-      if (c.review_status === "unreviewed") r.unreviewed++;
-      m.set(c.subject_key, r);
-    }
     const f = filter.trim().toLowerCase();
-    return [...m.entries()].filter(([k]) => !f || k.toLowerCase().includes(f)).sort(([a], [b]) => a.localeCompare(b));
-  }, [claims.data, filter]);
+    return rows.filter((r) => !f || r.subject_key.toLowerCase().includes(f));
+  }, [rows, filter]);
+  const hasMore = !done && (claims.data?.length ?? 0) === PAGE;
 
   return (
     <div>
@@ -96,6 +106,7 @@ export function RecordsView() {
             onClick={() => {
               setType(x);
               setSelected(null);
+              setDone(false);
             }}
           >
             {t(x === "part" ? "records.components" : "records.suppliers")}
@@ -109,42 +120,44 @@ export function RecordsView() {
             <input value={filter} onChange={(e) => setFilter(e.target.value)} />
           </label>
           <Loading on={claims.loading} />
-          <Notice error={claims.error} />
+          <Notice error={claims.error ?? moreErr} />
           {claims.data && records.length === 0 && <Empty text={t("records.none")} />}
           <ul className="list selectable">
-            {records.map(([k, r]) => (
-              <li key={k}>
-                <button aria-pressed={selected === k} onClick={() => setSelected(k)}>
-                  <span className="mono">{k}</span>
-                  <span className="muted">
-                    {t("records.summary", { claims: r.claims, revs: [...r.revisions].join(", ") || "—" })}
-                  </span>
-                  {r.unreviewed > 0 && <span className="badge warn">{t("records.unreviewed", { n: r.unreviewed })}</span>}
+            {records.map((r) => (
+              <li key={r.subject_key}>
+                <button aria-pressed={selected === r.subject_key} onClick={() => setSelected(r.subject_key)}>
+                  <span className="mono">{r.subject_key}</span>
+                  <span className="muted">{t("records.summary", { claims: r.claims, fields: r.predicates })}</span>
                 </button>
               </li>
             ))}
           </ul>
+          {hasMore && (
+            <button className="link" onClick={more}>
+              {t("records.more")}
+            </button>
+          )}
         </Panel>
         <Panel title={selected ? t("records.evidenceFor", { key: selected }) : t("records.selectPrompt")} id="rec-ev">
           <Loading on={!!selected && evidence.loading} />
           <Notice error={evidence.error} />
-          {evidence.data && <EvidenceTable groups={evidence.data} names={names} />}
+          {evidence.data && <EvidenceTable groups={evidence.data} />}
         </Panel>
       </div>
-      {type === "part" && <DuplicateCandidates />}
+      <DuplicateCandidates key={type} type={type} />
     </div>
   );
 }
 
-function DuplicateCandidates() {
+function DuplicateCandidates({ type }: { type: RecordType }) {
   const { api, can } = useSession();
   const { t, tv } = useI18n();
-  const cands = useLoad(() => api.request<{ candidates: EntityCandidate[] }>("GET", "/entities/candidates?subject_type=part"), []);
+  const cands = useLoad(() => api.request<{ candidates: EntityCandidate[] }>("GET", `/entities/candidates?subject_type=${type}`), [type]);
   const [err, setErr] = useState<unknown>(null);
   async function decide(c: EntityCandidate, outcome: "same" | "different") {
     setErr(null);
     try {
-      await api.request("POST", "/entities/decisions", { subject_type: "part", left_key: c.left, right_key: c.right, outcome });
+      await api.request("POST", "/entities/decisions", { subject_type: type, left_key: c.left, right_key: c.right, outcome });
       cands.reload();
     } catch (x) {
       setErr(x);
@@ -153,7 +166,7 @@ function DuplicateCandidates() {
   const list = cands.data?.candidates ?? [];
   return (
     <Panel title={t("records.duplicates")} id="dups">
-      <p className="muted">{t("records.duplicatesNote")}</p>
+      <p className="muted">{t(type === "part" ? "records.duplicatesNote" : "records.duplicatesNoteSupplier")}</p>
       <Notice error={err ?? cands.error} />
       {cands.data && list.length === 0 && <Empty text={t("records.noDuplicates")} />}
       {list.length > 0 && (
@@ -182,8 +195,8 @@ function DuplicateCandidates() {
                   <td className="col-actions">
                     {can("review_decide") && (
                       <>
-                        <button onClick={() => decide(c, "same")}>{t("records.same")}</button>
-                        <button onClick={() => decide(c, "different")}>{t("records.different")}</button>
+                        <button onClick={() => decide(c, "same")}>{t(type === "part" ? "records.same" : "records.sameSupplier")}</button>
+                        <button onClick={() => decide(c, "different")}>{t(type === "part" ? "records.different" : "records.differentSupplier")}</button>
                       </>
                     )}
                   </td>

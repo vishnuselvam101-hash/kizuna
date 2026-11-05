@@ -2,13 +2,13 @@ import { useMemo } from "react";
 import { GraphScene, type GNode, type Graph } from "./graph";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
-import type { Artifact, ChainStatus, Claim, Conflict, Decision } from "./types";
+import type { Artifact, ChainStatus, Claim, Conflict, DashboardSummary, Decision } from "./types";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
 import type { View } from "./nav";
 
 const MAX_CLAIMS = 300;
 
-export function orgGraph(s: Summary): Graph {
+export function orgGraph(s: Pick<Summary, "artifacts" | "claims" | "decisions" | "open">): Graph {
   const nodes: GNode[] = [];
   const edges: Graph["edges"] = [];
   const seen = new Set<string>();
@@ -30,7 +30,10 @@ export function orgGraph(s: Summary): Graph {
   const subj = (key: string) => nodes.find((n) => n.kind === "subject" && n.label === key)?.id;
   s.decisions.forEach((d) => {
     add({ id: `dec:${d.id}`, kind: "decision", label: d.title, tone: d.status === "valid" ? "ok" : d.status === "potentially_affected" ? "crit" : "base" });
-    const sid = subj(d.subject_key);
+    // Exact links: the claims the decision cited (evidence_claim_ids); subject link only as a fallback.
+    const cited = (d.evidence_claim_ids ?? []).filter((id) => seen.has(`claim:${id}`));
+    cited.forEach((id) => edges.push([`claim:${id}`, `dec:${d.id}`]));
+    const sid = cited.length ? undefined : subj(d.subject_key);
     if (sid) edges.push([sid, `dec:${d.id}`]);
   });
   s.open.forEach((c) => {
@@ -44,40 +47,47 @@ export function orgGraph(s: Summary): Graph {
 const PICK: Record<string, View> = { doc: "documents", claim: "records", subj: "records", dec: "decisions", fnd: "findings" };
 
 interface Summary {
+  counts: DashboardSummary;
   claims: Claim[];
   artifacts: Artifact[];
   open: Conflict[];
-  needsEvidence: Conflict[];
   decisions: Decision[];
   chain: ChainStatus | null;
 }
+
+const sum = (m: Record<string, number> | undefined) => Object.values(m ?? {}).reduce((a, b) => a + b, 0);
 
 export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void }) {
   const { api, me, can } = useSession();
   const { t, fmtNum } = useI18n();
   const { data, error, loading } = useLoad<Summary>(async () => {
-    const [claims, artifacts, open, needsEvidence, decisions, chain] = await Promise.all([
-      api.request<Claim[]>("GET", "/claims"),
+    // Counts come from the server summary; the lists below only feed the graph and attention panels.
+    const [counts, claims, artifacts, open, decisions, chain] = await Promise.all([
+      api.request<DashboardSummary>("GET", "/dashboard/summary"),
+      api.request<Claim[]>("GET", `/claims?limit=${MAX_CLAIMS + 1}`),
       api.request<Artifact[]>("GET", "/artifacts"),
       api.request<Conflict[]>("GET", "/conflicts?status=open"),
-      api.request<Conflict[]>("GET", "/conflicts?status=needs_evidence"),
       api.request<Decision[]>("GET", "/decisions"),
       can("audit_verify") ? api.request<ChainStatus>("GET", "/audit/verify") : Promise.resolve(null),
     ]);
-    return { claims, artifacts, open, needsEvidence, decisions, chain };
+    return { counts, claims, artifacts, open, decisions, chain };
   }, []);
 
   const s = data;
   const graph = useMemo(() => (s ? orgGraph(s) : null), [s]);
   const count = (k: GNode["kind"]) => graph?.nodes.filter((n) => n.kind === k).length ?? 0;
   const affected = s?.decisions.filter((d) => d.status === "potentially_affected") ?? [];
-  const quarantined = s?.artifacts.filter((a) => a.status !== "accepted").length ?? 0;
-  const kpis = s
+  const c = s?.counts;
+  const docs = sum(c?.artifacts);
+  const quarantined = docs - (c?.artifacts.accepted ?? 0);
+  const openN = c?.conflicts.open ?? 0;
+  const affectedN = c?.decisions.potentially_affected ?? 0;
+  const kpis = c
     ? [
-        { k: "dash.kpi.documents", v: s.artifacts.length, sub: t("dash.kpi.notAccepted", { n: fmtNum(quarantined) }), go: "documents" as View, tone: quarantined ? "warn" : "" },
-        { k: "dash.kpi.openFindings", v: s.open.length, sub: t("dash.kpi.needsEvidence", { n: fmtNum(s.needsEvidence.length) }), go: "findings" as View, tone: s.open.length ? "crit" : "" },
-        { k: "dash.kpi.decisions", v: s.decisions.filter((d) => d.status === "valid").length, sub: t("dash.kpi.validOfTotal", { n: fmtNum(s.decisions.length) }), go: "decisions" as View, tone: "" },
-        { k: "dash.kpi.affected", v: affected.length, sub: t("dash.kpi.affectedSub"), go: "affected" as View, tone: affected.length ? "crit" : "" },
+        { k: "dash.kpi.documents", v: docs, sub: t("dash.kpi.notAccepted", { n: fmtNum(quarantined) }), go: "documents" as View, tone: quarantined ? "warn" : "" },
+        { k: "dash.kpi.openFindings", v: openN, sub: t("dash.kpi.needsEvidence", { n: fmtNum(c.conflicts.needs_evidence ?? 0) }), go: "findings" as View, tone: openN ? "crit" : "" },
+        { k: "dash.kpi.decisions", v: c.decisions.valid ?? 0, sub: t("dash.kpi.validOfTotal", { n: fmtNum(sum(c.decisions)) }), go: "decisions" as View, tone: "" },
+        { k: "dash.kpi.affected", v: affectedN, sub: t("dash.kpi.affectedSub"), go: "affected" as View, tone: affectedN ? "crit" : "" },
       ]
     : [];
 

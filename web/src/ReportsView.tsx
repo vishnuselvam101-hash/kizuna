@@ -2,7 +2,7 @@ import { useState } from "react";
 import { DataTable } from "./DataTable";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
-import type { AuditEvent, ChainStatus, Decision } from "./types";
+import type { AuditEvent, ChainStatus, Decision, OrgReport } from "./types";
 import { Empty, Loading, Notice, PageTitle, Panel, download, short, useLoad } from "./ui";
 
 function DecisionReport() {
@@ -76,6 +76,83 @@ function DecisionReport() {
           <pre className="report" tabIndex={0} aria-label={t("reports.preview")}>
             {report.text}
           </pre>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function OrgReportPanel() {
+  const { api } = useSession();
+  const { t, fmtNum } = useI18n();
+  const [q, setQ] = useState({ scope: "open_findings", from: "", to: "" });
+  const [report, setReport] = useState<OrgReport | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  async function generate(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setBusy(true);
+    try {
+      const day = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
+      setReport(await api.request<OrgReport>("POST", "/reports", { scope: q.scope, from: day(q.from), to: day(q.to) }));
+    } catch (x) {
+      setErr(x);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Panel title={t("reports.org")} id="rep-o">
+      <p className="muted">{t("reports.orgLead")}</p>
+      <form onSubmit={generate} className="form-row">
+        <label>
+          {t("reports.scope")}
+          <select value={q.scope} onChange={(e) => setQ({ ...q, scope: e.target.value })}>
+            <option value="open_findings">{t("reports.scopeOpen")}</option>
+            <option value="all">{t("reports.scopeAll")}</option>
+          </select>
+        </label>
+        <label>
+          {t("reports.from")}
+          <input type="date" value={q.from} onChange={(e) => setQ({ ...q, from: e.target.value })} />
+        </label>
+        <label>
+          {t("reports.to")}
+          <input type="date" value={q.to} onChange={(e) => setQ({ ...q, to: e.target.value })} />
+        </label>
+        <button className="primary" disabled={busy}>
+          {t("reports.generateOrg")}
+        </button>
+      </form>
+      <Notice error={err} />
+      {report && (
+        <>
+          <p className={report.audit_chain.intact ? "callout ok" : "callout crit"} role="status">
+            {t("reports.orgSummary", {
+              findings: fmtNum(report.findings.length),
+              decisions: fmtNum(report.decisions.length),
+              chain: report.audit_chain.intact ? t("audit.intact") : t("audit.broken"),
+            })}
+          </p>
+          <dl className="kv">
+            <dt>{t("reports.sha")}</dt>
+            <dd>
+              <code>{report.report_sha256}</code>
+            </dd>
+            <dt>{t("reports.signature")}</dt>
+            <dd>
+              {report.signature
+                ? t("reports.signed", { alg: report.signature.algorithm, key: report.signature.public_key.slice(0, 16) })
+                : t("reports.unsigned")}
+            </dd>
+          </dl>
+          <p className="muted">{report.statement}</p>
+          <div className="actions">
+            <button onClick={() => download("kizuna-org-report.json", JSON.stringify(report, null, 2), "application/json")}>
+              {t("reports.downloadOrg")}
+            </button>
+          </div>
         </>
       )}
     </Panel>
@@ -164,7 +241,14 @@ export function ReportsView() {
     <div>
       <PageTitle title={t("nav.reports")} lead={t("reports.lead")} />
       <DecisionReport />
-      {can("audit_read") ? <AuditTrail /> : <p className="muted">{t("reports.auditNoAccess")}</p>}
+      {can("audit_read") ? (
+        <>
+          <OrgReportPanel />
+          <AuditTrail />
+        </>
+      ) : (
+        <p className="muted">{t("reports.auditNoAccess")}</p>
+      )}
     </div>
   );
 }

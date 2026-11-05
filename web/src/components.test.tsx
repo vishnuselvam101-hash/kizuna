@@ -58,6 +58,8 @@ test("evidence table shows disagreeing claims with source, method and review sta
   expect(screen.getByText("sources disagree")).toBeTruthy();
   expect(screen.getAllByText("Unreviewed")).toHaveLength(2);
   expect(screen.getAllByText(/page 2/)).toHaveLength(2);
+  // Source name comes from the claim itself (artifact_display_name), no /artifacts join.
+  expect(screen.getAllByText(/BRK-100 spec rev C\.pdf/)).toHaveLength(2);
   expect(claimValue(claim("x", "", { value_text: null, value_num: "12.5", value_unit: "mm" }))).toBe("12.5 mm");
 });
 
