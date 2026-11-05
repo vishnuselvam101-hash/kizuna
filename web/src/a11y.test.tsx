@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { AiExtractionPanel } from "./AiExtractionPanel";
 import { App } from "./App";
 import { DetectionSettingsPanel } from "./DetectionSettingsPanel";
@@ -6,7 +6,7 @@ import { CompareView } from "./CompareView";
 import { DashboardView } from "./DashboardView";
 import { DecisionsView } from "./DecisionsView";
 import { FindingsView } from "./FindingsView";
-import { aiExtraction, artifact, claim, conflict, dashboardSummary, detectionSettings, subjects, decision, users } from "./fixtures";
+import { aiExtraction, artifact, claim, conflict, dashboardSummary, detectionSettings, subjects, decision, trace, users } from "./fixtures";
 import { I18nProvider } from "./i18n";
 import { IntegrationsView } from "./IntegrationsView";
 import { RecordsView } from "./RecordsView";
@@ -23,6 +23,7 @@ const { api } = fakeApi({
   "GET /subjects": subjects,
   "GET /evidence/part/BRK-100": { predicates: [] },
   "GET /decisions": [decision],
+  "GET /decisions/d-1/trace": trace,
   "GET /audit/verify": { intact: true, events_checked: 1, problem: null, head_seq: 1, head_hash: "aa" },
   "GET /users": users,
   "GET /audit/events?limit=200": [],
@@ -86,3 +87,10 @@ test("AI extraction (not configured, enabled) and adaptive thresholds have no ax
   await screen.findByLabelText("最大倍率");
   expect(await axeViolations(container)).toEqual([]);
 });
+
+test.each(["en", "ja"] as const)("decision trace with the evidence pack panel has no axe violations (%s)", async (lang) => {
+  const { container } = renderWithSession(<DecisionsView />, { api, lang });
+  fireEvent.click(await screen.findByRole("button", { name: "Release BRK-100 from Supplier A" }));
+  await screen.findByRole("button", { name: lang === "en" ? "Export evidence pack" : "証拠パックを出力" });
+  expect(await axeViolations(container)).toEqual([]);
+}, 30_000);

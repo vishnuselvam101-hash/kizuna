@@ -290,6 +290,22 @@ pub mod checkpoint {
         m
     }
 
+    /// KZCP3: like KZCP2 plus the RFC 6962 Merkle root over the chain hashes of events `1..=seq` (leaf `i-1` is
+    /// the hash of event `i`), so single events can be proven included without disclosing the others.
+    pub fn message_v3(
+        tenant: Uuid,
+        seq: i64,
+        head: &[u8],
+        signed_at_us: i64,
+        prev_sig_sha256: &[u8; 32],
+        merkle_root: &[u8; 32],
+    ) -> Vec<u8> {
+        let mut m = b"KZCP3".to_vec();
+        m.extend_from_slice(&message_v2(tenant, seq, head, signed_at_us, prev_sig_sha256)[5..]);
+        m.extend_from_slice(merkle_root);
+        m
+    }
+
     pub fn public_key(seed: &[u8; 32]) -> [u8; 32] {
         SigningKey::from_bytes(seed).verifying_key().to_bytes()
     }
@@ -348,6 +364,112 @@ pub mod checkpoint {
             assert!(!verify(&public_key(&seed), &message(t, 11, &[1u8; 32], 99), &s));
             assert!(!verify(&public_key(&[8u8; 32]), &m, &s));
             assert!(!verify(&public_key(&seed), &m, &s[..63]));
+        }
+    }
+}
+
+/// RFC 6962 (Certificate Transparency) Merkle tree over chain hashes, via the `ct-merkle` crate. Leaf `i` is the
+/// chain hash of the event with `seq = i + 1`; leaf and node hashes are domain-separated (0x00 / 0x01 prefixes).
+pub mod merkle {
+    use ct_merkle::mem_backed_tree::MemoryBackedTree;
+    use ct_merkle::{InclusionProof, RootHash};
+    use sha2_11::Sha256;
+
+    pub struct Tree(MemoryBackedTree<Sha256, [u8; 32]>);
+
+    impl Tree {
+        pub fn from_leaves(leaves: impl IntoIterator<Item = [u8; 32]>) -> Self {
+            let mut t = MemoryBackedTree::new();
+            for l in leaves {
+                t.push(l);
+            }
+            Tree(t)
+        }
+
+        pub fn len(&self) -> u64 {
+            self.0.len()
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.0.is_empty()
+        }
+
+        pub fn root(&self) -> [u8; 32] {
+            self.0.root().as_bytes().as_slice().try_into().unwrap_or([0u8; 32])
+        }
+
+        /// Audit path for leaf `idx` (sibling hashes from the leaf up), or `None` when out of range.
+        pub fn prove(&self, idx: u64) -> Option<Vec<[u8; 32]>> {
+            if idx >= self.len() {
+                return None;
+            }
+            let p = self.0.prove_inclusion(usize::try_from(idx).ok()?);
+            Some(p.as_bytes().chunks(32).filter_map(|c| c.try_into().ok()).collect())
+        }
+    }
+
+    /// Why an inclusion proof was refused.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ProofError {
+        IndexOutOfRange,
+        WrongLength,
+        RootMismatch,
+    }
+
+    /// Checks that `leaf` is leaf `idx` of the tree of `size` leaves with root `root`.
+    pub fn verify(root: &[u8; 32], size: u64, idx: u64, leaf: &[u8; 32], path: &[[u8; 32]]) -> Result<(), ProofError> {
+        if size == 0 || idx >= size {
+            return Err(ProofError::IndexOutOfRange);
+        }
+        if path.len() != ct_merkle::indices_for_inclusion_proof(size, idx).len() {
+            return Err(ProofError::WrongLength);
+        }
+        let digest = ct_merkle::digest::Output::<Sha256>::from(*root);
+        let rh = RootHash::<Sha256>::new(digest, size);
+        let proof = InclusionProof::<Sha256>::from_bytes(path.concat());
+        rh.verify_inclusion(leaf, idx, &proof)
+            .map_err(|_| ProofError::RootMismatch)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn leaf(i: u64) -> [u8; 32] {
+            let mut l = [0u8; 32];
+            l[..8].copy_from_slice(&i.to_be_bytes());
+            l
+        }
+
+        #[test]
+        fn rfc6962_empty_and_single() {
+            // RFC 6962: MTH({d0}) = SHA-256(0x00 || d0).
+            use sha2_11::Digest;
+            let t = Tree::from_leaves([leaf(0)]);
+            let want: [u8; 32] = Sha256::new_with_prefix([0u8]).chain_update(leaf(0)).finalize().into();
+            assert_eq!(t.root(), want);
+            assert_eq!(t.prove(0), Some(vec![]));
+            assert_eq!(t.prove(1), None);
+        }
+
+        proptest! {
+            #[test]
+            fn every_leaf_proves_and_tamper_fails(n in 1u64..80, pick in 0u64..80, flip in 0usize..32) {
+                let t = Tree::from_leaves((0..n).map(leaf));
+                let i = pick % n;
+                let path = t.prove(i).unwrap_or_default();
+                prop_assert!(verify(&t.root(), n, i, &leaf(i), &path).is_ok());
+                prop_assert!(verify(&t.root(), n, i, &leaf(i + 1000), &path).is_err());
+                if !path.is_empty() {
+                    let mut bad = path.clone();
+                    let k = flip % bad.len();
+                    bad[k][flip] ^= 1;
+                    prop_assert_eq!(verify(&t.root(), n, i, &leaf(i), &bad), Err(ProofError::RootMismatch));
+                    prop_assert_eq!(verify(&t.root(), n, i, &leaf(i), &path[1..]), Err(ProofError::WrongLength));
+                }
+                prop_assert_eq!(verify(&t.root(), n, n, &leaf(i), &path), Err(ProofError::IndexOutOfRange));
+            }
         }
     }
 }

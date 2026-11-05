@@ -8,6 +8,8 @@ CASES=${1:-20000}
 start=$(date +%s)
 PROPTEST_CASES=$CASES timeout 600 cargo test -q --release -j4 \
   -p audit-engine -p evidence-core -p entity-resolution -p conflict-engine -p domain-manufacturing -p dependency-engine \
-  -p kizuna-api --lib
+  -p kizuna-verify-pack -p kizuna-api --lib
+# Evidence pack: manifest parser and whole-pack mutation properties (integration-test target).
+PROPTEST_CASES=$CASES timeout 600 cargo test -q --release -j4 -p kizuna-verify-pack --test pack fuzz_
 (cd services/extraction && timeout 300 uv run -q pytest -q)
 echo "fuzz: PROPTEST_CASES=$CASES, $(( $(date +%s) - start ))s"

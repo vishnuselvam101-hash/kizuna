@@ -14,6 +14,7 @@ pub mod crypto;
 pub mod db;
 pub mod decisions;
 pub mod error;
+pub mod evidence_pack;
 pub mod evidence_requests;
 pub mod extraction;
 pub mod incidents;

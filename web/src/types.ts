@@ -162,6 +162,8 @@ export interface Invalidation {
 export interface Trace {
   decision: Decision & { rationale: string };
   derivation_reproducible: boolean;
+  /** Snapshot recorded at decision time; `evidence[].artifact_id` names the source documents. */
+  derivation?: { evidence?: { claim_id?: string; predicate?: string; artifact_id?: string | null; source_location?: unknown }[] };
   evidence: TraceEvidence[];
   invalidations: Invalidation[];
   changed_since_decision: { claim_id: string; predicate: string; value: Snap; recorded_at: string; event: string }[];
