@@ -406,8 +406,13 @@ pub fn ja_parts(seed: u64, n: usize) -> Dataset {
                     let mut c: Vec<char> = pn.chars().collect();
                     let digits: Vec<usize> = (0..c.len()).filter(|&i| c[i].is_ascii_digit()).collect();
                     let i = *pick(&mut rng, &digits);
-                    c[i] = char::from_digit((c[i].to_digit(10).unwrap_or(0) + 5) % 10, 10).unwrap_or('0');
-                    (c.into_iter().collect(), "keying_error")
+                    if rng.below(2) == 0 && i + 1 < c.len() && c[i + 1].is_ascii_digit() && c[i] != c[i + 1] {
+                        c.swap(i, i + 1);
+                        (c.into_iter().collect(), "keying_transposition")
+                    } else {
+                        c[i] = char::from_digit((c[i].to_digit(10).unwrap_or(0) + 5) % 10, 10).unwrap_or('0');
+                        (c.into_iter().collect(), "keying_error")
+                    }
                 }
             };
             if !used.contains(&f.0) && !seen.contains(&f.0) && !forms.iter().any(|(s, _)| *s == f.0) {

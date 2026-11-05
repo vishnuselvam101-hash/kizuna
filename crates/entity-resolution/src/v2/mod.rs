@@ -225,6 +225,26 @@ pub fn jaro_winkler(a: &str, b: &str) -> f64 {
     jaro + prefix * 0.1 * (1.0 - jaro)
 }
 
+/// True if the strings differ by exactly one adjacent transposition.
+fn is_transposition(a: &str, b: &str) -> bool {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    if a.len() != b.len() {
+        return false;
+    }
+    let d: Vec<usize> = (0..a.len()).filter(|&i| a[i] != b[i]).collect();
+    d.len() == 2 && d[1] == d[0] + 1 && a[d[0]] == b[d[1]] && a[d[1]] == b[d[0]]
+}
+
+/// One keyed character apart (edit distance 1 or one transposition) on a number of ≥ 5 characters, not explained
+/// by separators, OCR confusion or a revision suffix, with the alpha prefix agreeing and no revision conflict.
+fn possible_typo(a: &Prepared, b: &Prepared, g: &Gamma) -> bool {
+    g[0].is_some_and(|l| l >= 4)
+        && g[2] != Some(1)
+        && g[3] != Some(2)
+        && a.core.chars().count().min(b.core.chars().count()) >= 5
+        && (edit_distance(&a.core, &b.core) == 1 || is_transposition(&a.core, &b.core))
+}
+
 /// Symmetric Jaro–Winkler (the textbook version is asymmetric in rare transposition cases).
 fn jw(a: &str, b: &str) -> f64 {
     jaro_winkler(a, b).max(jaro_winkler(b, a))
@@ -378,6 +398,8 @@ pub struct Stats {
     pub params: FsParams,
     pub t_match: f64,
     pub t_possible: f64,
+    /// Pairs sent to review by the one-character rule (whatever their weight).
+    pub typo_reviews: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -429,11 +451,17 @@ pub fn resolve(kind: Kind, keys: &[String], cfg: &Config) -> Resolution {
     let (t_match, t_possible) = em::thresholds(&params, cfg.mu, cfg.lambda);
 
     let mut out = Vec::new();
+    let mut typo_reviews = 0usize;
     for (&(i, j), g) in pairs.iter().zip(&gammas) {
         let (a, b) = (&prep[i as usize], &prep[j as usize]);
         let w = em::weight(&params, g);
         let safe = a.safe == b.safe;
-        let outcome = if safe || w >= t_match {
+        let typo = kind == Kind::Part && !safe && possible_typo(a, b, g);
+        let outcome = if typo {
+            // One keyed character apart: a typo and a different part look identical to the model, so neither
+            // `match` nor a silent drop is acceptable; a human decides.
+            Outcome::RequiresHumanReview
+        } else if safe || w >= t_match {
             Outcome::Match
         } else if w >= t_possible {
             Outcome::PossibleMatch
@@ -441,6 +469,10 @@ pub fn resolve(kind: Kind, keys: &[String], cfg: &Config) -> Resolution {
             continue;
         };
         let mut r = reasons(kind, g);
+        if typo {
+            r = vec!["possible_typo_or_different_part"];
+            typo_reviews += 1;
+        }
         if safe {
             r = vec![if a.raw == b.raw {
                 "identical"
@@ -487,6 +519,7 @@ pub fn resolve(kind: Kind, keys: &[String], cfg: &Config) -> Resolution {
             params,
             t_match,
             t_possible,
+            typo_reviews,
         },
     }
 }
@@ -581,6 +614,28 @@ mod tests {
         for c in &r.candidates {
             assert_eq!(c.safe, part_key(&c.left) == part_key(&c.right), "{c:?}");
         }
+    }
+
+    #[test]
+    fn one_character_differences_go_to_review_never_match_or_drop() {
+        let r = resolve(
+            Kind::Part,
+            &keys(&["BRK-10234", "BRK-10235", "BRK-12034", "SHF-77810", "SHF-778100"]),
+            &Config::default(),
+        );
+        for (a, b) in [
+            ("BRK-10234", "BRK-10235"),
+            ("BRK-10234", "BRK-12034"),
+            ("SHF-77810", "SHF-778100"),
+        ] {
+            assert_eq!(
+                outcome_of(&r, a, b),
+                Some(Outcome::RequiresHumanReview),
+                "{a} {b}: {r:?}"
+            );
+        }
+        assert!(r.stats.typo_reviews >= 3);
+        assert!(is_transposition("10234", "10324") && !is_transposition("10234", "13204"));
     }
 
     #[test]
