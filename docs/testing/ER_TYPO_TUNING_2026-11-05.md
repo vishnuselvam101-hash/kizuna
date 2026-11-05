@@ -1,7 +1,7 @@
 # ER v2 typo-review tuning — 2026-11-05
 
 Evidence label: **SIMULATED** data (synthetic, deterministic generators, including the evidence context), **MEASURED**
-quality from one real run of `kizuna-er-compare` at commit be409ab (release build, 5 runs, clean worktree). Raw output with provenance:
+quality from one real run of `kizuna-er-compare` at commit be409ab (release build, 5 runs; the JSON flags the worktree dirty because a doc file was uncommitted, code was committed). Raw output with provenance:
 `reports/er/er_typo_tuning.json`. Nothing below is typed by hand except the prose. Follows
 [ER_V2_2026-11-05.md](ER_V2_2026-11-05.md).
 
