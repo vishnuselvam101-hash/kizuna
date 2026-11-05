@@ -399,10 +399,13 @@ async fn l6_l7_l8_l9_mfa_audit_signature_escaping() {
         .await
         .unwrap();
     assert!(actions.contains(&"artifact.downloaded".to_string()), "L7");
-    let export: Value = sqlx::query_scalar("SELECT details FROM security_events WHERE kind = 'export.report' LIMIT 1")
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap();
+    let export: Value = sqlx::query_scalar(
+        "SELECT details FROM security_events WHERE kind = 'export.report' AND tenant_id = $1 LIMIT 1",
+    )
+    .bind(t)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
     assert_eq!(export["report_sha256"].as_str().unwrap().len(), 64, "L7");
     // L8: a derivation rewritten in place (trigger disabled, hash recomputed) no longer matches the audit log.
     sqlx::query("ALTER TABLE decisions DISABLE TRIGGER decisions_guard")

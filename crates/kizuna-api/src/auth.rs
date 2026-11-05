@@ -87,6 +87,11 @@ impl Principal {
         match st.policy.authorize(&self.subject(), perm, res) {
             Decision::Allow => Ok(()),
             Decision::Deny(reason) => {
+                // At most 30 recorded denials per user per minute: a flood of forbidden requests cannot turn into
+                // unbounded event writes and detection runs (final review H1). The request is still denied.
+                if !st.limiter.check(&format!("authz-event:{}", self.user_id), 30) {
+                    return Err(ApiError::Forbidden(reason.code()));
+                }
                 sec::record(
                     &st.pool,
                     Some(self.tenant_id),

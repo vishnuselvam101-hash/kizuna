@@ -30,13 +30,19 @@ type EvRow = (Uuid, String, Option<Uuid>, Option<String>, OffsetDateTime, Value)
 /// Runs all detection rules over the tenant's last hour of security events.
 pub async fn run_detection(pool: &PgPool, tenant: Uuid) -> ApiResult<usize> {
     let mut tx = db::tenant_tx(pool, tenant).await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 17))")
+    // Non-blocking: if a detection run for this tenant is in progress, skip (the 60 s sweep and the next event
+    // catch up). Requests never queue on this lock (final review H1).
+    let got: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1, 17))")
         .bind(tenant.to_string())
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
+    if !got {
+        return Ok(0);
+    }
+    // Newest first, so a flood of old events can never hide recent ones.
     let rows: Vec<EvRow> = sqlx::query_as(
         "SELECT id, kind, user_id, client_ip, occurred_at, details FROM security_events \
-         WHERE tenant_id = $1 AND occurred_at > now() - interval '1 hour' ORDER BY occurred_at LIMIT 20000",
+         WHERE tenant_id = $1 AND occurred_at > now() - interval '1 hour' ORDER BY occurred_at DESC LIMIT 20000",
     )
     .bind(tenant)
     .fetch_all(&mut *tx)
@@ -68,6 +74,19 @@ pub async fn run_detection(pool: &PgPool, tenant: Uuid) -> ApiResult<usize> {
     let mut touched = 0;
     let mut alerts = Vec::new();
     for d in detections {
+        // Events already judged in a resolved / false-positive incident do not re-trigger it (final review M1).
+        let covered: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM incidents WHERE rule = $1 AND subject = $2 AND status IN ('resolved', 'false_positive') \
+             AND event_ids @> $3::jsonb)",
+        )
+        .bind(d.rule)
+        .bind(&d.subject)
+        .bind(json!(d.event_ids))
+        .fetch_one(&mut *tx)
+        .await?;
+        if covered {
+            continue;
+        }
         touched += 1;
         if let Some(a) = upsert_incident(&mut tx, tenant, &d).await? {
             alerts.push(a);
@@ -124,14 +143,40 @@ async fn upsert_incident(tx: &mut Tx, tenant: Uuid, d: &Detection) -> ApiResult<
     };
     let mut applied = Vec::new();
     for a in &d.actions {
-        let exists: Option<Uuid> =
-            sqlx::query_scalar("SELECT id FROM response_actions WHERE incident_id = $1 AND kind = $2 AND target = $3")
-                .bind(id)
-                .bind(a.kind.code())
-                .bind(&a.target)
-                .fetch_optional(&mut **tx)
-                .await?;
-        if exists.is_some() {
+        let exists: Option<(Uuid, String, OffsetDateTime)> = sqlx::query_as(
+            "SELECT id, status, updated_at FROM response_actions WHERE incident_id = $1 AND kind = $2 AND target = $3",
+        )
+        .bind(id)
+        .bind(a.kind.code())
+        .bind(&a.target)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if let Some((aid, status, at)) = exists {
+            // A returning attacker after a time-limited action expired is contained again (final review M1).
+            let time_limited = matches!(
+                a.kind,
+                ActionKind::BlockIp | ActionKind::RestrictUploads | ActionKind::SuspendExtraction
+            );
+            let ids: Vec<Uuid> = d.event_ids.iter().filter_map(|e| Uuid::parse_str(e).ok()).collect();
+            let fresh: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM security_events WHERE id = ANY($1) AND occurred_at > $2)",
+            )
+            .bind(&ids)
+            .bind(at)
+            .fetch_one(&mut **tx)
+            .await?;
+            if a.policy == Policy::PreAuthorised
+                && time_limited
+                && status == "executed"
+                && fresh
+                && !still_active(tx, a.kind, &a.target).await?
+            {
+                let (st, detail) = execute(tx, tenant, aid, a.kind, &a.target, false).await?;
+                finish_action(tx, tenant, aid, st, &format!("re-applied: {detail}"), None).await?;
+                if st == "executed" {
+                    applied.push(json!({ "action": a.kind.code(), "target": a.target, "reapplied": true }));
+                }
+            }
             continue;
         }
         let aid = Uuid::now_v7();
@@ -239,10 +284,13 @@ async fn execute(
                     "would disable the last active administrator; use the emergency procedure instead".into(),
                 )
             } else {
-                sqlx::query("UPDATE users SET status = 'disabled', updated_at = now() WHERE id = $1")
-                    .bind(u)
-                    .execute(&mut **tx)
-                    .await?;
+                sqlx::query(
+                    "UPDATE users SET status = 'disabled', disabled_by_action = $2, updated_at = now() WHERE id = $1",
+                )
+                .bind(u)
+                .bind(aid)
+                .execute(&mut **tx)
+                .await?;
                 let n = revoke_user_sessions(tx, tenant, u, None, "account_locked_incident").await?;
                 ("executed", format!("account disabled, {n} sessions revoked"))
             }
@@ -319,15 +367,44 @@ async fn execute(
     })
 }
 
+async fn still_active(tx: &mut Tx, kind: ActionKind, target: &str) -> ApiResult<bool> {
+    let q = match kind {
+        ActionKind::BlockIp => "SELECT EXISTS (SELECT 1 FROM ip_blocks WHERE ip = $1 AND until > now())",
+        ActionKind::RestrictUploads => {
+            "SELECT EXISTS (SELECT 1 FROM users WHERE id::text = $1 AND upload_blocked_until > now())"
+        }
+        ActionKind::SuspendExtraction => {
+            "SELECT EXISTS (SELECT 1 FROM tenant_controls WHERE extraction_suspended_until > now() AND $1 = $1)"
+        }
+        _ => return Ok(false),
+    };
+    Ok(sqlx::query_scalar(q).bind(target).fetch_one(&mut **tx).await?)
+}
+
 /// Undoes a containment action where that is possible.
-async fn revert(tx: &mut Tx, tenant: Uuid, kind: &str, target: &str) -> ApiResult<Result<String, &'static str>> {
+async fn revert(
+    tx: &mut Tx,
+    tenant: Uuid,
+    aid: Uuid,
+    kind: &str,
+    target: &str,
+) -> ApiResult<Result<String, &'static str>> {
     Ok(match kind {
         "lock_account" => {
             let u = Uuid::parse_str(target).map_err(|_| ApiError::BadRequest("invalid_target"))?;
-            sqlx::query("UPDATE users SET status = 'active', failed_logins = 0, locked_until = NULL WHERE id = $1")
-                .bind(u)
-                .execute(&mut **tx)
-                .await?;
+            // Only undo this action's own lock, never a later deliberate disable (final review M4).
+            let n = sqlx::query(
+                "UPDATE users SET status = 'active', disabled_by_action = NULL, failed_logins = 0, locked_until = NULL \
+                 WHERE id = $1 AND disabled_by_action = $2",
+            )
+            .bind(u)
+            .bind(aid)
+            .execute(&mut **tx)
+            .await?
+            .rows_affected();
+            if n == 0 {
+                return Ok(Err("account_disabled_for_another_reason"));
+            }
             Ok("account re-enabled".into())
         }
         "block_ip" => {
@@ -361,10 +438,20 @@ async fn revert(tx: &mut Tx, tenant: Uuid, kind: &str, target: &str) -> ApiResul
 /// IP blocks and restrictions. Audited. Guarantees containment can never lock out every administrator permanently.
 pub async fn emergency_unlock(pool: &PgPool, tenant: Uuid) -> ApiResult<Value> {
     let mut tx = db::tenant_tx(pool, tenant).await?;
-    let admins = sqlx::query("UPDATE users SET status = 'active', failed_logins = 0, locked_until = NULL, upload_blocked_until = NULL WHERE role = 'tenant_admin'")
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+    // Re-enable only administrators disabled by automated containment; deliberately disabled accounts stay
+    // disabled (final review M4). Lockouts and restrictions are cleared for all administrators.
+    let reenabled: Vec<Uuid> = sqlx::query_scalar(
+        "UPDATE users SET status = 'active', disabled_by_action = NULL WHERE role = 'tenant_admin' AND status = 'disabled' \
+         AND disabled_by_action IS NOT NULL RETURNING id",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let unlocked: Vec<Uuid> = sqlx::query_scalar(
+        "UPDATE users SET failed_logins = 0, locked_until = NULL, upload_blocked_until = NULL WHERE role = 'tenant_admin' RETURNING id",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let admins = reenabled.len() as u64;
     let blocks = sqlx::query("DELETE FROM ip_blocks")
         .execute(&mut *tx)
         .await?
@@ -372,7 +459,7 @@ pub async fn emergency_unlock(pool: &PgPool, tenant: Uuid) -> ApiResult<Value> {
     sqlx::query("UPDATE tenant_controls SET extraction_suspended_until = NULL")
         .execute(&mut *tx)
         .await?;
-    let out = json!({ "admins_reenabled": admins, "ip_blocks_lifted": blocks });
+    let out = json!({ "admins_reenabled": admins, "reenabled_ids": reenabled, "unlocked_admin_ids": unlocked, "ip_blocks_lifted": blocks });
     audit::append(
         &mut tx,
         tenant,
@@ -388,6 +475,22 @@ pub async fn emergency_unlock(pool: &PgPool, tenant: Uuid) -> ApiResult<Value> {
     .await?;
     tx.commit().await?;
     Ok(out)
+}
+
+/// An administrator never decides on containment that targets themselves (final review M3).
+async fn not_about_self(st: &AppState, p: &Principal, subject: &str, target: Option<&str>) -> ApiResult<()> {
+    let me = p.user_id.to_string();
+    let about_me = subject == format!("user:{me}") || target == Some(me.as_str());
+    p.require_on(
+        st,
+        Permission::IncidentManage,
+        &policy_engine::Resource {
+            tenant_id: p.tenant_id,
+            kind: "incident",
+            owner_user_id: about_me.then_some(p.user_id),
+        },
+    )
+    .await
 }
 
 // ---- enforcement helpers ----
@@ -535,6 +638,11 @@ pub async fn decide_action(
     p.require(&st, Permission::IncidentManage).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let (kind, target, _policy, status) = load_action(&mut tx, incident, action).await?;
+    let subject: String = sqlx::query_scalar("SELECT subject FROM incidents WHERE id = $1")
+        .bind(incident)
+        .fetch_one(&mut *tx)
+        .await?;
+    not_about_self(&st, &p, &subject, Some(&target)).await?;
     let comment = req.comment.unwrap_or_default().chars().take(500).collect::<String>();
     match verb.as_str() {
         "approve" => {
@@ -568,7 +676,7 @@ pub async fn decide_action(
             if status != "executed" {
                 return Err(ApiError::Conflict("action_not_executed"));
             }
-            match revert(&mut tx, p.tenant_id, &kind, &target).await? {
+            match revert(&mut tx, p.tenant_id, action, &kind, &target).await? {
                 Ok(detail) => {
                     finish_action(
                         &mut tx,
@@ -613,6 +721,11 @@ pub async fn resolve(
         return Err(ApiError::BadRequest("invalid_resolution"));
     }
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let subject: Option<String> = sqlx::query_scalar("SELECT subject FROM incidents WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    not_about_self(&st, &p, &subject.ok_or(ApiError::NotFound)?, None).await?;
     let r = sqlx::query(
         "UPDATE incidents SET status = $2, resolution = $3 WHERE id = $1 AND status IN ('open', 'contained')",
     )

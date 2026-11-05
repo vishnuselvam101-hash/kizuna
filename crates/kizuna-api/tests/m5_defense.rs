@@ -199,17 +199,21 @@ async fn last_admin_is_never_locked_and_emergency_unlock_restores_access() {
         d["incident"]["id"].as_str().unwrap(),
         lock["id"].as_str().unwrap()
     );
+    // The only admin cannot approve containment against themselves (four-eyes, final review M3); with no second
+    // admin the lock can never execute, so the last administrator is never disabled by automation.
     let r = c.post(&path, Some(&admin), json!({"comment":"test"})).await;
-    assert_eq!(r.body["status"], "refused", "{:?}", r.body);
-    assert!(r.body["detail"].as_str().unwrap().contains("last active administrator"));
-    // Emergency procedure (operator CLI) always restores admin access.
-    sqlx::query("UPDATE users SET status = 'disabled' WHERE id = $1")
+    assert_eq!(r.body["error"], "no_self_review", "{:?}", r.body);
+    // Emergency procedure (operator CLI) restores admins disabled by containment.
+    let mut tx = db::tenant_tx(&c.owner, t).await.unwrap();
+    sqlx::query("UPDATE users SET status = 'disabled', disabled_by_action = $2 WHERE id = $1")
         .bind(admin_id)
-        .execute(&mut *db::tenant_tx(&c.owner, t).await.unwrap())
+        .bind(uuid::Uuid::now_v7())
+        .execute(&mut *tx)
         .await
-        .ok();
+        .unwrap();
+    tx.commit().await.unwrap();
     let out = kizuna_api::incidents::emergency_unlock(&c.owner, t).await.unwrap();
-    assert!(out["admins_reenabled"].as_u64().unwrap() >= 1);
+    assert_eq!(out["admins_reenabled"], 1);
 }
 
 #[tokio::test]
@@ -388,8 +392,8 @@ async fn signed_checkpoints_detect_full_rechain_by_db_owner() {
     assert_eq!(
         c.post("/api/v1/audit/checkpoints/verify-external", Some(&admin), forged)
             .await
-            .body["checkpoint"]["signature_valid"],
-        false
+            .body["error"],
+        "invalid_checkpoint_signature"
     );
 }
 

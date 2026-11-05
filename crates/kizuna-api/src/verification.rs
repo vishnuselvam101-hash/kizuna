@@ -31,7 +31,8 @@ pub struct NoSelfReview;
 
 impl AttributeRule for NoSelfReview {
     fn deny(&self, s: &Subject, p: Permission, r: &Resource<'_>) -> Option<&'static str> {
-        (p == Permission::ReviewDecide && r.owner_user_id == Some(s.user_id)).then_some("no_self_review")
+        (matches!(p, Permission::ReviewDecide | Permission::IncidentManage) && r.owner_user_id == Some(s.user_id))
+            .then_some("no_self_review")
     }
 }
 
@@ -143,6 +144,20 @@ pub async fn extract(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
     }
     if !intact {
         return Err(ApiError::Conflict("integrity_check_failed"));
+    }
+    // A document that keeps failing is not retried endlessly (final review M2).
+    {
+        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        let fails: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM extraction_runs WHERE artifact_id = $1 AND status = 'failed' AND finished_at > now() - interval '1 hour'",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        if fails >= 3 {
+            return Err(ApiError::TooManyRequests);
+        }
     }
     // I2: the worker accepts at most 64 MiB of base64 JSON (~47 MiB raw).
     if bytes.len() > 40 * 1024 * 1024 {

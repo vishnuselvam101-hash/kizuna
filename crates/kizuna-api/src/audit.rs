@@ -409,6 +409,10 @@ pub async fn verify_external(
     let r = check_one(&mut tx, &public, &c).await?;
     let chain = verify_tenant(&mut tx, p.tenant_id).await?;
     tx.commit().await?;
+    if r["signature_valid"] != true {
+        // A forged or garbled checkpoint is a bad request, not evidence of tampering (final review L1).
+        return Err(ApiError::BadRequest("invalid_checkpoint_signature"));
+    }
     let ok = r["signature_valid"] == true && r["chain_matches"] == true && chain.intact;
     if !ok {
         crate::security_events::record(

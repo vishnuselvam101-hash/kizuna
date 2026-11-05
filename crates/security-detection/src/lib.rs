@@ -305,7 +305,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
             });
         }
     }
-    // R8 abnormal ingestion: repeated extraction failures.
+    // R8 abnormal ingestion: repeated extraction failures. Tenant-wide suspension needs approval: one user must not be
+    // able to switch extraction off for everyone (final review M2).
     let ex = window(events, now, 1800, &["ingest.extraction_failed"]);
     if ex.len() >= t.extraction_failures {
         out.push(Detection {
@@ -315,7 +316,7 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
             event_ids: ids(&ex),
             summary: format!("{} extraction failures within 30 minutes", ex.len()),
             actions: vec![
-                act(SuspendExtraction, "tenant", PreAuthorised),
+                act(SuspendExtraction, "tenant", RequiresApproval),
                 act(NotifyAdmins, "tenant", PreAuthorised),
             ],
         });

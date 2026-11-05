@@ -11,6 +11,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("KIZUNA_LOG").unwrap_or_else(|_| "info".into()))
         .init();
     let cfg = Config::from_env()?;
+    // The extraction sandbox's process limit only works for a non-root server (final review L2).
+    let root = std::fs::metadata("/proc/self")
+        .map(|m| std::os::unix::fs::MetadataExt::uid(&m) == 0)
+        .unwrap_or(false);
+    if root && std::env::var("KIZUNA_ALLOW_ROOT").as_deref() != Ok("1") {
+        return Err(
+            "refusing to run as root: use a dedicated user (or KIZUNA_ALLOW_ROOT=1 for local development)".into(),
+        );
+    }
     let pool = db::connect(cfg.database_url.expose(), 16).await?;
     db::assert_runtime_role(&pool).await?;
     let bind = cfg.bind;

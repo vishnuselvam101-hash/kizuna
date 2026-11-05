@@ -178,7 +178,7 @@ pub async fn patch(
     sqlx::query(
         "UPDATE users SET role = $2, status = $3, display_name = coalesce($4, display_name), updated_at = now(), \
            failed_logins = CASE WHEN $5 THEN 0 ELSE failed_logins END, \
-           locked_until = CASE WHEN $5 THEN NULL ELSE locked_until END WHERE id = $1",
+           locked_until = CASE WHEN $5 THEN NULL ELSE locked_until END, disabled_by_action = NULL WHERE id = $1",
     )
     .bind(id)
     .bind(&new_role)

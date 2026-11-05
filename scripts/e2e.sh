@@ -29,6 +29,8 @@ trap cleanup EXIT
 
 echo "== build"
 cargo build -q --bin kizuna-server --bin kizuna-admin
+# The server refuses to run as root outside development; this throwaway run on a dev host is explicitly allowed.
+[[ $(id -u) == 0 ]] && export KIZUNA_ALLOW_ROOT=1
 BIN=target/debug
 
 echo "== database $DB"
