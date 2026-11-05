@@ -370,18 +370,25 @@ async fn rt_cross_tenant_every_route() {
 async fn rt_role_matrix_privilege_escalation() {
     let c = rctx().await;
     let s = seed(&c, "R").await;
+    // Repeated denials trip automatic incident response (session revocation), which would turn later 403s into
+    // 401s and hide the RBAC decision; a revoked session is replaced by a fresh user's and the call retried.
+    async fn mint(c: &Ctx, s: &Seed, role: &str, mfa: bool) -> String {
+        let (_, email) = c.user(s.t, role).await;
+        if mfa {
+            c.mfa_token(&s.slug, &email).await
+        } else {
+            c.token(&s.slug, &email).await
+        }
+    }
     let mut toks = Vec::new();
     for role in ["viewer", "analyst", "auditor", "reviewer", "tenant_admin"] {
-        let (_, email) = c.user(s.t, role).await;
-        let plain = c.token(&s.slug, &email).await;
-        let (_, email2) = c.user(s.t, role).await;
-        let mfa = c.mfa_token(&s.slug, &email2).await;
-        toks.push((role, false, plain));
-        toks.push((role, true, mfa));
+        for mfa in [false, true] {
+            toks.push((role, mfa, mint(&c, &s, role, mfa).await));
+        }
     }
-    let mut bad = Vec::new();
+    let (mut bad, mut revoked) = (Vec::new(), 0);
     for (m, tmpl, body, perm) in routes() {
-        for (role, mfa, tok) in &toks {
+        for (role, mfa, tok) in &mut toks {
             let granted = perm_granted(role, perm);
             let privileged = matches!(perm, "UserManage" | "IncidentManage" | "ReviewDecide");
             let allowed = granted && (!privileged || *mfa);
@@ -390,17 +397,27 @@ async fn rt_role_matrix_privilege_escalation() {
             }
             let path = fill(tmpl, &s);
             let body = serde_json::from_str::<Value>(&fill(&body.to_string(), &s)).unwrap();
-            let r = send(&c, &m, &path, tok, &body).await;
+            let mut r = send(&c, &m, &path, tok, &body).await;
+            if r.status == StatusCode::UNAUTHORIZED {
+                revoked += 1;
+                *tok = mint(&c, &s, role, *mfa).await;
+                r = send(&c, &m, &path, tok, &body).await;
+            }
             rt(
                 &format!("escalation {role}{} {m} {tmpl}", if *mfa { "+mfa" } else { "" }),
                 "403",
                 r.status.as_u16(),
             );
-            if r.status.is_success() {
+            if r.status.is_success() || r.status == StatusCode::UNAUTHORIZED {
                 bad.push(format!("{role} mfa={mfa} {m} {tmpl} -> {}", r.status));
             }
         }
     }
+    rt(
+        "escalation matrix: sessions auto-revoked by incident response",
+        "defence",
+        revoked,
+    );
     // Self-promotion through PATCH /users/{self}.
     let (vid, vemail) = c.user(s.t, "analyst").await;
     let vt = c.mfa_token(&s.slug, &vemail).await;
