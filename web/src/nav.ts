@@ -11,7 +11,8 @@ export type View =
   | "reports"
   | "users"
   | "integrations"
-  | "security";
+  | "security"
+  | "account";
 
 export interface Section {
   id: "overview" | "evidence" | "conflicts" | "decisions" | "reports" | "admin";
@@ -27,4 +28,5 @@ export const SECTIONS: Section[] = [
   { id: "admin", views: [{ id: "users", perm: "user_read" }, { id: "integrations", perm: "user_manage" }, { id: "security", perm: "audit_read" }] },
 ];
 
-export const sectionOf = (v: View) => SECTIONS.find((s) => s.views.some((x) => x.id === v))!;
+/** The section a view belongs to; the personal account page belongs to none. */
+export const sectionOf = (v: View): Section | undefined => SECTIONS.find((s) => s.views.some((x) => x.id === v));

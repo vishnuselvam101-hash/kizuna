@@ -43,6 +43,7 @@ export interface Me {
   display_name: string;
   role: string;
   mfa_enabled: boolean;
+  webauthn_enabled?: boolean;
   session_mfa_verified: boolean;
 }
 

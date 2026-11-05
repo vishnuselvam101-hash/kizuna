@@ -76,6 +76,22 @@ export class Api {
     return t;
   }
 
+  /** Security-key sign-in: password first factor, then an assertion from the authenticator (MFA-verified session). */
+  async loginWithKey(tenant: string, email: string, password: string, assert: (rcr: { publicKey: Record<string, unknown> }) => Promise<unknown>) {
+    const start = await this.request<{ challenge_id: string; public_key: { publicKey: Record<string, unknown> } }>("POST", "/auth/webauthn/login/start", {
+      tenant,
+      email,
+      password,
+    });
+    const credential = await assert(start.public_key);
+    this.tokens = await this.request<Tokens>("POST", "/auth/webauthn/login/finish", { tenant, challenge_id: start.challenge_id, credential });
+  }
+
+  /** Lost security key: password + one-time recovery code; removes the user's keys and yields a non-MFA session. */
+  async recover(tenant: string, email: string, password: string, recovery_code: string) {
+    this.tokens = await this.request<Tokens>("POST", "/auth/webauthn/recover", { tenant, email, password, recovery_code });
+  }
+
   async logout() {
     try {
       await this.request("POST", "/auth/logout", {});

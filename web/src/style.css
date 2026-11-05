@@ -160,6 +160,7 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 }
 @media (max-width: 600px) {
   .topbar { flex-wrap: wrap; height: auto; }
+  .topbar-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 0; }
   .primary-nav { order: 3; width: 100%; mask-image: linear-gradient(90deg, #000 85%, transparent); }
   .sub-nav { mask-image: linear-gradient(90deg, #000 85%, transparent); }
 }

@@ -691,13 +691,15 @@ pub struct MeResp {
     pub display_name: String,
     pub role: &'static str,
     pub mfa_enabled: bool,
+    /// A security key is enrolled (sign-in then goes through `/auth/webauthn/login/*`).
+    pub webauthn_enabled: bool,
     pub session_mfa_verified: bool,
 }
 
 pub async fn me(State(st): State<AppState>, p: Principal) -> ApiResult<Json<MeResp>> {
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let (email, display_name, mfa_enabled): (String, String, bool) =
-        sqlx::query_as("SELECT email, display_name, totp_enabled FROM users WHERE id = $1")
+    let (email, display_name, mfa_enabled, webauthn_enabled): (String, String, bool, bool) =
+        sqlx::query_as("SELECT email, display_name, totp_enabled, webauthn_enabled FROM users WHERE id = $1")
             .bind(p.user_id)
             .fetch_one(&mut *tx)
             .await?;
@@ -709,6 +711,7 @@ pub async fn me(State(st): State<AppState>, p: Principal) -> ApiResult<Json<MeRe
         display_name,
         role: p.role.as_str(),
         mfa_enabled,
+        webauthn_enabled,
         session_mfa_verified: p.mfa_verified,
     }))
 }
