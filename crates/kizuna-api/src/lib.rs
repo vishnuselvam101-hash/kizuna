@@ -18,6 +18,7 @@ pub mod evidence_requests;
 pub mod extraction;
 pub mod incidents;
 pub mod insights;
+pub mod integrity;
 pub mod keyring;
 pub mod matching;
 pub mod ops;

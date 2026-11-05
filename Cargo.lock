@@ -1806,6 +1806,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "integrity-signals"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "proptest",
+ "quality-stats",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1912,6 +1925,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "integrity-signals",
  "lettre",
  "libc",
  "policy-engine",

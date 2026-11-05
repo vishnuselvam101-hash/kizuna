@@ -51,6 +51,10 @@ pub(crate) enum Field {
     Heat,
     CertificateType,
     Result,
+    CertificateDate,
+    ShipDate,
+    InspectionDate,
+    Chemistry(&'static str),
 }
 
 const DIMS: [(&str, &str); 8] = [
@@ -70,6 +74,46 @@ const PROPS: [(&str, &str); 4] = [
     ("yield strength", "yield_strength"),
     ("surface roughness", "surface_roughness"),
 ];
+
+/// Chemical elements by symbol or English name → predicate suffix (symbol).
+const ELEMENTS: [(&str, &str); 22] = [
+    ("c", "c"),
+    ("carbon", "c"),
+    ("si", "si"),
+    ("silicon", "si"),
+    ("mn", "mn"),
+    ("manganese", "mn"),
+    ("p", "p"),
+    ("phosphorus", "p"),
+    ("s", "s"),
+    ("sulfur", "s"),
+    ("sulphur", "s"),
+    ("cr", "cr"),
+    ("chromium", "cr"),
+    ("ni", "ni"),
+    ("nickel", "ni"),
+    ("mo", "mo"),
+    ("molybdenum", "mo"),
+    ("cu", "cu"),
+    ("copper", "cu"),
+    ("v", "v"),
+    ("al", "al"),
+    ("fe", "fe"),
+];
+
+/// A chemistry column only when its unit says mass-percent: "C (%)", "Mn (wt%)". A bare "C" or "S" column is
+/// too ambiguous (size codes, grades) to be read as an element.
+fn chemistry(label: &str, unit: Option<&str>) -> Option<Field> {
+    let pct = matches!(
+        unit.map(|u| u.replace(' ', "").to_lowercase()).as_deref(),
+        Some("%" | "wt%" | "mass%" | "質量%")
+    );
+    if !pct {
+        return None;
+    }
+    let l = label.strip_suffix(" content").unwrap_or(label);
+    ELEMENTS.iter().find(|(k, _)| *k == l).map(|(_, v)| Field::Chemistry(v))
+}
 
 fn dim(s: &str) -> Option<&'static str> {
     DIMS.iter().find(|(k, _)| *k == s).map(|(_, v)| *v)
@@ -121,9 +165,8 @@ pub(crate) fn field(label: &str) -> Option<Field> {
         "line" | "po line" | "line no" => Field::PoLine,
         "quantity" | "qty" | "数量" => Field::Quantity,
         "lot" | "lot number" | "lot no" | "ロット" | "ロット番号" => Field::Lot,
-        "heat" | "heat no" | "heat number" | "charge no" | "cast no" | "溶解番号" | "チャージ番号" | "ヒート番号" => {
-            Field::Heat
-        }
+        "heat" | "heat no" | "heat number" | "charge no" | "cast no" | "溶解番号" | "チャージ" | "チャージno"
+        | "チャージ番号" | "ヒート番号" => Field::Heat,
         "certificate type"
         | "cert type"
         | "inspection document"
@@ -133,6 +176,15 @@ pub(crate) fn field(label: &str) -> Option<Field> {
         | "証明書種類"
         | "検査証明書種類" => Field::CertificateType,
         "result" | "inspection result" | "judgement" | "判定" => Field::Result,
+        "certificate date" | "date of issue" | "issue date" | "issued" | "発行日" | "証明書発行日" => {
+            Field::CertificateDate
+        }
+        "ship date" | "shipping date" | "shipment date" | "date shipped" | "delivery date" | "出荷日" | "納入日" => {
+            Field::ShipDate
+        }
+        "inspection date" | "test date" | "date of inspection" | "date of test" | "検査日" | "試験日" => {
+            Field::InspectionDate
+        }
         "tolerance" | "tol" => Field::Tolerance(None),
         _ => {
             if let Some(d) = dim(label) {
@@ -349,7 +401,7 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
     let mut groups: BTreeMap<&str, Vec<Item>> = BTreeMap::new();
     for r in records {
         let (label, unit) = normalize_label(&r.label);
-        let f = field(&label);
+        let f = field(&label).or_else(|| chemistry(&label, unit.as_deref()));
         if f.is_none() && !out.unmapped_labels.contains(&r.label) && out.unmapped_labels.len() < 200 {
             out.unmapped_labels.push(r.label.chars().take(80).collect());
         }
@@ -433,6 +485,28 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                 | (Field::PoLine, ..)
                 | (Field::Lot, ..)
                 | (Field::Heat, ..) => {}
+                (Field::CertificateDate | Field::ShipDate | Field::InspectionDate, _, k)
+                    if k != "inspection_report" => {}
+                (Field::CertificateDate, ..) => match parse_date(v) {
+                    Some(d) => emit("qa.certificate_date".into(), Some(d), None),
+                    None => out.warnings.push("unparsed certificate date".into()),
+                },
+                (Field::ShipDate, ..) => match parse_date(v) {
+                    Some(d) => emit("qa.ship_date".into(), Some(d), None),
+                    None => out.warnings.push("unparsed shipment date".into()),
+                },
+                (Field::InspectionDate, ..) => match parse_date(v) {
+                    Some(d) => emit("qa.inspection_date".into(), Some(d), None),
+                    None => out.warnings.push("unparsed inspection date".into()),
+                },
+                (Field::Chemistry(_), _, k) if k != "inspection_report" => {}
+                (Field::Chemistry(el), ..) => match parse_quantity(v, Some("%")) {
+                    Some((n, _)) => emit(format!("qa.chem.{el}"), None, Some((n, Some("%".into())))),
+                    None => out.warnings.push(format!(
+                        "unparsed chemistry value '{}'",
+                        v.chars().take(40).collect::<String>()
+                    )),
+                },
                 (Field::Revision, true, _) => emit("mfg.revision".into(), Some(safe_normalize(v)), None),
                 (Field::Revision, false, "purchase_order") => {
                     emit("po.revision_ordered".into(), Some(safe_normalize(v)), None)
@@ -544,6 +618,47 @@ mod tests {
 
     fn find<'a>(m: &'a Mapped, pred: &str) -> Vec<&'a ClaimInput> {
         m.claims.iter().filter(|c| c.predicate == pred).collect()
+    }
+
+    #[test]
+    fn certificate_fields_heat_dates_and_chemistry() {
+        let r = vec![
+            rec("Part No", "BRK-100", "cert"),
+            rec("Lot No", "L-0042", "cert"),
+            rec("Heat No", "h 12345", "cert"),
+            rec("Issue date", "2026/03/20", "cert"),
+            rec("出荷日", "2026-03-18", "cert"),
+            rec("Test date", "2026-03-15", "cert"),
+            rec("C (%)", "0.15", "cert"),
+            rec("Manganese (wt%)", "1.20", "cert"),
+            rec("S", "0.01", "cert"),
+            rec("Inspection date", "not a date", "cert"),
+        ];
+        let m = map_records("inspection_report", &r, 8000);
+        assert_eq!(
+            find(&m, "qa.certificate_date")[0].value_text.as_deref(),
+            Some("2026-03-20")
+        );
+        assert_eq!(find(&m, "qa.ship_date")[0].value_text.as_deref(), Some("2026-03-18"));
+        assert_eq!(
+            find(&m, "qa.inspection_date")[0].value_text.as_deref(),
+            Some("2026-03-15")
+        );
+        let mn = find(&m, "qa.chem.mn");
+        assert_eq!(
+            (mn[0].value_num.as_deref(), mn[0].value_unit.as_deref()),
+            (Some("1.2"), Some("%"))
+        );
+        assert_eq!(find(&m, "qa.chem.c").len(), 1);
+        assert!(
+            find(&m, "qa.chem.s").is_empty(),
+            "a bare 'S' column without % is not an element"
+        );
+        assert_eq!(mn[0].scope.as_ref().unwrap()["heat"], "H 12345");
+        assert!(m.warnings.iter().any(|w| w.contains("inspection date")));
+        // On a spec or drawing, chemistry columns are requirements and dates are document dates: not mapped.
+        let spec = map_records("spec_document", &r, 8000);
+        assert!(spec.claims.iter().all(|c| !c.predicate.starts_with("qa.")));
     }
 
     #[test]

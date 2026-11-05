@@ -166,6 +166,17 @@ pub fn router(st: AppState) -> Router {
             "/security/detection-settings",
             get(crate::tenant_settings::get_detection).put(crate::tenant_settings::put_detection),
         )
+        .route("/integrity/run", post(crate::integrity::run))
+        .route(
+            "/integrity/settings",
+            get(crate::integrity::get_settings).put(crate::integrity::put_settings),
+        )
+        .route("/integrity/signals", get(crate::integrity::list_signals))
+        .route("/integrity/signals/{id}", get(crate::integrity::get_signal))
+        .route("/integrity/signals/{id}/review", post(crate::integrity::review_signal))
+        .route("/integrity/drift", get(crate::integrity::list_drift))
+        .route("/integrity/drift/{id}", get(crate::integrity::get_drift))
+        .route("/integrity/drift/{id}/review", post(crate::integrity::review_drift))
         .route("/users/{id}/sessions", get(insights::user_sessions))
         .route("/security/incidents", get(incidents::list))
         .route("/security/incidents/{id}", get(incidents::get))

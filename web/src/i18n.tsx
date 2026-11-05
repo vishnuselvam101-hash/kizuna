@@ -1,3 +1,4 @@
+import { integrityEn, integrityJa } from "./i18n-integrity";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 // All user-visible UI text lives here. `ja` is typed against `en`, so a missing translation
@@ -727,6 +728,7 @@ export const en = {
   "err.request_not_draft": "This request has already been reviewed.",
   "err.ambiguous_po_line": "This PO line names more than one part.",
   "err.claim_changed_retry": "Evidence changed while recording. Reload and try again.",
+  ...integrityEn,
 } as const;
 
 export type Key = keyof typeof en;
@@ -1456,6 +1458,7 @@ export const ja: Record<Key, string> = {
   "err.request_not_draft": "この依頼書は既に確認済みです。",
   "err.ambiguous_po_line": "この発注明細には複数の品番があります。",
   "err.claim_changed_retry": "記録中に証拠が変更されました。再読み込みしてやり直してください。",
+  ...integrityJa,
 };
 
 export type Lang = "en" | "ja";
