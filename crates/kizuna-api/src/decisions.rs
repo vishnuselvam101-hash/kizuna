@@ -311,10 +311,13 @@ pub struct DecisionOut {
     pub status: String,
     pub derivation_sha256: String,
     pub supersedes: Option<Uuid>,
+    pub evidence_claim_ids: Vec<Uuid>,
 }
 
 const DEC_COLS: &str = "id, kind, title, subject_type, subject_key, outcome, rationale, effective_from, decided_by, decided_at, \
-                        status, encode(derivation_sha256, 'hex') AS derivation_sha256, supersedes";
+                        status, encode(derivation_sha256, 'hex') AS derivation_sha256, supersedes, \
+                        ARRAY(SELECT dd.depends_on_claim FROM decision_dependencies dd WHERE dd.decision_id = decisions.id \
+                              AND dd.depends_on_claim IS NOT NULL ORDER BY dd.depends_on_claim) AS evidence_claim_ids";
 
 pub async fn fetch(tx: &mut Tx, id: Uuid) -> ApiResult<DecisionOut> {
     sqlx::query_as::<_, DecisionOut>(&format!("SELECT {DEC_COLS} FROM decisions WHERE id = $1"))

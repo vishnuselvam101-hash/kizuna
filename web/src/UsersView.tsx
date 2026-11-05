@@ -16,6 +16,12 @@ export function UsersView() {
   const [pending, setPending] = useState<Pending>(null);
   const [f, setF] = useState({ email: "", display_name: "", role: "viewer", password: "" });
   const manage = can("user_manage");
+  const [sessions, setSessions] = useState<{ email: string; rows: { id: string; created_at: string; client_ip: string | null; mfa_verified: boolean; revoked_at: string | null }[] } | null>(null);
+  const showSessions = (u: User) =>
+    api
+      .request<NonNullable<typeof sessions>["rows"]>("GET", `/users/${u.id}/sessions`)
+      .then((rows) => setSessions({ email: u.email, rows }))
+      .catch(setErr);
 
   async function run(fn: () => Promise<string>) {
     setErr(null);
@@ -125,6 +131,9 @@ export function UsersView() {
                           {t("users.enable")}
                         </button>
                       )}
+                      <button aria-label={t("users.sessionsFor", { email: u.email })} onClick={() => showSessions(u)}>
+                        {t("users.sessions")}
+                      </button>
                       <button aria-label={t("users.revokeFor", { email: u.email })} onClick={() => setPending({ user: u, action: "revoke" })}>
                         {t("users.revoke")}
                       </button>
@@ -140,6 +149,18 @@ export function UsersView() {
           />
         )}
       </Panel>
+      {sessions && (
+        <Panel title={t("users.sessionsFor", { email: sessions.email })} id="u-sessions">
+          <ul>
+            {sessions.rows.map((r) => (
+              <li key={r.id}>
+                {fmtDate(r.created_at)} · {r.client_ip ?? "—"} · {r.mfa_verified ? "MFA" : t("users.noMfa")} ·{" "}
+                {r.revoked_at ? t("users.sessionEnded", { at: fmtDate(r.revoked_at) }) : t("users.sessionActive")}
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
       {manage && (
         <Panel title={t("users.create")} id="u-new">
           <form onSubmit={create} className="form-grid">

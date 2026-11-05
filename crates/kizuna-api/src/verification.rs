@@ -319,9 +319,14 @@ type FactRow = (
 /// Loads current, non-rejected part claims as facts, with subjects canonicalised by safe normalisation and
 /// human-confirmed aliases.
 pub async fn load_facts(tx: &mut Tx, only_subject: Option<&str>) -> ApiResult<Vec<Fact>> {
+    load_facts_of(tx, "part", only_subject).await
+}
+
+pub async fn load_facts_of(tx: &mut Tx, subject_type: &str, only_subject: Option<&str>) -> ApiResult<Vec<Fact>> {
     let aliases: HashMap<String, String> = sqlx::query_as::<_, (String, String)>(
-        "SELECT alias_key, canonical_key FROM entity_aliases WHERE subject_type = 'part'",
+        "SELECT alias_key, canonical_key FROM entity_aliases WHERE subject_type = $1",
     )
+    .bind(subject_type)
     .fetch_all(&mut **tx)
     .await?
     .into_iter()
@@ -333,8 +338,9 @@ pub async fn load_facts(tx: &mut Tx, only_subject: Option<&str>) -> ApiResult<Ve
     let rows: Vec<FactRow> = sqlx::query_as(
         "SELECT c.id, c.subject_key, c.predicate, c.value_text, c.value_num::text, c.value_unit, c.revision, c.scope, \
                 CASE WHEN c.extraction_method = 'manual' THEN 'manual' ELSE coalesce(a.kind, 'manual') END FROM claims c LEFT JOIN artifacts a ON a.id = c.artifact_id \
-         WHERE c.subject_type = 'part' AND c.superseded_at IS NULL AND c.review_status <> 'rejected'",
+         WHERE c.subject_type = $1 AND c.superseded_at IS NULL AND c.review_status <> 'rejected'",
     )
+    .bind(subject_type)
     .fetch_all(&mut **tx)
     .await?;
     let want = only_subject.map(canon);
@@ -845,7 +851,13 @@ pub async fn entity_decision(
         return Err(ApiError::BadRequest("invalid_outcome"));
     }
     let (l, r) = (safe_normalize(&req.left_key), safe_normalize(&req.right_key));
-    if l.is_empty() || r.is_empty() || l == r || l.len() > 200 || r.len() > 200 || req.subject_type != "part" {
+    if l.is_empty()
+        || r.is_empty()
+        || l == r
+        || l.len() > 200
+        || r.len() > 200
+        || !matches!(req.subject_type.as_str(), "part" | "supplier")
+    {
         return Err(ApiError::BadRequest("invalid_keys"));
     }
     let (_, reasons) = entity_resolution::compare(&l, &r);
@@ -919,12 +931,15 @@ pub struct CompareQuery {
 pub async fn compare(
     State(st): State<AppState>,
     p: Principal,
-    Path(key): Path<String>,
+    Path((stype, key)): Path<(String, String)>,
     ApiQuery(q): ApiQuery<CompareQuery>,
 ) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::ClaimRead).await?;
+    if stype.is_empty() || stype.len() > 40 || !stype.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
+        return Err(ApiError::BadRequest("invalid_subject_type"));
+    }
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let facts = load_facts(&mut tx, Some(&key)).await?;
+    let facts = load_facts_of(&mut tx, &stype, Some(&key)).await?;
     tx.commit().await?;
     let diff = compare_revisions(&facts, &q.from, &q.to);
     let by_rev: BTreeMap<String, usize> = facts.iter().fold(BTreeMap::new(), |mut m, f| {

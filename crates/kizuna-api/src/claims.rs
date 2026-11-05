@@ -45,11 +45,13 @@ pub struct ClaimOut {
     #[serde(with = "time::serde::rfc3339::option")]
     pub superseded_at: Option<OffsetDateTime>,
     pub superseded_by: Option<Uuid>,
+    pub artifact_display_name: Option<String>,
 }
 
 pub const CLAIM_COLS: &str = "id, model_version, subject_type, subject_key, predicate, value_text, value_num::text AS value_num, \
      value_unit, scope, valid_from, valid_to, revision, artifact_id, source_location, extraction_method, confidence_bps, \
-     review_status, provenance, recorded_by, recorded_at, superseded_at, superseded_by";
+     review_status, provenance, recorded_by, recorded_at, superseded_at, superseded_by, \
+     (SELECT a.display_name FROM artifacts a WHERE a.id = claims.artifact_id) AS artifact_display_name";
 
 #[derive(Deserialize)]
 pub struct CreateReq {
@@ -264,6 +266,8 @@ pub struct ListQuery {
     #[serde(default)]
     pub include_superseded: bool,
     pub limit: Option<i64>,
+    /// Keyset paging: return claims with id greater than this (ids are time-ordered UUIDv7).
+    pub after: Option<Uuid>,
 }
 
 pub async fn list(
@@ -282,7 +286,8 @@ pub async fn list(
            AND ($5::timestamptz IS NULL OR (recorded_at <= $5 AND (superseded_at IS NULL OR superseded_at > $5))) \
            AND ($5::timestamptz IS NOT NULL OR $6 OR superseded_at IS NULL) \
            AND ($7::timestamptz IS NULL OR ((valid_from IS NULL OR valid_from <= $7) AND (valid_to IS NULL OR valid_to > $7))) \
-         ORDER BY subject_type, subject_key, predicate, recorded_at LIMIT $8"
+           AND ($9::uuid IS NULL OR id > $9) \
+         ORDER BY id LIMIT $8"
     ))
     .bind(q.subject_type)
     .bind(q.subject_key)
@@ -292,6 +297,7 @@ pub async fn list(
     .bind(q.include_superseded)
     .bind(valid_at)
     .bind(q.limit.unwrap_or(200).clamp(1, 1000))
+    .bind(q.after)
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;

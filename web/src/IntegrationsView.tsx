@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DOC_KINDS } from "./DocumentsView";
 import { useI18n } from "./i18n";
-import { PageTitle, Panel, download } from "./ui";
+import { useSession } from "./session";
+import { Notice, PageTitle, Panel, download } from "./ui";
 
-// Server-side persistence does not exist yet (see web/API_GAPS.md). Defaults mirror the
-// extraction service limits (services/extraction worker DEFAULT_LIMITS) and API upload cap.
+// Persisted per tenant as versioned settings (GET/PUT /integrations/import-settings, admin + MFA, audited).
+// Defaults mirror the extraction service limits (services/extraction worker DEFAULT_LIMITS) and API upload cap.
 export interface ImportSettings {
   default_kind: string;
   max_upload_mb: number;
@@ -43,6 +44,31 @@ export function IntegrationsView() {
   const { t, tv } = useI18n();
   const [s, setS] = useState<ImportSettings>(DEFAULT_SETTINGS);
   const [errs, setErrs] = useState<string[]>([]);
+  const { api } = useSession();
+  const [version, setVersion] = useState(0);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  useEffect(() => {
+    api
+      .request<{ version: number; settings: Partial<ImportSettings> }>("GET", "/integrations/import-settings")
+      .then((r) => {
+        setVersion(r.version);
+        if (r.version > 0) setS({ ...DEFAULT_SETTINGS, ...r.settings });
+      })
+      .catch(setErr);
+  }, [api]);
+  async function save() {
+    const v = validateSettings(s);
+    setErrs(v);
+    if (v.length) return;
+    try {
+      const r = await api.request<{ version: number }>("PUT", "/integrations/import-settings", { expected_version: version, settings: s });
+      setVersion(r.version);
+      setMsg(t("integrations.saved", { v: r.version }));
+    } catch (x) {
+      setErr(x);
+    }
+  }
   const num = (v: string) => (v === "" ? NaN : Number(v));
   const invalid = (k: string) => errs.includes(k);
   const numField = (k: string, label: string, v: number, set: (n: number) => void, min: number, max: number) => (
@@ -63,7 +89,7 @@ export function IntegrationsView() {
   return (
     <div>
       <PageTitle title={t("nav.integrations")} lead={t("integrations.lead")} />
-      <p className="callout">{t("integrations.notPersisted")}</p>
+      <Notice msg={msg} error={err} />
       <form onSubmit={exportJson} noValidate>
         <Panel title={t("integrations.general")} id="i-gen">
           <div className="form-grid">
@@ -155,7 +181,10 @@ export function IntegrationsView() {
           </p>
         )}
         <div className="actions">
-          <button className="primary">{t("integrations.export")}</button>
+          <button type="button" className="primary" onClick={save}>
+            {t("integrations.save")}
+          </button>
+          <button>{t("integrations.export")}</button>
           <button type="button" onClick={() => (setS(DEFAULT_SETTINGS), setErrs([]))}>
             {t("integrations.reset")}
           </button>

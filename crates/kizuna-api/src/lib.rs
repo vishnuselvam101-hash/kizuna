@@ -13,6 +13,7 @@ pub mod decisions;
 pub mod error;
 pub mod extraction;
 pub mod incidents;
+pub mod insights;
 pub mod keyring;
 pub mod ratelimit;
 pub mod security_events;

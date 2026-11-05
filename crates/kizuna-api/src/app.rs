@@ -17,7 +17,9 @@ use crate::clock::{Clock, SystemClock};
 use crate::config::Config;
 use crate::ratelimit::RateLimiter;
 use crate::storage::{FsStore, ObjectStore};
-use crate::{artifacts, audit, auth, claims, decisions, incidents, security_events, users, verification, webauthn};
+use crate::{
+    artifacts, audit, auth, claims, decisions, incidents, insights, security_events, users, verification, webauthn,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -107,7 +109,7 @@ pub fn router(st: AppState) -> Router {
         .route("/conflicts/{id}/review", post(verification::review_conflict))
         .route("/entities/candidates", get(verification::entity_candidates))
         .route("/entities/decisions", post(verification::entity_decision))
-        .route("/compare/part/{key}", get(verification::compare))
+        .route("/compare/{subject_type}/{key}", get(verification::compare))
         .route("/decisions", get(decisions::list).post(decisions::create))
         .route("/decisions/{id}", get(decisions::get))
         .route("/decisions/{id}/trace", get(decisions::trace))
@@ -115,6 +117,14 @@ pub fn router(st: AppState) -> Router {
         .route("/decisions/{id}/reconfirm", post(decisions::reconfirm))
         .route("/decisions/{id}/revoke", post(decisions::revoke))
         .route("/security/summary", get(incidents::summary))
+        .route("/dashboard/summary", get(insights::dashboard))
+        .route("/subjects", get(insights::subjects))
+        .route("/reports", post(insights::org_report))
+        .route(
+            "/integrations/import-settings",
+            get(insights::get_settings).put(insights::put_settings),
+        )
+        .route("/users/{id}/sessions", get(insights::user_sessions))
         .route("/security/incidents", get(incidents::list))
         .route("/security/incidents/{id}", get(incidents::get))
         .route("/security/incidents/{id}/resolve", post(incidents::resolve))
