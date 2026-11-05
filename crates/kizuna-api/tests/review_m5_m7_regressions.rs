@@ -430,23 +430,27 @@ async fn revert_only_lifts_own_block_and_closed_incident_actions_not_approvable(
 /// L6: a slow provider used by one tenant neither blocks sandbox slots nor other tenants.
 #[tokio::test]
 async fn slow_ai_provider_does_not_block_other_tenants() {
-    let (_m, base) = mock(MAP, 2500).await;
+    let (m, base) = mock(MAP, 2500).await;
     let c = ctx_with(with_ai(base, 5)).await;
     let (_, _, _, a) = c.admin().await;
     let (_, _, _, b) = c.admin().await;
     opt_in(&c, &a).await;
     let a1 = extract(&c, &a, "a1.csv", b"Part Number,Werkstoff\nS-1,SUS304\n");
-    let a2 = async {
-        tokio::time::sleep(Duration::from_millis(600)).await;
-        extract(&c, &a, "a2.csv", b"Part Number,Werkstoff\nS-2,SUS304\n").await
+    // Start the others only once the first extraction is waiting on the slow provider.
+    let wait_ai = async {
+        while *m.calls.lock().unwrap() == 0 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     };
-    let bx = async {
-        tokio::time::sleep(Duration::from_millis(900)).await;
+    // (sequential after the wait: the test pool has only 3 connections and each extraction holds two)
+    let rest = async {
+        wait_ai.await;
+        let x2 = extract(&c, &a, "a2.csv", b"Part Number,Werkstoff\nS-2,SUS304\n").await;
         let t0 = Instant::now();
-        let x = extract(&c, &b, "b.csv", b"Part Number,Material\nS-3,S45C\n").await;
-        (x, t0.elapsed())
+        let xb = extract(&c, &b, "b.csv", b"Part Number,Material\nS-3,S45C\n").await;
+        (x2, (xb, t0.elapsed()))
     };
-    let (x1, x2, (xb, tb)) = tokio::join!(a1, a2, bx);
+    let (x1, (x2, (xb, tb))) = tokio::join!(a1, rest);
     assert_eq!(x1["ai_claims_suggested"], 1, "{x1:?}");
     assert!(
         x2["warnings"]
@@ -454,6 +458,11 @@ async fn slow_ai_provider_does_not_block_other_tenants() {
             .unwrap()
             .contains(&json!("ai_fallback:ai_busy")),
         "{x2:?}"
+    );
+    assert_eq!(
+        *m.calls.lock().unwrap(),
+        1,
+        "the busy tenant's second call never reached the provider"
     );
     assert_eq!(xb["claims_created"], 1);
     assert!(tb < Duration::from_millis(2000), "other tenant waited {tb:?}");
