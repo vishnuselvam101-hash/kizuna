@@ -11,7 +11,7 @@ security_events; per-IP/per-account rate limits and lockout; secure headers, bod
 config from env, secrets redacted in Debug, gitleaks in the gate. Mapping to tests: `docs/security/asvs-m1-mapping.md`.
 
 ## Known gaps
-No seccomp filter for the extraction worker; static upload scan is not antivirus; in-process rate limiter; WebAuthn
+Seccomp filter for the extraction worker is a deny list (ADR 0016); static upload scan is not antivirus; in-process rate limiter; WebAuthn
 optional for admins (founder decision); TLS must be terminated by a reverse proxy; `mfa_required` confirms a correct
 password; signed checkpoints only help when exported off-host. M2–M6 controls: docs/security/asvs-m1-mapping.md.
 

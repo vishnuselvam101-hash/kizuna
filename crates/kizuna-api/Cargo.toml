@@ -39,6 +39,12 @@ subtle = "2"
 webauthn-rs = { version = "0.6", features = ["danger-allow-state-serialisation"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+# Ops pilot: worker seccomp filter (ADR 0016), fd passing to bwrap, alert delivery (SMTP, Telegram Bot API).
+seccompiler = "0.5"
+command-fds = { version = "0.3", features = ["tokio"] }
+libc = "0.2"
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 proptest.workspace = true

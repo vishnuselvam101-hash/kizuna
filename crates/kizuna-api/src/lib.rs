@@ -16,6 +16,7 @@ pub mod incidents;
 pub mod insights;
 pub mod keyring;
 pub mod ratelimit;
+pub mod seccomp;
 pub mod security_events;
 pub mod storage;
 pub mod users;
