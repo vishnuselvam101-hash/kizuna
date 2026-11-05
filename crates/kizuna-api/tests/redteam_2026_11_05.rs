@@ -850,10 +850,8 @@ async fn rt_upload_attacks() {
             "reject/quarantine; safe name",
             actual.replace('|', "/"),
         );
-        if name.starts_with("ELF") || name.contains("macro") || name.contains("bomb") {
-            if status == "accepted" {
-                bad.push(format!("{name} accepted"));
-            }
+        if (name.starts_with("ELF") || name.contains("macro") || name.contains("bomb")) && status == "accepted" {
+            bad.push(format!("{name} accepted"));
         }
         if disp.contains('/') || disp.contains('\r') || disp.contains('\n') || disp.contains('"') {
             bad.push(format!("{name}: unsafe display name {disp:?}"));
@@ -1342,4 +1340,62 @@ async fn rt_webauthn_and_recovery() {
     rt("unused code from the superseded set", "401", old_unused.status.as_u16());
     assert_eq!(old_unused.status, StatusCode::UNAUTHORIZED);
     let _ = t2;
+}
+
+/// Slow-header (slowloris) and idle keep-alive connections are closed by the server's accept loop (F3).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rt_slow_headers_are_cut_off() {
+    use std::io::{Read, Write};
+    let c = rctx().await;
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let limits = kizuna_api::serve::ServeLimits {
+        header_read_timeout: std::time::Duration::from_secs(2),
+        max_connections: 16,
+        shutdown_grace: std::time::Duration::from_secs(1),
+    };
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let srv = tokio::spawn(kizuna_api::serve::serve(l, c.app.clone(), limits, async {
+        let _ = stop_rx.await;
+    }));
+    let probe = move |payload: &'static [u8]| {
+        tokio::task::spawn_blocking(move || {
+            let mut s = std::net::TcpStream::connect(addr).unwrap();
+            s.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+            s.write_all(payload).unwrap();
+            let t0 = Instant::now();
+            let mut buf = Vec::new();
+            let r = s.read_to_end(&mut buf);
+            (r.is_ok(), t0.elapsed(), String::from_utf8_lossy(&buf).into_owned())
+        })
+    };
+    let (closed, el, _) = probe(b"GET /healthz HTTP/1.1\r\nHost: x\r\n").await.unwrap();
+    rt(
+        "in-process slowloris (header timeout 2 s)",
+        "closed within ~2 s",
+        format!("closed={closed} {}ms", el.as_millis()),
+    );
+    assert!(closed && el.as_secs() < 6, "connection held {el:?}");
+    // A complete request still works and carries the peer address (rate limits key on it).
+    let (_, _, out) = probe(
+        b"POST /api/v1/auth/login HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 45\r\nConnection: close\r\n\r\n{\"tenant\":\"x\",\"email\":\"a@b.c\",\"password\":\"p\"}",
+    )
+    .await
+    .unwrap();
+    rt(
+        "complete request through the accept loop",
+        "401 (served)",
+        out.lines().next().unwrap_or(""),
+    );
+    assert!(out.starts_with("HTTP/1.1 401"), "{out}");
+    // Idle keep-alive after a response is also closed.
+    let (closed, el, out) = probe(b"GET /healthz HTTP/1.1\r\nHost: x\r\n\r\n").await.unwrap();
+    rt(
+        "in-process idle keep-alive",
+        "closed within ~2 s",
+        format!("closed={closed} {}ms", el.as_millis()),
+    );
+    assert!(out.starts_with("HTTP/1.1 200") && closed && el.as_secs() < 6);
+    let _ = stop_tx.send(());
+    srv.await.unwrap().unwrap();
 }
