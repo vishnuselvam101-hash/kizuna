@@ -2,7 +2,9 @@
 # Local quality gate; CI runs the same steps. Usage: scripts/check.sh [--no-audit]
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [[ -f .env.local ]]; then set -a; source .env.local; set +a; fi
+ENV_FILE=${KIZUNA_ENV_FILE:-.env.local}   # scripts/ci-local.sh points this at a throwaway database
+# shellcheck disable=SC1090
+if [[ -f $ENV_FILE ]]; then set -a; source "$ENV_FILE"; set +a; fi
 : "${KIZUNA_TEST_DATABASE_URL:?run scripts/db-setup.sh first}"
 step() { printf '\n== %s\n' "$*"; }
 JOBS=${CARGO_BUILD_JOBS:-4}
@@ -22,6 +24,9 @@ step "python lint+tests"
   && uv run -q --locked ruff format --check . && uv run -q --locked pytest -q)
 step "web typecheck+tests"
 (cd web && pnpm -s lint && pnpm -s test)
+step "shell lint";    shellcheck -x scripts/*.sh scripts/lib/*.sh scripts/tests/*.sh deploy/*.sh
+step "ops script tests"
+for t in scripts/tests/*.test.sh; do "$t"; done
 if command -v gitleaks >/dev/null; then
   step "secret scan"; gitleaks git --no-banner --redact -l warn .
 fi

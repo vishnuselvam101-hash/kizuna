@@ -280,7 +280,7 @@ async fn main() -> R<()> {
 
     // Server against the throwaway database.
     let owner = db::connect(&owner_url, 2).await?;
-    db::MIGRATOR.run(&owner).await?;
+    db::migrator(&db::Roles::from_env()?).run(&owner).await?;
     let pg_version: String = sqlx::query_scalar("SELECT version()").fetch_one(&owner).await?;
     let tenant = Uuid::now_v7();
     sqlx::query("INSERT INTO tenants (id, slug, name) VALUES ($1,'bench','Bench')")

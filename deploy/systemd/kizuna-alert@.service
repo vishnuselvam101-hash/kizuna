@@ -1,0 +1,29 @@
+[Unit]
+Description=KIZUNA operator alert for %i
+
+[Service]
+Type=oneshot
+User=kizuna
+Group=kizuna
+EnvironmentFile=-/etc/kizuna/alerts.env
+Environment=KIZUNA_ALERT_STATE_FILE=/var/lib/kizuna/alerts/state.json
+ExecStart=/opt/kizuna/bin/kizuna-alert auto %i
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/kizuna/alerts
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+MemoryMax=128M

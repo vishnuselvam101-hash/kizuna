@@ -1,5 +1,9 @@
 # Single-server deployment (pilot)
 
+**Pilot on the founder's VPS: use `deploy/install-pilot.sh`** (idempotent; `--dry-run` first), which automates the
+steps below with the values chosen for that host (tailnet-only URL via Tailscale Serve, ClamAV, seccomp, off-host
+backups, alerts). Status and evidence: `docs/deploy/PILOT_STATUS.md`. This page remains the manual reference.
+
 Status: instructions only. Nothing has been deployed. Written for M6; must be re-checked once M5 (defensive
 security: migration 0005, `crates/security-detection`) is merged, because M5 adds a migration and may add settings.
 
@@ -24,7 +28,9 @@ Copy `target/release/kizuna-{server,admin,restore-verify}` to `/opt/kizuna/bin/`
 Record the deployed commit SHA in `/opt/kizuna/VERSION`.
 
 ## 2. Database roles
-`scripts/db-setup.sh` is for development. In production create the same two roles by hand:
+`scripts/db-setup.sh` is for development. In production create two roles by hand. Names are configurable
+(`KIZUNA_DB_OWNER_ROLE` / `KIZUNA_DB_APP_ROLE` for `kizuna-admin migrate`, which maps them into the migrations);
+an installation sharing a cluster with dev must use its own (the pilot installer uses `kizuna_pilot_owner/_app`):
 
 | Role | Purpose | Rights |
 |---|---|---|
@@ -63,7 +69,7 @@ KIZUNA_AUDIT_SIGNING_KEY=...
 #   kizuna-admin rotate-data-key   (re-encrypts TOTP/WebAuthn secrets under the current key)
 ```
 Run the server as the dedicated non-root `kizuna` user: the extraction sandbox then also applies a process limit
-(`--nproc`), which is skipped when running as root. No seccomp filter is applied yet (residual risk, see SECURITY.md).
+(`--nproc`), which is skipped when running as root. bubblewrap also installs a seccomp deny-list filter (ADR 0016).
 
 Incident response (M5) runs inside the server (60 s sweep + inline triggers); thresholds are static defaults.
 Emergency recovery if containment ever blocks administrators: `kizuna-admin emergency-unlock <tenant-slug>`
@@ -105,7 +111,6 @@ ProtectHome=yes
 ReadWritePaths=/var/lib/kizuna
 PrivateTmp=yes
 PrivateDevices=yes
-ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
@@ -116,6 +121,8 @@ TasksMax=512
 [Install]
 WantedBy=multi-user.target
 ```
+Do not add `ProtectKernelTunables`, `ProtectKernelLogs` or `ProtectHostname`: they over-mount parts of /proc and the
+kernel then refuses bubblewrap's procfs mount (tested on systemd 259, `deploy/systemd/kizuna.service`).
 bubblewrap needs unprivileged user namespaces; do not add `RestrictNamespaces=yes` or `PrivateUsers=yes` without
 re-running the extraction tests on the host (`AF_NETLINK` is for bwrap's loopback setup). Verify with
 `systemctl start kizuna && curl -fsS http://127.0.0.1:8080/healthz`.
@@ -166,8 +173,8 @@ KIZUNA_BACKUP_PASSPHRASE_FILE=/etc/kizuna/backup.pass \
   /opt/kizuna/scripts/backup.sh --db kizuna_prod --storage /var/lib/kizuna/objects --out /var/backups/kizuna
 ```
 As a systemd timer (`kizuna-backup.service` `Type=oneshot` running the line above as root; `kizuna-backup.timer`
-`OnCalendar=*-*-* 02:30`, `Persistent=true`). Copy the `.tar.gpg` and `.sha256` off the host (another region or
-the customer's storage); keep 14 daily + 8 weekly. `KIZUNA_DATA_KEY` and the backup passphrase are NOT in the
+`OnCalendar=*-*-* 02:30`, `Persistent=true`). Off-host copy, retention and the restore-from-remote drill:
+`scripts/offsite-backup.sh`, `docs/deploy/OFFSITE_RESTORE.md`. `KIZUNA_DATA_KEY` and the backup passphrase are NOT in the
 backup and must be escrowed separately.
 
 Restore drill (monthly and after every upgrade) — restores into a throwaway database and verifies every tenant's

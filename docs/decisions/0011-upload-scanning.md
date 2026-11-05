@@ -11,7 +11,7 @@ Status: accepted (2026-11-05)
   malformed ZIP or non-XLSX ZIP → reject; anything else → reject.
 - Verdicts: clean → `accepted`; suspicious → `quarantined` (kept, not served, not extracted; release requires
   `IncidentManage` + MFA, audited); not allowed → refused, `ingest.upload_rejected` security event.
-- This is **not antivirus**. ClamAV (GPL-2.0, separate daemon) or a commercial scanner can be added behind the same
+- This is **not antivirus**; ClamAV runs after it when configured (ADR 0017). Previously: ClamAV (GPL-2.0, separate daemon) or a commercial scanner can be added behind the same
   verdict interface; not installed on this host and not adopted without a further ADR.
 - Per-user upload rate limit; upload size limit (default 25 MiB) enforced while streaming.
 

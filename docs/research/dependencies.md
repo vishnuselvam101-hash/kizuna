@@ -92,3 +92,20 @@ No new Rust, Python or npm packages. `crates/kizuna-bench` uses only crates alre
 
 Not adopted: `age` (not installed on the target host; GnuPG is already present and its symmetric mode is
 integrity-protected), `openssl enc` (no authenticated mode for files).
+
+## Ops pilot additions (2026-11-05, branch ops-pilot)
+Licence from crates.io metadata; `cargo audit` 2026-11-05 after adding them: 0 advisories (exit 0).
+
+| Crate | Version | Licence | Why | Notes |
+|---|---|---|---|---|
+| seccompiler | 0.5.0 | Apache-2.0 OR BSD-3-Clause | compile the extraction worker's seccomp deny list to BPF (ADR 0016) | rust-vmm project, used by Firecracker; we only compile (never `apply_filter` in-process); bwrap installs it |
+| command-fds | 0.3.3 | Apache-2.0 | pass the BPF pipe to bwrap as fd 3 without `unsafe` in our crate | Google; uses `nix` 0.31 + `pre_exec` internally |
+| libc | 0.2 | MIT OR Apache-2.0 | `SYS_*` syscall numbers for the policy | already in the tree |
+| lettre | 0.11.23 | MIT | SMTP alerts (blocking transport, rustls + ring + webpki-roots; no native-tls/OpenSSL) | features: smtp-transport, builder, hostname, rustls-tls |
+| ureq | 3.5.1 | MIT OR Apache-2.0 | Telegram Bot API alerts over HTTPS | default features off, `rustls` only (ring, webpki-roots) |
+
+| Tool (separate program) | Licence | Use | Advisory check |
+|---|---|---|---|
+| ClamAV `clamd` + `freshclam` (Ubuntu `clamav-daemon`) | GPL-2.0 | malware scan over the local socket (ADR 0017); no linking | Ubuntu USNs for clamav; ClamAV blog advisories |
+| rclone (Ubuntu package, 1.60 on the host) | MIT | off-host copy of encrypted backups (`scripts/offsite-backup.sh`) | rclone GitHub security advisories |
+| Tailscale (`tailscale serve`) | BSD-3-Clause | tailnet-only HTTPS for the pilot URL | Tailscale security bulletins |

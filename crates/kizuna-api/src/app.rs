@@ -35,6 +35,10 @@ pub struct AppState {
     /// Source of "now" for every expiry decision; replaceable in tests.
     pub clock: Arc<dyn Clock>,
     pub webauthn: Arc<webauthn_rs::Webauthn>,
+    /// Malware scanner after the static scan (ADR 0017); `NotConfigured` unless the server binary sets clamd.
+    pub av: Arc<dyn crate::antivirus::MalwareScanner>,
+    /// Operator alert channels (ADR 0017); disabled unless the server binary configures them.
+    pub alerts: Arc<crate::alerts::Alerter>,
 }
 
 impl AppState {
@@ -46,6 +50,11 @@ impl AppState {
         Self {
             clock: Arc::new(SystemClock),
             webauthn: Arc::new(webauthn),
+            av: Arc::new(crate::antivirus::NotConfigured),
+            alerts: Arc::new(crate::alerts::Alerter::new(
+                crate::alerts::AlertConfig::disabled(),
+                None,
+            )),
             store,
             pool,
             cfg: Arc::new(cfg),
@@ -118,6 +127,7 @@ pub fn router(st: AppState) -> Router {
         .route("/decisions/{id}/reconfirm", post(decisions::reconfirm))
         .route("/decisions/{id}/revoke", post(decisions::revoke))
         .route("/security/summary", get(incidents::summary))
+        .route("/security/status", get(crate::ops::status))
         .route("/dashboard/summary", get(insights::dashboard))
         .route("/subjects", get(insights::subjects))
         .route("/reports", post(insights::org_report))
