@@ -394,3 +394,32 @@ fieldset.faulty { border: 1px solid var(--line); border-radius: var(--radius); p
 .secret, .wrap-any { word-break: break-all; }
 ol.codes { columns: 2; font-size: var(--t-sm); }
 fieldset.faulty label.check { display: flex; align-items: center; gap: var(--s2); min-height: 32px; }
+/* Supplier portal (/portal): one column, phone first, large touch targets; widens only on bigger screens. */
+.portal { min-height: 100vh; background: var(--bg); color: var(--fg); }
+.portal-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap;
+  padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px);
+}
+.portal-brand { display: inline-flex; align-items: center; gap: var(--s2); font-family: var(--font-display); font-weight: 700; }
+.portal-brand .muted { font-weight: 400; }
+.portal-actions { display: inline-flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.portal-main { width: 100%; max-width: 720px; margin: 0 auto; padding: var(--s3); outline: none; }
+.portal-main h1 { font-size: var(--t-lg); margin: var(--s3) 0 var(--s2); overflow-wrap: anywhere; }
+.portal-card { display: grid; gap: var(--s3); padding: var(--s4); margin-top: var(--s4); }
+.portal-card label, .portal-form label { display: grid; gap: var(--s1); }
+.portal-form { display: grid; gap: var(--s3); }
+.portal-card input, .portal-form input { width: 100%; min-height: 44px; }
+.portal-card button.primary, .portal-form button.primary { min-height: 44px; width: 100%; }
+.portal-list, .portal-uploads { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s2); }
+.portal-row {
+  display: grid; gap: var(--s1); width: 100%; text-align: left; white-space: normal; min-height: 56px;
+  padding: var(--s3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+}
+.portal-uploads li { display: grid; gap: var(--s1); padding: var(--s2) 0; border-bottom: 1px solid var(--line); }
+.portal-letter { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; margin: var(--s3) 0 0; }
+.break { overflow-wrap: anywhere; }
+@media (min-width: 720px) {
+  .portal-card button.primary, .portal-form button.primary { width: auto; justify-self: start; }
+  .portal-uploads li { grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) auto; align-items: center; }
+}

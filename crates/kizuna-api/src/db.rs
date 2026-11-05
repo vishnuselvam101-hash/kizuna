@@ -127,6 +127,22 @@ pub async fn tenant_tx(pool: &PgPool, tenant: Uuid) -> Result<Tx, sqlx::Error> {
     Ok(tx)
 }
 
+/// Read-only transaction in a supplier portal scope: one supplier of one tenant (ADR 0025). `kizuna.tenant_id` is
+/// deliberately NOT set, so tenant policies match nothing, and the restrictive `portal_*` policies open only the
+/// supplier's own approved requests, its uploads and its supplier record.
+pub async fn portal_tx(pool: &PgPool, tenant: Uuid, supplier: Uuid) -> Result<Tx, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION READ ONLY").execute(&mut *tx).await?;
+    sqlx::query(
+        "SELECT set_config('kizuna.portal_tenant_id', $1, true), set_config('kizuna.portal_supplier_id', $2, true)",
+    )
+    .bind(tenant.to_string())
+    .bind(supplier.to_string())
+    .execute(&mut *tx)
+    .await?;
+    Ok(tx)
+}
+
 /// Read-only snapshot transaction (REPEATABLE READ) for consistent multi-statement reads such as audit verification.
 pub async fn tenant_snapshot_tx(pool: &PgPool, tenant: Uuid) -> Result<Tx, sqlx::Error> {
     let mut tx = pool.begin().await?;

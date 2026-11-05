@@ -60,10 +60,12 @@ pub struct ArtifactOut {
     pub created_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    /// `internal` or `supplier_portal` (uploaded by a supplier user; reviewed like any other document).
+    pub origin: String,
 }
 
 pub const ART_COLS: &str = "id, encode(sha256, 'hex') AS sha256, size_bytes, media_type, kind, status, scan_result, \
-                            display_name, created_by, created_at";
+                            display_name, created_by, created_at, origin";
 
 #[derive(Serialize)]
 pub struct UploadResp {
@@ -71,7 +73,7 @@ pub struct UploadResp {
     pub duplicate: bool,
 }
 
-async fn read_upload(mut mp: Multipart, max: usize) -> ApiResult<(Vec<u8>, String, Option<String>, String)> {
+pub(crate) async fn read_upload(mut mp: Multipart, max: usize) -> ApiResult<(Vec<u8>, String, Option<String>, String)> {
     let (mut data, mut name, mut declared, mut kind) = (None, String::new(), None, "other".to_string());
     while let Some(mut field) = mp
         .next_field()
@@ -142,14 +144,7 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
     let limit = {
         let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
         let blocked = crate::incidents::uploads_blocked(&mut tx, p.user_id).await?;
-        let tenant_mb: Option<i64> = sqlx::query_scalar(
-            "SELECT CASE WHEN jsonb_typeof(settings->'max_upload_mb') = 'number' \
-               THEN floor((settings->>'max_upload_mb')::numeric)::bigint END \
-             FROM import_settings ORDER BY version DESC LIMIT 1",
-        )
-        .fetch_optional(&mut *tx)
-        .await?
-        .flatten();
+        let tenant_mb = tenant_upload_mb(&mut tx).await?;
         tx.commit().await?;
         if blocked {
             return Err(ApiError::Forbidden("uploads_restricted"));
@@ -157,6 +152,65 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         upload_limit(st.cfg.max_upload_bytes, tenant_mb)
     };
     let (data, name, declared, kind) = read_upload(mp, limit).await?;
+    let up = Uploader {
+        tenant: p.tenant_id,
+        actor: p.user_id,
+        session: Session::User(p.session_id),
+        ip: &p.ip,
+    };
+    let r = ingest(&st, &up, data, &name, declared, &kind, None).await?;
+    Ok(Json(UploadResp {
+        artifact: r.artifact,
+        duplicate: r.duplicate,
+    }))
+}
+
+/// The tenant's Import setting `max_upload_mb`, if any.
+pub(crate) async fn tenant_upload_mb(tx: &mut Tx) -> ApiResult<Option<i64>> {
+    Ok(sqlx::query_scalar(
+        "SELECT CASE WHEN jsonb_typeof(settings->'max_upload_mb') = 'number' \
+           THEN floor((settings->>'max_upload_mb')::numeric)::bigint END \
+         FROM import_settings ORDER BY version DESC LIMIT 1",
+    )
+    .fetch_optional(&mut **tx)
+    .await?
+    .flatten())
+}
+
+/// Whose session carries an upload. A supplier session is a different principal (supplier portal, ADR 0025).
+pub(crate) enum Session {
+    User(Uuid),
+    Supplier(Uuid),
+}
+
+pub(crate) struct Uploader<'a> {
+    pub tenant: Uuid,
+    /// User id, or supplier-user id for a portal upload (`artifacts.created_by` has no user foreign key).
+    pub actor: Uuid,
+    pub session: Session,
+    pub ip: &'a str,
+}
+
+pub(crate) struct Ingested {
+    pub artifact: ArtifactOut,
+    pub duplicate: bool,
+}
+
+/// The one ingestion pipeline for every upload: static scan, antivirus (fail closed), content-addressed storage,
+/// capture provenance and audit. `portal_upload` links a supplier portal upload row, updated in the same transaction.
+pub(crate) async fn ingest(
+    st: &AppState,
+    up: &Uploader<'_>,
+    data: Vec<u8>,
+    name: &str,
+    declared: Option<String>,
+    kind: &str,
+    portal_upload: Option<Uuid>,
+) -> ApiResult<Ingested> {
+    let (origin, actor_kind, user) = match up.session {
+        Session::User(_) => ("internal", "user", Some(up.actor)),
+        Session::Supplier(_) => ("supplier_portal", "supplier_user", None),
+    };
     let mut report = scan::scan(&data, &Limits::default());
     let sha = crypto::sha256(&data);
     // Antivirus after the static scan (ADR 0017): any non-clean engine outcome quarantines (fail closed).
@@ -179,13 +233,19 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
     if report.verdict == Verdict::Reject {
         sec::record(
             &st.pool,
-            Some(p.tenant_id),
+            Some(up.tenant),
             Kind::UploadRejected,
-            Some(p.user_id),
-            Some(&p.ip),
-            json!({ "sha256": hex::encode(sha), "size": data.len(), "findings": report.findings }),
+            user,
+            Some(up.ip),
+            json!({ "sha256": hex::encode(sha), "size": data.len(), "findings": report.findings, "origin": origin,
+                    "actor": up.actor }),
         )
         .await;
+        if let Some(pu) = portal_upload {
+            let mut tx = db::tenant_tx(&st.pool, up.tenant).await?;
+            set_portal_status(&mut tx, pu, "not_accepted", Some("file_type_not_accepted"), None).await?;
+            tx.commit().await?;
+        }
         return Err(ApiError::UnsupportedMedia);
     }
     let media = report.file_type.unwrap_or("application/octet-stream");
@@ -199,21 +259,36 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         o.insert("antivirus".into(), av);
     }
 
-    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let mut tx = db::tenant_tx(&st.pool, up.tenant).await?;
     // The body may have streamed for a long time: a session revoked meanwhile must not finish the upload.
     // FOR SHARE also holds off a concurrent revocation until this transaction ends.
-    let live: Option<i32> =
-        sqlx::query_scalar("SELECT 1 FROM sessions WHERE id = $1 AND revoked_at IS NULL AND expires_at > $2 FOR SHARE")
-            .bind(p.session_id)
+    let live: Option<i32> = match up.session {
+        Session::User(sid) => {
+            sqlx::query_scalar(
+                "SELECT 1 FROM sessions WHERE id = $1 AND revoked_at IS NULL AND expires_at > $2 FOR SHARE",
+            )
+            .bind(sid)
             .bind(st.clock.now())
             .fetch_optional(&mut *tx)
-            .await?;
+            .await?
+        }
+        Session::Supplier(sid) => {
+            sqlx::query_scalar(
+                "SELECT 1 FROM supplier_sessions s JOIN supplier_users u ON u.tenant_id = s.tenant_id AND u.id = s.supplier_user_id \
+                 WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > $2 AND u.status = 'active' FOR SHARE OF s, u",
+            )
+            .bind(sid)
+            .bind(st.clock.now())
+            .fetch_optional(&mut *tx)
+            .await?
+        }
+    };
     if live.is_none() {
         return Err(ApiError::Unauthorized("invalid_token"));
     }
     // Serialise uploads of identical content in this tenant.
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 11))")
-        .bind(format!("{}:{}", p.tenant_id, hex::encode(sha)))
+        .bind(format!("{}:{}", up.tenant, hex::encode(sha)))
         .execute(&mut *tx)
         .await?;
     let existing: Option<Uuid> = sqlx::query_scalar("SELECT id FROM artifacts WHERE sha256 = $1")
@@ -222,7 +297,7 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         .await?;
     // Always (re)store: content-addressed, so a re-upload of the original repairs a damaged stored copy.
     let key = ObjectKey {
-        tenant: p.tenant_id,
+        tenant: up.tenant,
         sha256: sha,
     };
     // Stage now, promote after the commit (orphan objects, PERF_VERIFY_2026-11-05): until then the object is only a
@@ -241,54 +316,67 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
             let id = Uuid::now_v7();
             sqlx::query(
                 "INSERT INTO artifacts (id, tenant_id, sha256, size_bytes, media_type, kind, status, scan_result, \
-                 storage_key, display_name, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+                 storage_key, display_name, created_by, origin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
             )
             .bind(id)
-            .bind(p.tenant_id)
+            .bind(up.tenant)
             .bind(sha.to_vec())
             .bind(data.len() as i64)
             .bind(media)
-            .bind(&kind)
+            .bind(kind)
             .bind(status)
             .bind(&scan_json)
             .bind(key.as_string())
-            .bind(&name)
-            .bind(p.user_id)
+            .bind(name)
+            .bind(up.actor)
+            .bind(origin)
             .execute(&mut *tx)
             .await?;
             (id, false)
         }
     };
     sqlx::query(
-        "INSERT INTO artifact_captures (id, tenant_id, artifact_id, uploaded_by, original_filename, declared_type, client_ip) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        "INSERT INTO artifact_captures (id, tenant_id, artifact_id, uploaded_by, original_filename, declared_type, client_ip, \
+         origin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
     )
     .bind(Uuid::now_v7())
-    .bind(p.tenant_id)
+    .bind(up.tenant)
     .bind(id)
-    .bind(p.user_id)
-    .bind(&name)
+    .bind(up.actor)
+    .bind(name)
     .bind(declared)
-    .bind(&p.ip)
+    .bind(up.ip)
+    .bind(origin)
     .execute(&mut *tx)
     .await?;
+    let artifact = fetch(&mut tx, id).await?;
+    if let Some(pu) = portal_upload {
+        // The supplier sees the outcome of the scan of the bytes it sent (a duplicate keeps the stored verdict).
+        let shown = if artifact.status == "accepted" {
+            "received_for_review"
+        } else {
+            "quarantined"
+        };
+        set_portal_status(&mut tx, pu, shown, None, Some(id)).await?;
+    }
     audit::append(
         &mut tx,
-        p.tenant_id,
-        Record::user(
-            p.user_id,
-            if duplicate {
+        up.tenant,
+        Record {
+            actor_user_id: Some(up.actor),
+            actor_kind,
+            action: if duplicate {
                 "artifact.recaptured"
             } else {
                 "artifact.uploaded"
             },
-            "artifact",
-            id,
-            json!({ "sha256": hex::encode(sha), "size": data.len(), "verdict": report.verdict, "requested_kind": kind }),
-        ),
+            target_type: "artifact",
+            target_id: Some(id.to_string()),
+            details: json!({ "sha256": hex::encode(sha), "size": data.len(), "verdict": report.verdict, "requested_kind": kind,
+                             "origin": origin, "portal_upload": portal_upload }),
+        },
     )
     .await?;
-    let artifact = fetch(&mut tx, id).await?;
     // From here the commit outcome may be unknown: never discard; the sweep promotes or deletes by the row.
     let staged = staged.1.take();
     tx.commit().await?;
@@ -305,19 +393,41 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
     if !duplicate && status == "quarantined" {
         sec::record(
             &st.pool,
-            Some(p.tenant_id),
+            Some(up.tenant),
             if scanner_down_only {
                 Kind::ScannerUnavailable
             } else {
                 Kind::ArtifactQuarantined
             },
-            Some(p.user_id),
-            Some(&p.ip),
-            json!({ "artifact_id": id, "findings": report.findings }),
+            user,
+            Some(up.ip),
+            json!({ "artifact_id": id, "findings": report.findings, "origin": origin }),
         )
         .await;
     }
-    Ok(Json(UploadResp { artifact, duplicate }))
+    Ok(Ingested { artifact, duplicate })
+}
+
+/// Sets a portal upload's supplier-visible status. Later artifact status changes (release, re-quarantine, rejection)
+/// follow automatically through the `artifacts_portal_follow` trigger (migration 0027).
+pub(crate) async fn set_portal_status(
+    tx: &mut Tx,
+    id: Uuid,
+    status: &str,
+    reason: Option<&str>,
+    artifact: Option<Uuid>,
+) -> ApiResult<()> {
+    sqlx::query(
+        "UPDATE portal_uploads SET status = $2, reason_code = $3, artifact_id = coalesce($4, artifact_id), updated_at = now() \
+         WHERE id = $1",
+    )
+    .bind(id)
+    .bind(status)
+    .bind(reason)
+    .bind(artifact)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
 pub async fn fetch(tx: &mut Tx, id: Uuid) -> ApiResult<ArtifactOut> {

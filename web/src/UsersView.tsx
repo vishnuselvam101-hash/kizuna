@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DataTable } from "./DataTable";
 import { useI18n } from "./i18n";
 import { ROLES, useSession } from "./session";
+import { SupplierPortalPanel } from "./SupplierPortalPanel";
 import type { User } from "./types";
 import { Badge, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
 
@@ -204,6 +205,7 @@ export function UsersView() {
           </form>
         </Panel>
       )}
+      <SupplierPortalPanel />
     </div>
   );
 }

@@ -118,6 +118,10 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
 pub enum TokenKind {
     Access,
     Refresh,
+    /// Supplier portal session (a different principal; never accepted by the tenant API).
+    Portal,
+    /// Single-use supplier invitation link.
+    PortalInvite,
 }
 
 impl TokenKind {
@@ -125,6 +129,8 @@ impl TokenKind {
         match self {
             TokenKind::Access => "kza",
             TokenKind::Refresh => "kzr",
+            TokenKind::Portal => "kzp",
+            TokenKind::PortalInvite => "kzi",
         }
     }
 }
@@ -190,6 +196,18 @@ pub fn totp_pending_aad(tenant: Uuid, user: Uuid) -> Vec<u8> {
     let mut v = b"kizuna-totp-pending-v1".to_vec();
     v.extend_from_slice(tenant.as_bytes());
     v.extend_from_slice(user.as_bytes());
+    v
+}
+
+/// AAD for a supplier user's TOTP seeds (pending and confirmed), distinct from tenant users'.
+pub fn portal_totp_aad(tenant: Uuid, supplier_user: Uuid, confirmed: bool) -> Vec<u8> {
+    let mut v = if confirmed {
+        b"kizuna-portal-totp-v1".to_vec()
+    } else {
+        b"kizuna-portal-totp-pending-v1".to_vec()
+    };
+    v.extend_from_slice(tenant.as_bytes());
+    v.extend_from_slice(supplier_user.as_bytes());
     v
 }
 

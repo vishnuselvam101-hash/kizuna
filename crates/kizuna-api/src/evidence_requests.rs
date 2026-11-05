@@ -379,10 +379,20 @@ pub struct RequestOut {
     #[serde(with = "time::serde::rfc3339::option")]
     pub reviewed_at: Option<OffsetDateTime>,
     pub review_comment: Option<String>,
+    /// The supplier record this request is addressed to (supplier portal); set only by an explicit admin attach.
+    pub supplier_id: Option<Uuid>,
+    /// Answer-by date, fixed at approval; shown to the supplier in the portal.
+    #[serde(with = "iso_date::option")]
+    pub due_on: Option<time::Date>,
 }
 
+time::serde::format_description!(pub iso_date, Date, "[year]-[month]-[day]");
+
+/// Default answer period for an approved request without an explicit due date.
+pub const DEFAULT_DUE_DAYS: i64 = 14;
+
 const REQ_COLS: &str = "id, reference, supplier, engine, decision_ids, documents, requested_count, baseline_count, exact, body_ja, \
-     body_en, encode(content_sha256, 'hex') AS content_sha256, status, created_by, created_at, reviewed_by, reviewed_at, review_comment";
+     body_en, encode(content_sha256, 'hex') AS content_sha256, status, created_by, created_at, reviewed_by, reviewed_at, review_comment, supplier_id, due_on";
 
 async fn fetch(tx: &mut Tx, id: Uuid) -> ApiResult<RequestOut> {
     sqlx::query_as::<_, RequestOut>(&format!("SELECT {REQ_COLS} FROM evidence_requests WHERE id = $1"))
@@ -436,7 +446,8 @@ pub async fn create(
         );
         sqlx::query(
             "INSERT INTO evidence_requests (id, tenant_id, reference, supplier, engine, decision_ids, documents, requested_count, \
-             baseline_count, exact, body_ja, body_en, content_sha256, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+             baseline_count, exact, body_ja, body_en, content_sha256, created_by) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
         )
         .bind(id)
         .bind(p.tenant_id)
@@ -496,6 +507,9 @@ pub async fn get(State(st): State<AppState>, p: Principal, Path(id): Path<Uuid>)
 #[derive(Deserialize)]
 pub struct ReviewReq {
     pub comment: Option<String>,
+    /// Approval only: the date the supplier is asked to answer by (default: today + 14 days in the tenant zone).
+    #[serde(default, with = "iso_date::option")]
+    pub due_on: Option<time::Date>,
 }
 
 async fn review(
@@ -503,6 +517,7 @@ async fn review(
     p: Principal,
     id: Uuid,
     comment: Option<String>,
+    due_on: Option<time::Date>,
     to: &'static str,
 ) -> ApiResult<Json<RequestOut>> {
     // Approving or cancelling what goes to a supplier is a review decision (privileged: MFA-verified session).
@@ -527,13 +542,27 @@ async fn review(
     if to == "approved" && creator == p.user_id {
         return Err(ApiError::Forbidden("own_request"));
     }
-    sqlx::query("UPDATE evidence_requests SET status = $2, reviewed_by = $3, reviewed_at = now(), review_comment = $4 WHERE id = $1")
-        .bind(id)
-        .bind(to)
-        .bind(p.user_id)
-        .bind(comment.as_deref().map(str::trim))
-        .execute(&mut *tx)
-        .await?;
+    let due = if to == "approved" {
+        let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+        let due = due_on.unwrap_or(today + time::Duration::days(DEFAULT_DUE_DAYS));
+        if due < today || due > today + time::Duration::days(366) {
+            return Err(ApiError::BadRequest("invalid_due_date"));
+        }
+        Some(due)
+    } else {
+        None
+    };
+    sqlx::query(
+        "UPDATE evidence_requests SET status = $2, reviewed_by = $3, reviewed_at = now(), review_comment = $4, due_on = $5 \
+         WHERE id = $1",
+    )
+    .bind(id)
+    .bind(to)
+    .bind(p.user_id)
+    .bind(comment.as_deref().map(str::trim))
+    .bind(due)
+    .execute(&mut *tx)
+    .await?;
     let action = if to == "approved" {
         "evidence_request.approved"
     } else {
@@ -542,7 +571,13 @@ async fn review(
     audit::append(
         &mut tx,
         p.tenant_id,
-        Record::user(p.user_id, action, "evidence_request", id, json!({ "comment": comment })),
+        Record::user(
+            p.user_id,
+            action,
+            "evidence_request",
+            id,
+            json!({ "comment": comment, "due_on": due }),
+        ),
     )
     .await?;
     let r = fetch(&mut tx, id).await?;
@@ -556,7 +591,7 @@ pub async fn approve(
     Path(id): Path<Uuid>,
     ApiJson(r): ApiJson<ReviewReq>,
 ) -> ApiResult<Json<RequestOut>> {
-    review(st, p, id, r.comment, "approved").await
+    review(st, p, id, r.comment, r.due_on, "approved").await
 }
 
 pub async fn cancel(
@@ -565,7 +600,7 @@ pub async fn cancel(
     Path(id): Path<Uuid>,
     ApiJson(r): ApiJson<ReviewReq>,
 ) -> ApiResult<Json<RequestOut>> {
-    review(st, p, id, r.comment, "cancelled").await
+    review(st, p, id, r.comment, None, "cancelled").await
 }
 
 #[derive(Deserialize)]

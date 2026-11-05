@@ -46,6 +46,9 @@ pub enum Kind {
     /// An upload was quarantined only because the configured virus scanner could not be reached (fail closed). An
     /// outage, not a finding: kept apart from `ingest.artifact_quarantined` so it never counts as upload abuse.
     ScannerUnavailable,
+    /// A supplier portal principal was refused (out-of-scope request, revoked account, a supplier token on the tenant
+    /// API or a tenant token on the portal).
+    PortalDenied,
 }
 
 impl Kind {
@@ -76,6 +79,7 @@ impl Kind {
             Kind::PromptInjectionSuspected => "ingest.prompt_injection_suspected",
             Kind::SettingsChanged => "admin.settings_changed",
             Kind::ScannerUnavailable => "ingest.scanner_unavailable",
+            Kind::PortalDenied => "portal.denied",
         }
     }
 
@@ -96,7 +100,8 @@ impl Kind {
             | Kind::BlockedRequest
             | Kind::PromptInjectionSuspected
             | Kind::SettingsChanged
-            | Kind::ScannerUnavailable => "medium",
+            | Kind::ScannerUnavailable
+            | Kind::PortalDenied => "medium",
             Kind::RefreshTokenReuse => "high",
             Kind::AuditChainBroken | Kind::ArtifactIntegrityFailure => "critical",
         }
