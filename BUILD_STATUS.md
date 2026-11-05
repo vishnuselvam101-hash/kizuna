@@ -22,6 +22,7 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 |---|---|
 | `scripts/check.sh` | **pass**: fmt, clippy `-D warnings`, **176 Rust tests** (+20; 1 ignored live test), cargo/pnpm/pip audit 0, ruff + **59 pytest** (+11), tsc + **35 vitest** (+6), gitleaks 0. The 8 GB guard removed `target/debug` (8.2 GB); disk 43 GB free |
 | `cargo test -p kizuna-api --test m7_ai_settings` | 7/7 against real PostgreSQL + local mock OpenAI server: off by default, no request for tenants without opt-in, notice + admin-MFA opt-in, redaction (no e-mail/part number sent), `ai_suggested` + not decision evidence until four-eyes review, DB trigger, injection corpus (7 labels × 7 hijacked answers → fallback, only `unreviewed` claims), 500/timeout/budget fallback, import settings drive worker + long-table mapping, per-tenant/adaptive thresholds |
+| M7 follow-up | admin screens for AI opt-in (verbatim notice, acknowledgement, MFA step-up, provider/budget/usage, off switch) and detection thresholds (bounds, defaults, active values, adaptive toggle), EN+JA, axe-tested; `POST /artifacts/{id}/reextract` (reason required; new run supersedes the previous run; changed claims superseded, unchanged kept, missing ones → `needs_evidence` + withdrawn; decisions via selective invalidation; audited); AI guards `ai-map@2` (governance denylist, multilingual injection screen → security event `ingest.prompt_injection_suspected`, plausibility floor) |
 | live free model (ignored test, `gemma4:cloud` via local Ollama `127.0.0.1:11434/v1`) | pass, 1.1 s, 374+174 tokens: Werkstoff→material, Breite (mm)→width (mm), Härte→hardness; an injected label was mapped to `approval status` → stays `ai_suggested` (residual risk, ADR 0016). OmniRoute :20128 was down |
 
 ## M6 commands run and results (2026-11-05, this host)
@@ -68,10 +69,8 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 - Extraction accuracy, ER and conflict rules measured only on synthetic data (E2E); no real supplier documents yet.
 - Detection thresholds: per tenant (bounded) with optional adaptive mode, still untuned on real traffic; address
   blocks are per tenant and login-only; no cross-tenant (platform) correlation.
-- AI-assisted extraction: free providers may log/train on what is sent (stated in the opt-in notice); redaction is
-  heuristic (names in free text are not detected); an injected label can steer its own field choice (result stays
-  `ai_suggested`). AI opt-in and detection settings are API-only (no screen yet). Re-extracting an artifact after
-  changing import settings is refused (`already_extracted`, one run per mapping version).
+- AI-assisted extraction: free providers may log/train on what is sent (stated in the opt-in notice); redaction,
+  injection screen and plausibility lexicon are heuristic (false positives only lose a suggestion).
 - Notifications are in-app only.
 - Benchmarks ran on a busy shared host (upper bounds). CI workflow never executed (no remote).
 - Rate limiter is per process (single instance only). Dependency major upgrades pending (sqlx 0.9, rand 0.10, ...).
@@ -83,5 +82,5 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 4. External AI = yes, free models only (ADR 0016; off by default, per-tenant opt-in).
 
 ## Next step
-Screens for AI opt-in and detection settings; merge the `ops-pilot` lane; then `scripts/check.sh && scripts/e2e.sh --seed 7`, and on the pilot host: run as the dedicated `kizuna` user per
+A re-extract button in Documents; merge the `ops-pilot` lane; then `scripts/check.sh && scripts/e2e.sh --seed 7`, and on the pilot host: run as the dedicated `kizuna` user per
 `docs/deploy/DEPLOYMENT.md`, add a seccomp profile for the worker, and re-run `scripts/bench.sh` on an idle host.

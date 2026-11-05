@@ -31,5 +31,6 @@ Every gap has a server endpoint with integration tests (`crates/kizuna-api/tests
 | 8 | `POST /reports` (scope, date range; SHA-256, Ed25519-signed when a key is configured) | Reports → Organisation report (hash, signature state, JSON download) |
 | 9 | `GET /users/{id}/sessions` | Users screen |
 
-New in M7 (API only, no screen yet): `GET/PUT /integrations/ai-extraction` (opt-in with data-processing notice,
-ADR 0016) and `GET/PUT /security/detection-settings` (ADR 0015).
+New in M7, with screens: `GET/PUT /integrations/ai-extraction` (Integrations → AI-assisted extraction; opt-in with
+the provider data-processing notice, ADR 0016) and `GET/PUT /security/detection-settings` (Security → detection
+thresholds, ADR 0015). `POST /artifacts/{id}/reextract` (reason) re-runs extraction after an import-settings change.
