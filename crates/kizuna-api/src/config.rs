@@ -132,7 +132,7 @@ impl Config {
                 .unwrap_or_else(|| here.join("services/extraction/src")),
             extraction_sandbox: match get("KIZUNA_EXTRACTION_SANDBOX").as_deref() {
                 None | Some("bwrap") => "bwrap".into(),
-                Some("none") => "none".into(),
+                Some("none") if get("KIZUNA_DEV").as_deref() == Some("1") => "none".into(),
                 Some(_) => return Err(ConfigError::Invalid("KIZUNA_EXTRACTION_SANDBOX")),
             },
             audit_signing_key: match get("KIZUNA_AUDIT_SIGNING_KEY").filter(|v| !v.is_empty()) {
@@ -169,6 +169,18 @@ mod tests {
         assert!(!dbg.contains("supersecretpw"));
         assert!(dbg.contains("REDACTED"));
         assert_eq!(c.bind.to_string(), "127.0.0.1:8080");
+    }
+
+    #[test]
+    fn regression_review_l3_sandbox_none_needs_dev_flag() {
+        let mut m = base();
+        m.insert("KIZUNA_EXTRACTION_SANDBOX", "none".into());
+        assert!(Config::from_lookup(|k| m.get(k).cloned()).is_err());
+        m.insert("KIZUNA_DEV", "1".into());
+        assert_eq!(
+            Config::from_lookup(|k| m.get(k).cloned()).unwrap().extraction_sandbox,
+            "none"
+        );
     }
 
     #[test]

@@ -141,7 +141,17 @@ pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
                 new_claim,
                 new,
             } if d.claim.as_deref() == Some(old_claim) => {
-                let (material, why) = materiality(&d.materiality, &d.snapshot, new);
+                // A correction that moves the claim to another revision or applicability scope is material
+                // regardless of the value (review finding M1).
+                let up = |r: &Option<String>| r.as_deref().map(str::to_uppercase);
+                let moved = up(&d.snapshot.revision) != up(&new.revision)
+                    || d.snapshot.scope != new.scope
+                    || !applicable(&d.applicability, new);
+                let (material, why) = if moved && d.materiality != Materiality::Informational {
+                    (true, "applicability changed (revision or scope)".to_string())
+                } else {
+                    materiality(&d.materiality, &d.snapshot, new)
+                };
                 Some(Impact {
                     decision: d.decision.clone(),
                     material,

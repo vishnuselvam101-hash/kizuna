@@ -96,6 +96,11 @@ fn interpreter_binds(py: &Path) -> Vec<(PathBuf, PathBuf)> {
     binds
 }
 
+fn running_as_root() -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata("/proc/self").map(|m| m.uid() == 0).unwrap_or(false)
+}
+
 const BOOT: &str = "import sys; sys.path.insert(0, sys.argv[1]); from kizuna_extraction.worker import main; main()";
 
 /// Builds the sandboxed command line (exposed for tests).
@@ -108,8 +113,15 @@ pub fn command_argv(cfg: &Config) -> Vec<String> {
         format!("--cpu={}", cfg.extraction_timeout_secs),
         "--nofile=64".into(),
         "--core=0".into(),
+        "--fsize=0".into(),
         "--".into(),
     ];
+    // RLIMIT_NPROC counts processes per real UID; it is only meaningful when the server runs as a dedicated
+    // non-root user (as documented for deployment). Under root it would count every root process on the host.
+    let mut limits = limits.to_vec();
+    if !running_as_root() {
+        limits.insert(limits.len() - 1, "--nproc=64".into());
+    }
     let tail = [py.clone(), "-I".into(), "-c".into(), BOOT.into(), src.clone()];
     if cfg.extraction_sandbox == "none" {
         return limits.into_iter().chain(tail).collect();
@@ -117,6 +129,8 @@ pub fn command_argv(cfg: &Config) -> Vec<String> {
     let mut a: Vec<String> = [
         "/usr/bin/bwrap",
         "--unshare-all",
+        "--unshare-user",
+        "--disable-userns",
         "--die-with-parent",
         "--new-session",
         "--clearenv",
@@ -245,7 +259,15 @@ mod tests {
         cfg.extraction_python = "/usr/bin/python3".into();
         let a = command_argv(&cfg);
         assert_eq!(a[0], "/usr/bin/bwrap");
-        for flag in ["--unshare-all", "--clearenv", "--die-with-parent", "--cap-drop"] {
+        for flag in [
+            "--unshare-all",
+            "--unshare-user",
+            "--disable-userns",
+            "--clearenv",
+            "--die-with-parent",
+            "--cap-drop",
+            "--fsize=0",
+        ] {
             assert!(a.iter().any(|x| x == flag), "{flag}");
         }
         assert!(!a.windows(2).any(|w| w[0] == "--bind"), "no writable binds");

@@ -150,6 +150,37 @@ fn new_evidence_respects_applicability() {
 }
 
 #[test]
+fn regression_review_m1_scope_or_revision_change_is_material() {
+    let old = Snapshot {
+        revision: Some("C".into()),
+        ..snap(Some("10"), Some("mm"), None)
+    };
+    let deps = vec![claim_dep("D1", "c1", Materiality::AnyChange, old)];
+    let mut new = snap(Some("10"), Some("mm"), None);
+    new.revision = Some("D".into());
+    let r = assess(
+        &deps,
+        &Change::Superseded {
+            old_claim: "c1".into(),
+            new_claim: "c2".into(),
+            new: new.clone(),
+        },
+    );
+    assert!(r[0].material, "same value, new revision");
+    new.revision = Some("C".into());
+    new.scope.insert("supplier".into(), "S2".into());
+    let r = assess(
+        &deps,
+        &Change::Superseded {
+            old_claim: "c1".into(),
+            new_claim: "c2".into(),
+            new,
+        },
+    );
+    assert!(r[0].material, "same value, new supplier scope");
+}
+
+#[test]
 fn cycles_terminate() {
     let deps = vec![
         claim_dep("D1", "c1", Materiality::AnyChange, snap(Some("1"), None, None)),

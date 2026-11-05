@@ -84,11 +84,14 @@ pub async fn insert_claim(tx: &mut Tx, tenant: Uuid, n: NewClaim<'_>) -> ApiResu
         return Err(ApiError::BadRequest("invalid_valid_time"));
     }
     if let Some(a) = n.artifact_id {
-        let ok: Option<Uuid> = sqlx::query_scalar("SELECT id FROM artifacts WHERE id = $1")
+        let status: Option<String> = sqlx::query_scalar("SELECT status FROM artifacts WHERE id = $1")
             .bind(a)
             .fetch_optional(&mut **tx)
             .await?;
-        ok.ok_or(ApiError::BadRequest("unknown_artifact"))?;
+        // Claims may only cite released documents (review finding M4).
+        if status.ok_or(ApiError::BadRequest("unknown_artifact"))? != "accepted" {
+            return Err(ApiError::Conflict("artifact_not_released"));
+        }
     }
     let id = Uuid::now_v7();
     let c = n.claim;
@@ -135,7 +138,8 @@ pub async fn create(
     ApiJson(req): ApiJson<CreateReq>,
 ) -> ApiResult<Json<ClaimOut>> {
     p.require(&st, Permission::ClaimWrite).await?;
-    let v = claim::validate(&req.claim).map_err(|e| ApiError::BadRequest(e.code()))?;
+    let mut v = claim::validate(&req.claim).map_err(|e| ApiError::BadRequest(e.code()))?;
+    v.confidence_bps = 10_000; // manual: a human assertion; client-supplied confidence is ignored (review M4)
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let id = insert_claim(
         &mut tx,
@@ -189,6 +193,8 @@ pub async fn supersede(
         return Err(ApiError::BadRequest("reason_required"));
     }
     let v = claim::validate(&req.create.claim).map_err(|e| ApiError::BadRequest(e.code()))?;
+    let mut v = v;
+    v.confidence_bps = 10_000; // manual: a human assertion; client-supplied confidence is ignored (review M4)
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let prev: Option<Option<OffsetDateTime>> =
         sqlx::query_scalar("SELECT superseded_at FROM claims WHERE id = $1 FOR UPDATE")

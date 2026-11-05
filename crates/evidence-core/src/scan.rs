@@ -46,7 +46,7 @@ impl Default for Limits {
     }
 }
 
-const PDF_ACTIVE: [&[u8]; 7] = [
+const PDF_ACTIVE: [&[u8]; 10] = [
     b"/JavaScript",
     b"/JS",
     b"/Launch",
@@ -54,7 +54,30 @@ const PDF_ACTIVE: [&[u8]; 7] = [
     b"/RichMedia",
     b"/XFA",
     b"/SubmitForm",
+    b"/OpenAction",
+    b"/AA",
+    b"/ObjStm",
 ];
+
+/// Decodes PDF name escapes (`/J#61vaScript` → `/JavaScript`) so markers cannot be hidden (review finding M5).
+fn decode_pdf_names(b: &[u8]) -> Vec<u8> {
+    let hex = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'#'
+            && i + 2 < b.len()
+            && let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2]))
+        {
+            out.push(h * 16 + l);
+            i += 3;
+            continue;
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    out
+}
 
 fn contains(h: &[u8], n: &[u8]) -> bool {
     h.windows(n.len()).any(|w| w == n)
@@ -73,8 +96,11 @@ pub fn scan(bytes: &[u8], limits: &Limits) -> ScanReport {
     let mut verdict = Verdict::Clean;
     match ft {
         FileType::Pdf => {
+            // Compressed object streams (/ObjStm) can hide any marker from a byte scan, so they are quarantined
+            // too until a human releases the document (review finding M5).
+            let decoded = decode_pdf_names(bytes);
             for k in PDF_ACTIVE {
-                if contains(bytes, k) {
+                if contains(&decoded, k) {
                     findings.push(format!("pdf_active_content:{}", String::from_utf8_lossy(&k[1..])));
                 }
             }
@@ -222,6 +248,28 @@ mod tests {
         assert!(r.findings.iter().any(|f| f.contains("JavaScript")));
         let r = scan(b"%PDF-1.7\n1 0 obj << /Type /Page >>\n%%EOF", &Limits::default());
         assert_eq!(r.verdict, Verdict::Clean);
+    }
+
+    #[test]
+    fn regression_review_m5_escaped_names_and_object_streams() {
+        let esc = scan(
+            b"%PDF-1.7\n1 0 obj << /S /J#61vaScript /J#53 (x) >>\n%%EOF",
+            &Limits::default(),
+        );
+        assert_eq!(esc.verdict, Verdict::Quarantine, "{:?}", esc.findings);
+        let objstm = scan(
+            b"%PDF-1.7\n5 0 obj << /Type /ObjStm /N 3 /Filter /FlateDecode >>\nstream\nxx\nendstream\n%%EOF",
+            &Limits::default(),
+        );
+        assert_eq!(objstm.verdict, Verdict::Quarantine);
+        assert_eq!(
+            scan(
+                b"%PDF-1.7\n1 0 obj << /Type /Page /Name /A#20B >>\n%%EOF",
+                &Limits::default()
+            )
+            .verdict,
+            Verdict::Clean
+        );
     }
 
     #[test]

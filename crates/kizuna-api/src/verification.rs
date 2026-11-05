@@ -35,6 +35,30 @@ impl AttributeRule for NoSelfReview {
     }
 }
 
+/// Canonical identity of a part key: safe normalisation, then confirmed alias.
+pub async fn canonical_key(tx: &mut Tx, key: &str) -> ApiResult<String> {
+    let n = safe_normalize(key);
+    let c: Option<String> =
+        sqlx::query_scalar("SELECT canonical_key FROM entity_aliases WHERE subject_type = 'part' AND alias_key = $1")
+            .bind(&n)
+            .fetch_optional(&mut **tx)
+            .await?;
+    Ok(c.unwrap_or(n))
+}
+
+/// Everyone who put evidence into these claims: who recorded them and who uploaded their source documents.
+/// They may not review that evidence (four-eyes, review finding H1).
+pub async fn claim_owners(tx: &mut Tx, claims: &[Uuid]) -> ApiResult<Vec<Uuid>> {
+    Ok(sqlx::query_scalar(
+        "SELECT recorded_by FROM claims WHERE id = ANY($1) AND recorded_by IS NOT NULL \
+         UNION SELECT a.created_by FROM claims c JOIN artifacts a ON a.id = c.artifact_id WHERE c.id = ANY($1) \
+         UNION SELECT k.uploaded_by FROM claims c JOIN artifact_captures k ON k.artifact_id = c.artifact_id WHERE c.id = ANY($1)",
+    )
+    .bind(claims)
+    .fetch_all(&mut **tx)
+    .await?)
+}
+
 fn confidence_for(extractor: &str) -> i32 {
     match extractor.split('@').next().unwrap_or("") {
         "csv" | "xlsx" => 9000,
@@ -109,6 +133,34 @@ pub async fn extract(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
     if !intact {
         return Err(ApiError::Conflict("integrity_check_failed"));
     }
+    // I2: the worker accepts at most 64 MiB of base64 JSON (~47 MiB raw).
+    if bytes.len() > 40 * 1024 * 1024 {
+        return Err(ApiError::BadRequest("document_too_large_for_extraction"));
+    }
+    // I1: one extraction per artifact at a time (session-level lock, released when this request ends).
+    let mut lock_conn = st.pool.acquire().await?;
+    let got: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(hashtextextended($1, 19))")
+        .bind(format!("{}:{id}", p.tenant_id))
+        .fetch_one(&mut *lock_conn)
+        .await?;
+    if !got {
+        return Err(ApiError::Conflict("extraction_in_progress"));
+    }
+    let result = extract_locked(&st, &p, id, bytes, art).await;
+    let _ = sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 19))")
+        .bind(format!("{}:{id}", p.tenant_id))
+        .execute(&mut *lock_conn)
+        .await;
+    result
+}
+
+async fn extract_locked(
+    st: &AppState,
+    p: &Principal,
+    id: Uuid,
+    bytes: Vec<u8>,
+    art: artifacts::ArtifactOut,
+) -> ApiResult<Json<ExtractResp>> {
     {
         let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
         let done: Option<Uuid> = sqlx::query_scalar(
@@ -136,13 +188,13 @@ pub async fn extract(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
     let (out, out_hash) = match extraction::run_worker(&st.cfg, &art.media_type, &bytes).await {
         Ok(r) => r,
         Err(e) => {
-            record_failed_run(&st, &p, id, started, e.code()).await?;
+            record_failed_run(st, p, id, started, e.code()).await?;
             return Err(ApiError::BadRequest("extraction_failed"));
         }
     };
     if !out.ok {
         let code = out.error.unwrap_or_else(|| "unknown".into());
-        record_failed_run(&st, &p, id, started, &code.chars().take(60).collect::<String>()).await?;
+        record_failed_run(st, p, id, started, &code.chars().take(60).collect::<String>()).await?;
         return Err(ApiError::BadRequest("extraction_failed"));
     }
     let extractor: String = out
@@ -264,7 +316,7 @@ pub async fn load_facts(tx: &mut Tx, only_subject: Option<&str>) -> ApiResult<Ve
     };
     let rows: Vec<FactRow> = sqlx::query_as(
         "SELECT c.id, c.subject_key, c.predicate, c.value_text, c.value_num::text, c.value_unit, c.revision, c.scope, \
-                coalesce(a.kind, 'manual') FROM claims c LEFT JOIN artifacts a ON a.id = c.artifact_id \
+                CASE WHEN c.extraction_method = 'manual' THEN 'manual' ELSE coalesce(a.kind, 'manual') END FROM claims c LEFT JOIN artifacts a ON a.id = c.artifact_id \
          WHERE c.subject_type = 'part' AND c.superseded_at IS NULL AND c.review_status <> 'rejected'",
     )
     .fetch_all(&mut **tx)
@@ -334,9 +386,11 @@ pub async fn detect_in_tx(tx: &mut Tx, tenant: Uuid) -> ApiResult<RunResp> {
             .map(Uuid::parse_str)
             .transpose()
             .map_err(ApiError::internal)?;
-        let r = sqlx::query(
+        let r: Option<(Uuid, bool)> = sqlx::query_as(
             "INSERT INTO conflicts (id, tenant_id, kind, subject_type, subject_key, claim_a, claim_b, explanation, rule_version) \
-             VALUES ($1,$2,$3,'part',$4,$5,$6,$7,$8) ON CONFLICT (tenant_id, kind, claim_a, coalesce(claim_b, claim_a)) DO NOTHING",
+             VALUES ($1,$2,$3,'part',$4,$5,$6,$7,$8) ON CONFLICT (tenant_id, kind, claim_a, coalesce(claim_b, claim_a)) \
+             DO UPDATE SET status = 'open', explanation = EXCLUDED.explanation WHERE conflicts.status = 'obsolete' \
+             RETURNING id, (xmax = 0) AS inserted",
         )
         .bind(Uuid::now_v7())
         .bind(tenant)
@@ -346,9 +400,29 @@ pub async fn detect_in_tx(tx: &mut Tx, tenant: Uuid) -> ApiResult<RunResp> {
         .bind(b)
         .bind(&f.explanation)
         .bind(RULE_VERSION)
-        .execute(&mut **tx)
+        .fetch_optional(&mut **tx)
         .await?;
-        new += r.rows_affected() as usize;
+        match r {
+            Some((_, true)) => new += 1,
+            Some((cid, false)) => {
+                // A finding that had become obsolete fires again: reopen it (review finding H2).
+                audit::append(
+                    tx,
+                    tenant,
+                    Record {
+                        actor_user_id: None,
+                        actor_kind: "system",
+                        action: "conflict.reopened",
+                        target_type: "conflict",
+                        target_id: Some(cid.to_string()),
+                        details: json!({ "kind": f.kind }),
+                    },
+                )
+                .await?;
+                new += 1;
+            }
+            None => {}
+        }
     }
     // Findings that no longer fire under current evidence become obsolete (kept for history, never deleted).
     let current: std::collections::HashSet<(String, String, Option<String>)> = findings
@@ -491,6 +565,8 @@ pub async fn get_conflict(State(st): State<AppState>, p: Principal, Path(id): Pa
 pub struct ReviewReq {
     pub decision: String,
     pub comment: Option<String>,
+    /// For confirming (rejecting) a finding: which of its claims are wrong.
+    pub faulty_claims: Option<Vec<Uuid>>,
 }
 
 fn check_review(req: &ReviewReq) -> ApiResult<(&'static str, Option<String>)> {
@@ -547,13 +623,31 @@ pub async fn review_conflict(
     p.require(&st, Permission::ReviewDecide).await?;
     let (decision, comment) = check_review(&req)?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let status: Option<String> = sqlx::query_scalar("SELECT status FROM conflicts WHERE id = $1 FOR UPDATE")
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?;
-    let status = status.ok_or(ApiError::NotFound)?;
+    let row: Option<(String, Uuid, Option<Uuid>)> =
+        sqlx::query_as("SELECT status, claim_a, claim_b FROM conflicts WHERE id = $1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let (status, ca, cb) = row.ok_or(ApiError::NotFound)?;
+    let involved: Vec<Uuid> = std::iter::once(ca).chain(cb).collect();
+    let owners = claim_owners(&mut tx, &involved).await?;
+    p.require_on(
+        &st,
+        Permission::ReviewDecide,
+        &Resource {
+            tenant_id: p.tenant_id,
+            kind: "conflict",
+            owner_user_id: owners.contains(&p.user_id).then_some(p.user_id),
+        },
+    )
+    .await?;
     if !matches!(status.as_str(), "open" | "needs_evidence") {
         return Err(ApiError::Conflict("conflict_not_open"));
+    }
+    // Confirming a finding must name the faulty evidence, which is then rejected and withdrawn from decisions (M7).
+    let faulty: Vec<Uuid> = req.faulty_claims.clone().unwrap_or_default();
+    if decision == "reject" && (faulty.is_empty() || !faulty.iter().all(|f| involved.contains(f))) {
+        return Err(ApiError::BadRequest("faulty_claims_required"));
     }
     let new_status = match decision {
         "approve" => "resolved_approved",
@@ -561,6 +655,29 @@ pub async fn review_conflict(
         _ => "needs_evidence",
     };
     insert_review(&mut tx, &p, "conflict", id, decision, &comment).await?;
+    for f in &faulty {
+        let cur: String = sqlx::query_scalar("SELECT review_status FROM claims WHERE id = $1 FOR UPDATE")
+            .bind(f)
+            .fetch_one(&mut *tx)
+            .await?;
+        if cur != "rejected" {
+            insert_review(&mut tx, &p, "claim", *f, "reject", &comment).await?;
+            sqlx::query("UPDATE claims SET review_status = 'rejected' WHERE id = $1")
+                .bind(f)
+                .execute(&mut *tx)
+                .await?;
+            crate::decisions::on_claim_change(
+                &mut tx,
+                p.tenant_id,
+                p.user_id,
+                dependency_engine::Change::Withdrawn {
+                    old_claim: f.to_string(),
+                    reason: format!("rejected when finding {id} was confirmed"),
+                },
+            )
+            .await?;
+        }
+    }
     sqlx::query("UPDATE conflicts SET status = $2 WHERE id = $1")
         .bind(id)
         .bind(new_status)
@@ -591,25 +708,29 @@ pub async fn review_claim(
 ) -> ApiResult<Json<ClaimOut>> {
     let (decision, comment) = check_review(&req)?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let row: Option<(Option<Uuid>, String, Option<OffsetDateTime>)> =
-        sqlx::query_as("SELECT recorded_by, extraction_method, superseded_at FROM claims WHERE id = $1 FOR UPDATE")
+    let row: Option<(Option<OffsetDateTime>, String)> =
+        sqlx::query_as("SELECT superseded_at, review_status FROM claims WHERE id = $1 FOR UPDATE")
             .bind(id)
             .fetch_optional(&mut *tx)
             .await?;
-    let (recorded_by, method, superseded) = row.ok_or(ApiError::NotFound)?;
-    let owner = if method == "manual" { recorded_by } else { None };
+    let (superseded, current) = row.ok_or(ApiError::NotFound)?;
+    let owners = claim_owners(&mut tx, &[id]).await?;
     p.require_on(
         &st,
         Permission::ReviewDecide,
         &Resource {
             tenant_id: p.tenant_id,
             kind: "claim",
-            owner_user_id: owner,
+            owner_user_id: owners.contains(&p.user_id).then_some(p.user_id),
         },
     )
     .await?;
     if superseded.is_some() {
         return Err(ApiError::Conflict("claim_superseded"));
+    }
+    // A rejected claim is final; corrections go through supersession (review finding H2).
+    if current == "rejected" {
+        return Err(ApiError::Conflict("claim_rejected_supersede_instead"));
     }
     let status = match decision {
         "approve" => "accepted",
@@ -733,6 +854,16 @@ pub async fn entity_decision(
                 .fetch_optional(&mut *tx)
                 .await?
                 .unwrap_or(l.clone());
+        if canonical == r {
+            return Err(ApiError::Conflict("alias_cycle"));
+        }
+        // Keys that pointed at `r` now point at the merged identity, so chains never split entities (L2).
+        sqlx::query("UPDATE entity_aliases SET canonical_key = $3 WHERE subject_type = $1 AND canonical_key = $2")
+            .bind(&req.subject_type)
+            .bind(&r)
+            .bind(&canonical)
+            .execute(&mut *tx)
+            .await?;
         let ins = sqlx::query(
             "INSERT INTO entity_aliases (tenant_id, subject_type, alias_key, canonical_key, decision_id) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
         )

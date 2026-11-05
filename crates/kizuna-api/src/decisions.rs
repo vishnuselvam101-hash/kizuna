@@ -226,9 +226,42 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
             predicate,
             ..
         } => {
-            let deps = load_deps(tx, None, Some((subject, predicate))).await?;
+            // Match on canonical identity (safe normalisation + confirmed aliases), as conflict detection does (L1).
+            let canonical = crate::verification::canonical_key(tx, subject).await?;
+            let mut keys: Vec<String> = sqlx::query_scalar(
+                "SELECT alias_key FROM entity_aliases WHERE subject_type = 'part' AND canonical_key = $1",
+            )
+            .bind(&canonical)
+            .fetch_all(&mut **tx)
+            .await?;
+            keys.push(canonical.clone());
+            let mut deps = Vec::new();
+            for k in &keys {
+                for mut d in load_deps(tx, None, Some((k, predicate))).await? {
+                    if d.claim.is_some() && keys.contains(&d.subject) {
+                        d.subject = canonical.clone();
+                    }
+                    if !deps.contains(&d) {
+                        deps.push(d);
+                    }
+                }
+            }
+            let ch = match &change {
+                Change::NewEvidence {
+                    new_claim,
+                    predicate,
+                    new,
+                    ..
+                } => Change::NewEvidence {
+                    new_claim: new_claim.clone(),
+                    subject: canonical,
+                    predicate: predicate.clone(),
+                    new: new.clone(),
+                },
+                other => other.clone(),
+            };
             let cause = Uuid::parse_str(new_claim).ok();
-            apply_impacts(tx, tenant, actor, assess(&deps, &change), cause, None).await
+            apply_impacts(tx, tenant, actor, assess(&deps, &ch), cause, None).await
         }
     }
 }
@@ -376,7 +409,7 @@ async fn insert_decision(
         .bind(id)
         .bind(e.claim.id)
         .bind(&e.role)
-        .bind(&e.claim.subject_key)
+        .bind(crate::verification::canonical_key(tx, &e.claim.subject_key).await?)
         .bind(&e.claim.predicate)
         .bind(json!(applicability_of(&e.claim)))
         .bind(json!(e.materiality))
@@ -470,6 +503,11 @@ pub async fn create(
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let mut evidence = Vec::new();
     for e in &req.evidence {
+        // FOR SHARE: a concurrent supersession/rejection waits for us (or we see its result) — review finding M3.
+        sqlx::query("SELECT 1 FROM claims WHERE id = $1 FOR SHARE")
+            .bind(e.claim_id)
+            .execute(&mut *tx)
+            .await?;
         let c = claims::fetch(&mut tx, e.claim_id)
             .await
             .map_err(|_| ApiError::BadRequest("unknown_claim"))?;
@@ -489,6 +527,10 @@ pub async fn create(
     }
     let mut upstream = Vec::new();
     for u in &req.depends_on {
+        sqlx::query("SELECT 1 FROM decisions WHERE id = $1 FOR SHARE")
+            .bind(u.decision_id)
+            .execute(&mut *tx)
+            .await?;
         let d = fetch(&mut tx, u.decision_id)
             .await
             .map_err(|_| ApiError::BadRequest("unknown_decision"))?;
@@ -582,6 +624,13 @@ pub async fn build_trace(tx: &mut Tx, id: Uuid) -> ApiResult<Value> {
     let recomputed = audit_engine::canonical_json(&derivation)
         .map(|c| crate::crypto::sha256(c.as_bytes()).to_vec())
         .unwrap_or_default();
+    // The hash recorded in the (hash-chained) audit event at decision time, independent of the decisions row.
+    let audit_hash: Option<String> = sqlx::query_scalar(
+        "SELECT details->>'derivation_sha256' FROM audit_events WHERE action = 'decision.recorded' AND target_id = $1 ORDER BY seq LIMIT 1",
+    )
+    .bind(id.to_string())
+    .fetch_optional(&mut **tx)
+    .await?;
     type TraceDep = (Option<Uuid>, Option<Uuid>, String, Option<String>, Value, Value);
     let deps: Vec<TraceDep> = sqlx::query_as(
         "SELECT depends_on_claim, depends_on_decision, subject_key, predicate, snapshot, materiality FROM decision_dependencies WHERE decision_id = $1",
@@ -638,6 +687,7 @@ pub async fn build_trace(tx: &mut Tx, id: Uuid) -> ApiResult<Value> {
         "decision": d,
         "derivation": derivation,
         "derivation_reproducible": recomputed == stored,
+        "derivation_matches_audit_log": audit_hash.as_deref() == Some(hex::encode(&stored).as_str()),
         "evidence": evidence,
         "known_at_decision_time": known,
         "changed_since_decision": changed,
@@ -662,6 +712,36 @@ fn comment_ok(c: &str) -> ApiResult<String> {
     Ok(c.to_string())
 }
 
+/// The author of a decision may not reconfirm or revoke it (review finding H1).
+async fn four_eyes(st: &AppState, p: &Principal, author: Uuid) -> ApiResult<()> {
+    p.require_on(
+        st,
+        Permission::ReviewDecide,
+        &policy_engine::Resource {
+            tenant_id: p.tenant_id,
+            kind: "decision",
+            owner_user_id: (author == p.user_id).then_some(author),
+        },
+    )
+    .await
+}
+
+/// Follows `supersedes` forward to the current version of a decision.
+async fn current_decision(tx: &mut Tx, id: Uuid) -> ApiResult<DecisionOut> {
+    let mut d = fetch(tx, id).await?;
+    for _ in 0..100 {
+        let next: Option<Uuid> = sqlx::query_scalar("SELECT id FROM decisions WHERE supersedes = $1")
+            .bind(d.id)
+            .fetch_optional(&mut **tx)
+            .await?;
+        match next {
+            Some(n) => d = fetch(tx, n).await?,
+            None => break,
+        }
+    }
+    Ok(d)
+}
+
 /// Human reconfirmation of a potentially affected decision: a new decision version is recorded against the current
 /// evidence (following corrections); the old one is kept as `superseded`.
 pub async fn reconfirm(
@@ -674,6 +754,7 @@ pub async fn reconfirm(
     let comment = comment_ok(&req.comment)?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let old = fetch(&mut tx, id).await?;
+    four_eyes(&st, &p, old.decided_by).await?;
     let locked: String = sqlx::query_scalar("SELECT status FROM decisions WHERE id = $1 FOR UPDATE")
         .bind(id)
         .fetch_one(&mut *tx)
@@ -707,12 +788,16 @@ pub async fn reconfirm(
                 artifact_sha256,
             });
         } else if let Some(u) = up {
-            let d = fetch(&mut tx, u).await?;
-            if d.status != "valid" {
-                notes.push(format!("upstream decision {u} dropped: status {}", d.status));
-                continue;
+            // Keep the link to the current version of the upstream decision (review finding M2).
+            let d = current_decision(&mut tx, u).await?;
+            match d.status.as_str() {
+                "valid" => upstream.push((d, role)),
+                "potentially_affected" => return Err(ApiError::Conflict("upstream_unresolved")),
+                other => notes.push(format!(
+                    "upstream decision {u} dropped: current version {} is {other}",
+                    d.id
+                )),
             }
-            upstream.push((d, role));
         }
     }
     if evidence.is_empty() && upstream.is_empty() {
@@ -781,10 +866,15 @@ pub async fn revoke(
     p.require(&st, Permission::ReviewDecide).await?;
     let comment = comment_ok(&req.comment)?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let status: Option<String> = sqlx::query_scalar("SELECT status FROM decisions WHERE id = $1 FOR UPDATE")
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?;
+    let row: Option<(String, Uuid)> =
+        sqlx::query_as("SELECT status, decided_by FROM decisions WHERE id = $1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let status = row.as_ref().map(|r| r.0.clone());
+    if let Some((_, author)) = &row {
+        four_eyes(&st, &p, *author).await?;
+    }
     if !matches!(
         status.ok_or(ApiError::NotFound)?.as_str(),
         "valid" | "potentially_affected"
@@ -882,21 +972,13 @@ pub async fn report(
     .await?;
     let chain = crate::audit::verify_tenant(&mut tx, p.tenant_id).await?;
     tx.commit().await?;
-    crate::security_events::record(
-        &st.pool,
-        Some(p.tenant_id),
-        crate::security_events::Kind::ExportReport,
-        Some(p.user_id),
-        Some(&p.ip),
-        json!({ "decision_id": id, "format": q.format.as_deref().unwrap_or("json") }),
-    )
-    .await;
     let mut body = json!({
         "report_version": "kizuna-verification-report@1",
         "generated_at": rfc3339(OffsetDateTime::now_utc()),
         "generated_by": p.user_id,
         "decision": trace["decision"],
         "derivation_reproducible": trace["derivation_reproducible"],
+        "derivation_matches_audit_log": trace["derivation_matches_audit_log"],
         "evidence": trace["evidence"],
         "changed_since_decision": trace["changed_since_decision"],
         "invalidations": trace["invalidations"],
@@ -907,7 +989,20 @@ pub async fn report(
         "statement": "Hashes show that stored documents and the audit log are unchanged since capture. They do not show that document contents are true or authentic. Extracted values are machine-read and carry their review status.",
     });
     let canonical = audit_engine::canonical_json(&body).map_err(ApiError::internal)?;
-    body["report_sha256"] = json!(hex::encode(crate::crypto::sha256(canonical.as_bytes())));
+    let report_sha = crate::crypto::sha256(canonical.as_bytes());
+    body["report_sha256"] = json!(hex::encode(report_sha));
+    // Sign the report digest when a signing key is configured (review finding L8).
+    if let Some(k) = &st.cfg.audit_signing_key {
+        let msg = [b"KZRP1".as_slice(), &report_sha].concat();
+        body["signature"] = json!({
+            "algorithm": "ed25519",
+            "public_key": hex::encode(audit_engine::checkpoint::public_key(k.expose())),
+            "signature": hex::encode(audit_engine::checkpoint::sign(k.expose(), &msg)),
+            "message": "\"KZRP1\" || report_sha256 bytes",
+        });
+    }
+    crate::security_events::record(&st.pool, Some(p.tenant_id), crate::security_events::Kind::ExportReport, Some(p.user_id), Some(&p.ip),
+        json!({ "decision_id": id, "format": q.format.as_deref().unwrap_or("json"), "report_sha256": hex::encode(report_sha) })).await;
     if q.format.as_deref() == Some("markdown") {
         let mut res = render_markdown(&body).into_response();
         res.headers_mut().insert(
@@ -925,7 +1020,19 @@ fn md_escape(v: &Value) -> String {
         Value::Null => "—".into(),
         other => other.to_string(),
     };
-    s.replace('|', "\\|").replace(['\n', '\r'], " ").replace('<', "&lt;")
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\n' | '\r' => out.push(' '),
+            '<' => out.push_str("&lt;"),
+            '|' | '[' | ']' | '(' | ')' | '!' | '*' | '_' | '`' | '\\' | '#' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 pub fn render_markdown(r: &Value) -> String {

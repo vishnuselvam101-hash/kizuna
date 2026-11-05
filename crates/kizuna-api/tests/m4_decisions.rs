@@ -25,8 +25,8 @@ async fn setup() -> Setup {
     let (t, slug) = c.tenant().await;
     let (_, e) = c.user(t, "reviewer").await;
     let (_, e2) = c.user(t, "reviewer").await;
-    let tok = c.token(&slug, &e).await;
-    let rev2 = c.token(&slug, &e2).await;
+    let tok = c.mfa_token(&slug, &e).await;
+    let rev2 = c.mfa_token(&slug, &e2).await;
     let length = claim(&c, &tok, json!({"subject_type":"part","subject_key":"BRK-100","predicate":"mfg.dimension.length","value_num":"120","value_unit":"mm","revision":"C","scope":{"supplier":"ACME"}})).await;
     let approval = claim(&c, &tok, json!({"subject_type":"part","subject_key":"BRK-100","predicate":"mfg.approval.status","value_text":"approved","revision":"C"})).await;
     Setup {
@@ -197,15 +197,15 @@ async fn trace_reconfirm_revoke_and_immutability() {
     let r =
         s.c.post(
             &format!("/api/v1/decisions/{v2}/revoke"),
-            Some(&s.rev2),
+            Some(&s.tok),
             json!({"comment":"supplier withdrawn"}),
         )
         .await;
-    assert_eq!(r.body["status"], "revoked");
+    assert_eq!(r.body["status"], "revoked", "{:?}", r.body);
     assert_eq!(
         s.c.post(
             &format!("/api/v1/decisions/{v2}/revoke"),
-            Some(&s.rev2),
+            Some(&s.tok),
             json!({"comment":"again"})
         )
         .await

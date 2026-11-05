@@ -124,7 +124,7 @@ async fn review_workflow_rules() {
     let (t, slug) = c.tenant().await;
     let (_, rev) = c.user(t, "reviewer").await;
     let (_, ana) = c.user(t, "analyst").await;
-    let r = c.token(&slug, &rev).await;
+    let r = c.mfa_token(&slug, &rev).await;
     let a = c.token(&slug, &ana).await;
     c.ingest(&a, "po.csv", b"PO Number,Part No,Rev\nPO-9,SHF-1,A\n", "purchase_order")
         .await;
@@ -212,7 +212,7 @@ async fn review_workflow_rules() {
         (StatusCode::FORBIDDEN, Some("no_self_review"))
     );
     let (_, rev2) = c.user(t, "reviewer").await;
-    let r2 = c.token(&slug, &rev2).await;
+    let r2 = c.mfa_token(&slug, &rev2).await;
     let other = c
         .post(
             &format!("/api/v1/claims/{mid}/review"),
@@ -228,7 +228,7 @@ async fn superseding_or_merging_makes_findings_obsolete_not_deleted() {
     let c = ctx().await;
     let (t, slug) = c.tenant().await;
     let (_, e) = c.user(t, "reviewer").await;
-    let tok = c.token(&slug, &e).await;
+    let tok = c.mfa_token(&slug, &e).await;
     c.ingest(
         &tok,
         "spec.pdf",
@@ -366,7 +366,7 @@ async fn conflicts_are_tenant_isolated() {
         .to_owned();
     let (tb, sb) = c.tenant().await;
     let (_, eb) = c.user(tb, "reviewer").await;
-    let b = c.token(&sb, &eb).await;
+    let b = c.mfa_token(&sb, &eb).await;
     assert_eq!(
         c.get(&format!("/api/v1/conflicts/{id}"), &b).await.status,
         StatusCode::NOT_FOUND

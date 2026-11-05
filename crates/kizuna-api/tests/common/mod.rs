@@ -90,6 +90,10 @@ pub async fn ctx() -> Ctx {
 }
 
 pub async fn ctx_with(f: impl FnOnce(&mut Config)) -> Ctx {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("error")
+        .with_test_writer()
+        .try_init();
     MIGRATED
         .get_or_init(|| async {
             let p = owner_pool().await;
@@ -202,6 +206,17 @@ impl Ctx {
             .await;
         assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
         secret
+    }
+
+    /// Password + TOTP session (needed for privileged permissions such as review decisions).
+    pub async fn mfa_token(&self, slug: &str, email: &str) -> String {
+        let tok = self.token(slug, email).await;
+        let secret = self.enroll_totp(&tok).await;
+        let r = self
+            .login(slug, email, PW, Some(kizuna_api::crypto::totp_now(&secret, now() + 30)))
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+        r.body["access_token"].as_str().unwrap().to_owned()
     }
 
     /// A tenant with an MFA-verified admin session: (tenant, slug, admin id, token).

@@ -185,3 +185,32 @@ Counts: High 2 · Medium 7 · Low 9 · Info 4
 - **SSRF:** None of these commits fetches anything outbound. The worker runs in an unshared network namespace.
 - **Error leakage:** `ApiError::Internal` is logged and returned as a generic `internal_error`.
 - **Env and fd leakage into the worker:** `env_clear`, `--clearenv` and stderr set to null. Rust fds are CLOEXEC.
+
+## Resolution status (integrator, 2026-11-05)
+
+Regression tests: `crates/kizuna-api/tests/review_m2_m4_regressions.rs` unless noted. Schema changes: `migrations/0007_review_fixes.sql`.
+
+| ID | Status | Fix / test |
+|---|---|---|
+| H1 | fixed | owners = claim recorder + source uploaders (`claim_owners`) for claim and conflict review; decision author may not reconfirm/revoke (`four_eyes`); `h1_*` |
+| H2 | fixed | re-firing finding re-opens an obsolete row (`conflict.reopened` audit); rejected claims are final (supersede instead); `h2_*` |
+| M1 | fixed | revision/scope/applicability change on supersession is material; supersession across subject/predicate refused; `dependency-engine` `regression_review_m1_*`, `m2_*` |
+| M2 | fixed | reconfirm follows upstream decisions forward; refuses with `upstream_unresolved`; `m2_*` |
+| M3 | fixed | `FOR SHARE` on evidence claims and upstream decisions in create; `m3_*` (lock-ordering test) |
+| M4 | fixed | manual claims count as `manual` in rules, may only cite `accepted` artifacts, client confidence ignored; `m4_*` |
+| M5 | fixed | PDF name-escape decoding; `/ObjStm`, `/OpenAction`, `/AA` quarantine (conservative: more false positives, human release); `evidence-core` `regression_review_m5_*` |
+| M6 | partly fixed | `--unshare-user --disable-userns`, `--fsize=0`, `--nproc=64` when not running as root; **open:** seccomp filter, dedicated worker UID (deployment doc) |
+| M7 | fixed | rejecting a finding requires `faulty_claims`; they are rejected and withdrawn from decisions; `m7_*` |
+| L1 | fixed | dependencies stored with canonical key; new evidence matched through aliases; `l1_l2_*` |
+| L2 | fixed | alias chains flattened on merge, cycles refused; `l1_l2_*` |
+| L3 | fixed | `none` sandbox needs `KIZUNA_DEV=1`; `config::tests::regression_review_l3_*` |
+| L4 | see lane-python merge | handled in the Python worker (BUILD_STATUS) |
+| L5 | see lane-python merge | handled in the Python worker (BUILD_STATUS) |
+| L6 | fixed | `ReviewDecide` is privileged (MFA); `l6_*` |
+| L7 | fixed | `artifact.downloaded` audit; export event carries `report_sha256`; recapture logs `requested_kind`; `l6_l7_*` |
+| L8 | fixed | trace cross-checks derivation hash against the chained audit event; reports Ed25519-signed when a key is configured; `l6_l7_l8_*` |
+| L9 | fixed | Markdown escaping of `[]()!*_`#\|<`; `l6_l7_l8_l9_*` |
+| I1 | fixed | per-artifact advisory lock → 409 `extraction_in_progress` |
+| I2 | fixed | > 40 MiB → 400 `document_too_large_for_extraction` |
+| I3 | documented | formula-prefix detection is informational; exports must escape; capture IP retention to be set by deployment policy |
+| I4 | fixed | 60 verifications/min per user |

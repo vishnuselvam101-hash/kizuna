@@ -57,9 +57,13 @@ pub enum Permission {
 }
 
 impl Permission {
-    /// Privileged permissions need an MFA-verified session.
+    /// Privileged permissions need an MFA-verified session. Review decisions (waivers, rejections, reconfirmations,
+    /// entity merges) are privileged since review finding L6.
     pub fn is_privileged(self) -> bool {
-        matches!(self, Permission::UserManage | Permission::IncidentManage)
+        matches!(
+            self,
+            Permission::UserManage | Permission::IncidentManage | Permission::ReviewDecide
+        )
     }
 }
 

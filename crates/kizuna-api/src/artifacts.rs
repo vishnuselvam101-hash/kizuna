@@ -227,7 +227,7 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
             },
             "artifact",
             id,
-            json!({ "sha256": hex::encode(sha), "size": data.len(), "verdict": report.verdict, "kind": kind }),
+            json!({ "sha256": hex::encode(sha), "size": data.len(), "verdict": report.verdict, "requested_kind": kind }),
         ),
     )
     .await?;
@@ -355,6 +355,10 @@ pub async fn verify_integrity(st: &AppState, p: &Principal, id: Uuid) -> ApiResu
 
 pub async fn verify(State(st): State<AppState>, p: Principal, Path(id): Path<Uuid>) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::ArtifactRead).await?;
+    // I4: each verification reads the whole object.
+    if !st.limiter.check(&format!("verify:user:{}", p.user_id), 60) {
+        return Err(ApiError::TooManyRequests);
+    }
     let (ok, _, art) = verify_integrity(&st, &p, id).await?;
     Ok(Json(json!({
         "artifact_id": id,
@@ -373,6 +377,21 @@ pub async fn content(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
     if !ok {
         return Err(ApiError::Conflict("integrity_check_failed"));
     }
+    // Downloads are audited (review finding L7).
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    audit::append(
+        &mut tx,
+        p.tenant_id,
+        Record::user(
+            p.user_id,
+            "artifact.downloaded",
+            "artifact",
+            id,
+            json!({ "sha256": art.sha256, "size": bytes.len() }),
+        ),
+    )
+    .await?;
+    tx.commit().await?;
     let disp = format!(
         "attachment; filename=\"{}\"",
         art.display_name.replace(|c: char| !c.is_ascii() || c == '\\', "_")
