@@ -25,7 +25,7 @@ step "web typecheck+tests"
 if command -v gitleaks >/dev/null; then
   step "secret scan"; gitleaks git --no-banner --redact -l warn .
 fi
-# Keep the dev target dir from eating the disk.
-sz=$(du -sm target 2>/dev/null | cut -f1 || echo 0)
-if (( sz > 10240 )); then echo "target is ${sz} MB > 10 GB: run 'rm -rf target/debug'"; fi
+# Keep the dev target dir from eating the disk: delete target/debug when it exceeds 8 GB.
+sz=$(du -sm target/debug 2>/dev/null | cut -f1 || echo 0)
+if (( ${sz:-0} > 8192 )); then echo "target/debug is ${sz} MB > 8 GB: removing"; rm -rf target/debug; fi
 step "all checks passed"

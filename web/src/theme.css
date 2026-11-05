@@ -1,0 +1,79 @@
+/* KIZUNA design tokens. Dark (藍 indigo) is the default; light is the counterpart.
+   Accents: 朱 vermilion = critical/conflict, 金 gold = verified/approved, teal = info. */
+:root,
+:root[data-theme="dark"] {
+  --bg: #070a14;
+  --surface: #0e1424;
+  --surface-2: #151d33;
+  --panel: rgba(14, 20, 36, 0.92);
+  --line: rgba(180, 200, 255, 0.12);
+  --line-strong: rgba(180, 200, 255, 0.24);
+  --grid: rgba(180, 200, 255, 0.045);
+  --fg: #e8ecf6;
+  --fg-muted: #9aa5be;
+  --crit: #ff4d2e;
+  --crit-fg: #ff8a73;
+  --crit-bg: rgba(255, 77, 46, 0.12);
+  --gold: #d8b26a;
+  --gold-fg: #e6c88c;
+  --gold-bg: rgba(216, 178, 106, 0.12);
+  --info: #3fd0c9;
+  --info-fg: #6fe0da;
+  --info-bg: rgba(63, 208, 201, 0.1);
+  --warn: #e7a33e;
+  --warn-fg: #f0bd6c;
+  --warn-bg: rgba(231, 163, 62, 0.12);
+  --focus: #6fe0da;
+  --btn-primary-fg: #070a14;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #eceff5;
+  --panel: rgba(255, 255, 255, 0.95);
+  --line: rgba(20, 30, 60, 0.12);
+  --line-strong: rgba(20, 30, 60, 0.24);
+  --grid: rgba(20, 30, 60, 0.05);
+  --fg: #111726;
+  --fg-muted: #4d5770;
+  --crit: #c8321a;
+  --crit-fg: #b02a14;
+  --crit-bg: rgba(200, 50, 26, 0.08);
+  --gold: #8a6a24;
+  --gold-fg: #7a5c1c;
+  --gold-bg: rgba(138, 106, 36, 0.1);
+  --info: #137f7a;
+  --info-fg: #0f6d69;
+  --info-bg: rgba(19, 127, 122, 0.08);
+  --warn: #9a5f0a;
+  --warn-fg: #8a5408;
+  --warn-bg: rgba(154, 95, 10, 0.1);
+  --focus: #0f6d69;
+  --btn-primary-fg: #ffffff;
+  color-scheme: light;
+}
+
+:root {
+  --font-display: "Space Grotesk", "Zen Kaku Gothic New", system-ui, sans-serif;
+  --font-body: "Space Grotesk", "Zen Kaku Gothic New", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --radius: 4px;
+  --t-xs: 0.75rem;
+  --t-sm: 0.8125rem;
+  --t-md: 0.9375rem;
+  --t-lg: 1.125rem;
+  --t-xl: clamp(1.75rem, 1.2rem + 2.2vw, 3rem);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+:root[lang="ja"] {
+  --font-body: "Zen Kaku Gothic New", "Space Grotesk", system-ui, sans-serif;
+}
