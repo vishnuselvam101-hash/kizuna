@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::antivirus::Outcome;
 use crate::app::AppState;
 use crate::audit::{self, Record};
 use crate::auth::Principal;
@@ -138,6 +139,7 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
     let mut report = scan::scan(&data, &Limits::default());
     let sha = crypto::sha256(&data);
     // Antivirus after the static scan (ADR 0017): any non-clean engine outcome quarantines (fail closed).
+    let mut scanner_down_only = false;
     let av = if report.verdict == Verdict::Reject {
         None
     } else {
@@ -146,6 +148,8 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
             .await
             .map_err(ApiError::internal)?;
         if let Some(f) = outcome.finding() {
+            // Quarantined only because the scanner is down (chaos C3): an outage, recorded as such below.
+            scanner_down_only = report.verdict == Verdict::Clean && matches!(outcome, Outcome::Unavailable(_));
             report.findings.push(f);
             report.verdict = Verdict::Quarantine;
         }
@@ -205,7 +209,7 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
     tokio::task::spawn_blocking(move || store.put(&key, &bytes))
         .await
         .map_err(ApiError::internal)?
-        .map_err(ApiError::internal)?;
+        .map_err(ApiError::storage)?;
     let (id, duplicate) = match existing {
         Some(id) => (id, true),
         None => {
@@ -265,7 +269,11 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         sec::record(
             &st.pool,
             Some(p.tenant_id),
-            Kind::ArtifactQuarantined,
+            if scanner_down_only {
+                Kind::ScannerUnavailable
+            } else {
+                Kind::ArtifactQuarantined
+            },
             Some(p.user_id),
             Some(&p.ip),
             json!({ "artifact_id": id, "findings": report.findings }),
