@@ -60,7 +60,10 @@ def rows_to_records(
 def csv_records(data: bytes, limits: dict, sink: Sink, opts: dict | None = None) -> list[str]:
     opts = opts or {}
     warnings: list[str] = []
-    encodings = ("cp932",) if opts.get("csv_encoding") == "shift_jis" else ("utf-8-sig", "cp932")
+    # An explicit encoding setting is binding: utf-8 never silently falls back to CP932 (bughunt).
+    encodings = {"shift_jis": ("cp932",), "utf-8": ("utf-8-sig",)}.get(
+        opts.get("csv_encoding") or "", ("utf-8-sig", "cp932")
+    )
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         encodings = ("utf-16",)  # BOM-marked UTF-16 (Excel "Unicode Text"); cp932 would garble every label
     for enc in encodings:
@@ -95,9 +98,13 @@ def csv_records(data: bytes, limits: dict, sink: Sink, opts: dict | None = None)
                 return
             yield rno, row[: limits["max_cols"]]
 
+    # Cells up to max_cell_chars (default 1 MB; Python's default is 128 KB); larger: a clear error.
+    csv.field_size_limit(limits["max_cell_chars"])
     try:
         rows_to_records(rows(), sink, None, "csv-cell", header_row=opts.get("header_row", 0))
     except csv.Error as e:
+        if "field larger than field limit" in str(e):
+            raise ExtractionError("csv_cell_too_large") from e
         raise ExtractionError("csv_malformed") from e
     return warnings
 

@@ -94,16 +94,10 @@ function OrgReportPanel() {
     setErr(null);
     setBusy(true);
     try {
-      const day = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
-      // The server's `to` is exclusive; the picked end date is inclusive, so send the start of the next day.
-      const dayAfter = (d: string) => {
-        if (!d) return undefined;
-        const n = new Date(`${d}T00:00:00Z`);
-        n.setUTCDate(n.getUTCDate() + 1);
-        return Number.isNaN(n.getTime()) ? undefined : `${n.toISOString().slice(0, 10)}T00:00:00Z`;
-      };
+      // Plain calendar dates, both inclusive; the server applies the tenant's timezone.
+      const day = (d: string) => (d ? d : undefined);
       setReport(
-        await api.request<OrgReport>("POST", "/reports", { scope: q.scope, from: day(q.from), to: dayAfter(q.to) }),
+        await api.request<OrgReport>("POST", "/reports", { scope: q.scope, from_date: day(q.from), to_date: day(q.to) }),
       );
     } catch (x) {
       setErr(x);

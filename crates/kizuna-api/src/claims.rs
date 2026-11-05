@@ -3,6 +3,7 @@
 
 use axum::Json;
 use axum::extract::{Path, State};
+use entity_resolution::safe_normalize;
 use evidence_core::claim::{self, ClaimInput, ValidClaim};
 use policy_engine::Permission;
 use serde::{Deserialize, Serialize};
@@ -138,13 +139,21 @@ pub async fn fetch(tx: &mut Tx, id: Uuid) -> ApiResult<ClaimOut> {
         .ok_or(ApiError::NotFound)
 }
 
+/// Validates a typed-in claim with the same key normalisation as extraction (full-width → ASCII, upper case,
+/// collapsed spaces), so a manual `ｂｒｋ－１００` and an extracted `BRK-100` are one subject (bughunt).
+fn validate_typed(c: &ClaimInput) -> ApiResult<claim::ValidClaim> {
+    let mut c = c.clone();
+    c.subject_key = safe_normalize(&c.subject_key);
+    claim::validate(&c).map_err(|e| ApiError::BadRequest(e.code()))
+}
+
 pub async fn create(
     State(st): State<AppState>,
     p: Principal,
     ApiJson(req): ApiJson<CreateReq>,
 ) -> ApiResult<Json<ClaimOut>> {
     p.require(&st, Permission::ClaimWrite).await?;
-    let mut v = claim::validate(&req.claim).map_err(|e| ApiError::BadRequest(e.code()))?;
+    let mut v = validate_typed(&req.claim)?;
     v.confidence_bps = 10_000; // manual: a human assertion; client-supplied confidence is ignored (review M4)
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let id = insert_claim(
@@ -199,17 +208,22 @@ pub async fn supersede(
     if reason.is_empty() || reason.chars().count() > 500 {
         return Err(ApiError::BadRequest("reason_required"));
     }
-    let v = claim::validate(&req.create.claim).map_err(|e| ApiError::BadRequest(e.code()))?;
-    let mut v = v;
+    let mut v = validate_typed(&req.create.claim)?;
     v.confidence_bps = 10_000; // manual: a human assertion; client-supplied confidence is ignored (review M4)
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let prev: Option<Option<OffsetDateTime>> =
-        sqlx::query_scalar("SELECT superseded_at FROM claims WHERE id = $1 FOR UPDATE")
-            .bind(old)
-            .fetch_optional(&mut *tx)
-            .await?;
-    if prev.ok_or(ApiError::NotFound)?.is_some() {
+    let prev: Option<(Option<OffsetDateTime>, String, String, String)> = sqlx::query_as(
+        "SELECT superseded_at, subject_type, subject_key, predicate FROM claims WHERE id = $1 FOR UPDATE",
+    )
+    .bind(old)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let (sup, otype, okey, opred) = prev.ok_or(ApiError::NotFound)?;
+    if sup.is_some() {
         return Err(ApiError::Conflict("already_superseded"));
+    }
+    // A correction changes the value, never what the claim is about (bughunt): new subject/predicate = new claim.
+    if otype != v.subject_type || safe_normalize(&okey) != v.subject_key || opred != v.predicate {
+        return Err(ApiError::BadRequest("supersede_changes_identity"));
     }
     let id = insert_claim(
         &mut tx,

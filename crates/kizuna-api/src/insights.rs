@@ -82,6 +82,9 @@ pub struct OrgReportReq {
     pub scope: Option<String>,
     pub from: Option<String>,
     pub to: Option<String>,
+    /// Calendar dates (`YYYY-MM-DD`, both inclusive) in the tenant's timezone; preferred over `from`/`to`.
+    pub from_date: Option<String>,
+    pub to_date: Option<String>,
 }
 
 /// Organisation-level audit report (gap #8): findings, decisions and audit-chain status, hashed and signed.
@@ -100,7 +103,34 @@ pub async fn org_report(
             })
             .transpose()
     };
-    let (from, to) = (parse(&req.from)?, parse(&req.to)?);
+    let (mut from, mut to) = (parse(&req.from)?, parse(&req.to)?);
+    // Dates are tenant-local days (bughunt: a JST user's "5 Nov" is 4 Nov 15:00Z – 5 Nov 15:00Z).
+    let offset = {
+        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        let o = db::tenant_offset(&mut tx, p.tenant_id).await?;
+        tx.commit().await?;
+        o
+    };
+    let day = |s: &Option<String>, next: bool| -> ApiResult<Option<OffsetDateTime>> {
+        s.as_deref()
+            .map(|v| {
+                let d = time::Date::parse(v, &time::macros::format_description!("[year]-[month]-[day]"))
+                    .map_err(|_| ApiError::BadRequest("invalid_date"))?;
+                let d = if next {
+                    d.next_day().ok_or(ApiError::BadRequest("invalid_date"))?
+                } else {
+                    d
+                };
+                Ok(d.midnight().assume_offset(offset))
+            })
+            .transpose()
+    };
+    if req.from_date.is_some() {
+        from = day(&req.from_date, false)?;
+    }
+    if req.to_date.is_some() {
+        to = day(&req.to_date, true)?;
+    }
     let all = match req.scope.as_deref() {
         None | Some("open_findings") => false,
         Some("all") => true,
@@ -140,6 +170,8 @@ pub async fn org_report(
         "generated_at": OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
         "generated_by": p.user_id,
         "scope": if all { "all" } else { "open_findings" },
+        "range": { "from": from.map(|f| f.unix_timestamp()), "to_exclusive": to.map(|t| t.unix_timestamp()),
+                   "utc_offset_minutes": offset.whole_minutes() },
         "findings": findings,
         "decisions": decisions,
         "audit_chain": { "intact": chain.intact, "events": chain.events_checked, "head_sha256": chain.head_hash },

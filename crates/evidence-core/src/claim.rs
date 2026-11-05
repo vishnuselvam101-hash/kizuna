@@ -128,7 +128,9 @@ pub fn validate(c: &ClaimInput) -> Result<ValidClaim, ClaimError> {
         return Err(ClaimError::SubjectType);
     }
     let key = c.subject_key.trim();
-    if key.is_empty() || key.chars().count() > 200 || key.chars().any(char::is_control) {
+    // Zero-width and bidi/format characters would make visually identical keys distinct (bughunt).
+    let invisible = |c: char| matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{FEFF}' | '\u{00AD}' | '\u{180E}');
+    if key.is_empty() || key.chars().count() > 200 || key.chars().any(|c| c.is_control() || invisible(c)) {
         return Err(ClaimError::SubjectKey);
     }
     if !is_ident(&c.predicate, 2, 81, b"_.") {

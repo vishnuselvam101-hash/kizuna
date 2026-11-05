@@ -103,13 +103,15 @@ const DEP_SELECT: &str = "SELECT d.decision_id, d.depends_on_claim, d.depends_on
      WHERE x.status IN ('valid', 'potentially_affected')";
 
 /// Loads the dependency rows relevant to a change: direct matches plus all decision→decision edges (for propagation).
-async fn load_deps(tx: &mut Tx, claim: Option<Uuid>, subject_pred: Option<(&str, &str)>) -> ApiResult<Vec<Dep>> {
+async fn load_deps(tx: &mut Tx, claim: Option<Uuid>, subject_pred: Option<(&str, &str, &str)>) -> ApiResult<Vec<Dep>> {
     let rows: Vec<DepRow> = sqlx::query_as(&format!(
-        "{DEP_SELECT} AND (d.depends_on_decision IS NOT NULL OR d.depends_on_claim = $1 OR (d.subject_key = $2 AND d.predicate = $3))"
+        "{DEP_SELECT} AND (d.depends_on_decision IS NOT NULL OR d.depends_on_claim = $1 \
+         OR (d.subject_type = $4 AND d.subject_key = $2 AND d.predicate = $3))"
     ))
     .bind(claim)
-    .bind(subject_pred.map(|s| s.0))
     .bind(subject_pred.map(|s| s.1))
+    .bind(subject_pred.map(|s| s.2))
+    .bind(subject_pred.map(|s| s.0))
     .fetch_all(&mut **tx)
     .await?;
     Ok(rows.into_iter().map(to_dep).collect())
@@ -226,18 +228,30 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
             predicate,
             ..
         } => {
-            // Match on canonical identity (safe normalisation + confirmed aliases), as conflict detection does (L1).
-            let canonical = crate::verification::canonical_key(tx, subject).await?;
+            // Match on subject type and canonical identity (safe normalisation + confirmed aliases), as conflict
+            // detection does (L1); a supplier and a part with the same key never match (bughunt).
+            let stype: String = match &change {
+                Change::NewEvidence { new_claim, .. } => {
+                    let id = Uuid::parse_str(new_claim).map_err(ApiError::internal)?;
+                    sqlx::query_scalar("SELECT subject_type FROM claims WHERE id = $1")
+                        .bind(id)
+                        .fetch_one(&mut **tx)
+                        .await?
+                }
+                _ => "part".into(),
+            };
+            let canonical = crate::verification::canonical_key_of(tx, &stype, subject).await?;
             let mut keys: Vec<String> = sqlx::query_scalar(
-                "SELECT alias_key FROM entity_aliases WHERE subject_type = 'part' AND canonical_key = $1",
+                "SELECT alias_key FROM entity_aliases WHERE subject_type = $2 AND canonical_key = $1",
             )
             .bind(&canonical)
+            .bind(&stype)
             .fetch_all(&mut **tx)
             .await?;
             keys.push(canonical.clone());
             let mut deps = Vec::new();
             for k in &keys {
-                for mut d in load_deps(tx, None, Some((k, predicate))).await? {
+                for mut d in load_deps(tx, None, Some((&stype, k, predicate))).await? {
                     if d.claim.is_some() && keys.contains(&d.subject) {
                         d.subject = canonical.clone();
                     }
@@ -404,19 +418,20 @@ async fn insert_decision(
     .await?;
     for e in &evidence {
         sqlx::query(
-            "INSERT INTO decision_dependencies (id, tenant_id, decision_id, depends_on_claim, role, subject_key, predicate, applicability, materiality, snapshot) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+            "INSERT INTO decision_dependencies (id, tenant_id, decision_id, depends_on_claim, role, subject_key, predicate, applicability, materiality, snapshot, subject_type) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
         )
         .bind(Uuid::now_v7())
         .bind(p.tenant_id)
         .bind(id)
         .bind(e.claim.id)
         .bind(&e.role)
-        .bind(crate::verification::canonical_key(tx, &e.claim.subject_key).await?)
+        .bind(crate::verification::canonical_key_of(tx, &e.claim.subject_type, &e.claim.subject_key).await?)
         .bind(&e.claim.predicate)
         .bind(json!(applicability_of(&e.claim)))
         .bind(json!(e.materiality))
         .bind(json!(snapshot_of(&e.claim)))
+        .bind(&e.claim.subject_type)
         .execute(&mut **tx)
         .await?;
     }
@@ -638,9 +653,18 @@ pub async fn build_trace(tx: &mut Tx, id: Uuid) -> ApiResult<Value> {
     .bind(id.to_string())
     .fetch_optional(&mut **tx)
     .await?;
-    type TraceDep = (Option<Uuid>, Option<Uuid>, String, Option<String>, Value, Value);
+    type TraceDep = (
+        Option<Uuid>,
+        Option<Uuid>,
+        String,
+        Option<String>,
+        Value,
+        Value,
+        Option<String>,
+    );
     let deps: Vec<TraceDep> = sqlx::query_as(
-        "SELECT depends_on_claim, depends_on_decision, subject_key, predicate, snapshot, materiality FROM decision_dependencies WHERE decision_id = $1",
+        "SELECT depends_on_claim, depends_on_decision, subject_key, predicate, snapshot, materiality, subject_type \
+         FROM decision_dependencies WHERE decision_id = $1",
     )
     .bind(id)
     .fetch_all(&mut **tx)
@@ -648,7 +672,8 @@ pub async fn build_trace(tx: &mut Tx, id: Uuid) -> ApiResult<Value> {
     let mut evidence = Vec::new();
     let mut known = Vec::new();
     let mut changed = Vec::new();
-    for (claim, upstream, subject, predicate, snapshot, materiality) in deps {
+    for (claim, upstream, subject, predicate, snapshot, materiality, stype) in deps {
+        let stype = stype.unwrap_or_else(|| "part".into());
         match (claim, upstream) {
             (Some(cid), _) => {
                 let cur = current_version(tx, cid).await?;
@@ -658,22 +683,24 @@ pub async fn build_trace(tx: &mut Tx, id: Uuid) -> ApiResult<Value> {
                     "changed": cur.id != cid || cur.review_status == "rejected",
                 }));
                 let k: Vec<ClaimOut> = sqlx::query_as(&format!(
-                    "SELECT {} FROM claims WHERE subject_key = $1 AND predicate = $2 AND recorded_at <= $3 AND (superseded_at IS NULL OR superseded_at > $3) ORDER BY recorded_at",
+                    "SELECT {} FROM claims WHERE subject_key = $1 AND predicate = $2 AND subject_type = $4 AND recorded_at <= $3 AND (superseded_at IS NULL OR superseded_at > $3) ORDER BY recorded_at",
                     claims::CLAIM_COLS
                 ))
                 .bind(&subject)
                 .bind(&predicate)
                 .bind(d.decided_at)
+                .bind(&stype)
                 .fetch_all(&mut **tx)
                 .await?;
                 known.extend(k.into_iter().map(|c| json!({ "claim_id": c.id, "predicate": c.predicate, "value": snapshot_of(&c), "recorded_at": rfc3339(c.recorded_at) })));
                 let ch: Vec<ClaimOut> = sqlx::query_as(&format!(
-                    "SELECT {} FROM claims WHERE subject_key = $1 AND predicate = $2 AND (recorded_at > $3 OR superseded_at > $3) ORDER BY recorded_at",
+                    "SELECT {} FROM claims WHERE subject_key = $1 AND predicate = $2 AND subject_type = $4 AND (recorded_at > $3 OR superseded_at > $3) ORDER BY recorded_at",
                     claims::CLAIM_COLS
                 ))
                 .bind(&subject)
                 .bind(&predicate)
                 .bind(d.decided_at)
+                .bind(&stype)
                 .fetch_all(&mut **tx)
                 .await?;
                 changed.extend(ch.into_iter().map(|c| json!({

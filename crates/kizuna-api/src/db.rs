@@ -240,3 +240,18 @@ pub async fn assert_runtime_role(pool: &PgPool) -> Result<(), RoleCheckError> {
     }
     Ok(())
 }
+
+/// The tenant's UTC offset (minutes; tenant-local calendar for expiry checks and report date ranges).
+pub async fn tenant_offset(tx: &mut Tx, tenant: Uuid) -> Result<time::UtcOffset, sqlx::Error> {
+    let m: i32 = sqlx::query_scalar("SELECT utc_offset_minutes FROM tenants WHERE id = $1")
+        .bind(tenant)
+        .fetch_optional(&mut **tx)
+        .await?
+        .unwrap_or(540);
+    Ok(time::UtcOffset::from_whole_seconds(m * 60).unwrap_or(time::UtcOffset::UTC))
+}
+
+/// "Today" in the tenant's calendar at `now` (from the injected clock).
+pub async fn tenant_today(tx: &mut Tx, tenant: Uuid, now: time::OffsetDateTime) -> Result<time::Date, sqlx::Error> {
+    Ok(now.to_offset(tenant_offset(tx, tenant).await?).date())
+}

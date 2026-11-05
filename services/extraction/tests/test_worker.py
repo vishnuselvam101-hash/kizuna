@@ -212,3 +212,19 @@ def test_utf16_csv_is_decoded_not_garbled_as_cp932():
     # BOM-less UTF-16 (NUL bytes everywhere) must be refused, not decoded as cp932 garbage.
     r = run("text/csv", "Part Number,Material\nBRK-100,SUS304\n".encode("utf-16-le"))
     assert r == {"ok": False, "error": "csv_bad_encoding"}
+
+
+def test_explicit_utf8_setting_never_falls_back_to_cp932():
+    data = "Part Number,Material\nA-1,材質\n".encode("cp932")
+    r = run_opts("text/csv", data, {"csv_encoding": "utf-8"})
+    assert r == {"ok": False, "error": "csv_bad_encoding"}
+    r = run("text/csv", data)  # no setting: auto-detection may still pick CP932, with a warning
+    assert r["ok"] and "csv_decoded_as:cp932" in r["warnings"]
+
+
+def test_large_csv_cell_within_cap_and_clear_error_above():
+    big = "x" * 200_000
+    r = run("text/csv", f"Part Number,Note\nA-1,{big}\n".encode())
+    assert r["ok"] and any(x["label"] == "Note" for x in r["records"]), r.get("error")  # value kept, clipped
+    r = run("text/csv", f"Part Number,Note\nA-1,{big}\n".encode(), max_cell_chars=100_000)
+    assert r == {"ok": False, "error": "csv_cell_too_large"}

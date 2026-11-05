@@ -45,6 +45,7 @@ DEFAULT_LIMITS = {
     "max_cells": 2_000_000,
     "max_rows": 1_000_000,
     "max_cols": 1000,
+    "max_cell_chars": 1_000_000,
     "max_dxf_pairs": 5_000_000,
     "max_ocr_pages": 20,
     "max_image_pixels": 60_000_000,

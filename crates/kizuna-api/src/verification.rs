@@ -49,9 +49,15 @@ fn integerize(v: &mut Value) {
 
 /// Canonical identity of a part key: safe normalisation, then confirmed alias.
 pub async fn canonical_key(tx: &mut Tx, key: &str) -> ApiResult<String> {
+    canonical_key_of(tx, "part", key).await
+}
+
+/// Canonical identity of a key of any subject type.
+pub async fn canonical_key_of(tx: &mut Tx, subject_type: &str, key: &str) -> ApiResult<String> {
     let n = safe_normalize(key);
     let c: Option<String> =
-        sqlx::query_scalar("SELECT canonical_key FROM entity_aliases WHERE subject_type = 'part' AND alias_key = $1")
+        sqlx::query_scalar("SELECT canonical_key FROM entity_aliases WHERE subject_type = $1 AND alias_key = $2")
+            .bind(subject_type)
             .bind(&n)
             .fetch_optional(&mut **tx)
             .await?;
@@ -688,7 +694,7 @@ pub struct RunResp {
 pub async fn run_detection(State(st): State<AppState>, p: Principal) -> ApiResult<Json<RunResp>> {
     p.require(&st, Permission::ClaimWrite).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let resp = detect_in_tx(&mut tx, p.tenant_id).await?;
+    let resp = detect_in_tx(&mut tx, p.tenant_id, st.clock.now()).await?;
     audit::append(&mut tx, p.tenant_id, Record::user(p.user_id, "verification.run", "tenant", p.tenant_id,
         json!({ "rule_version": RULE_VERSION, "new": resp.findings_new, "total": resp.findings_total, "obsolete": resp.marked_obsolete }))).await?;
     tx.commit().await?;
@@ -697,7 +703,7 @@ pub async fn run_detection(State(st): State<AppState>, p: Principal) -> ApiResul
 
 /// Detects conflicts for the tenant in `tx`. New findings are inserted; findings whose claims are no longer current
 /// become `obsolete` (kept, never deleted).
-pub async fn detect_in_tx(tx: &mut Tx, tenant: Uuid) -> ApiResult<RunResp> {
+pub async fn detect_in_tx(tx: &mut Tx, tenant: Uuid, now: OffsetDateTime) -> ApiResult<RunResp> {
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 13))")
         .bind(tenant.to_string())
         .execute(&mut **tx)
@@ -705,7 +711,8 @@ pub async fn detect_in_tx(tx: &mut Tx, tenant: Uuid) -> ApiResult<RunResp> {
     let facts = load_facts(tx, None).await?;
     let rules = all_rules();
     let refs: Vec<&dyn Rule> = rules.iter().map(|r| r.as_ref()).collect();
-    let today = OffsetDateTime::now_utc().date().to_string();
+    // Expiry is judged on the tenant's calendar day at the injected clock's "now", not the server's UTC date.
+    let today = db::tenant_today(tx, tenant, now).await?.to_string();
     let findings = conflict_engine::run(&refs, &facts, &Ctx { today });
     let mut new = 0;
     for f in &findings {

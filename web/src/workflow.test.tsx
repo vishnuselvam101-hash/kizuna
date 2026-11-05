@@ -263,7 +263,7 @@ test("organisation report: POST /reports shows hash and signature and offers the
   fireEvent.change(screen.getByLabelText("From (optional)"), { target: { value: "2026-11-01" } });
   fireEvent.click(screen.getByRole("button", { name: "Generate organisation report" }));
   await screen.findByText("1 conflicts · 1 decisions · audit chain Intact");
-  expect(sent).toEqual({ scope: "all", from: "2026-11-01T00:00:00Z" });
+  expect(sent).toEqual({ scope: "all", from_date: "2026-11-01" });
   expect(screen.getByText("9f".repeat(32))).toBeTruthy();
   expect(screen.getByText(/Signed \(ed25519\), public key 1212/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Download report JSON" }));
@@ -283,7 +283,7 @@ test("organisation report 'To' date includes that whole day", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Generate organisation report" }));
   await screen.findByText("1 conflicts · 1 decisions · audit chain Intact");
   // The server's upper bound is exclusive: "to 5 Nov" must reach the start of 6 Nov, not an empty range.
-  expect(sent).toEqual({ scope: "open_findings", from: "2026-11-05T00:00:00Z", to: "2026-11-06T00:00:00Z" });
+  expect(sent).toEqual({ scope: "open_findings", from_date: "2026-11-05", to_date: "2026-11-05" });
 });
 
 test("organisation report without a server signing key says it is unsigned", async () => {
