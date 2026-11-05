@@ -126,6 +126,25 @@ pub fn router(st: AppState) -> Router {
         .route("/decisions/{id}/report", get(decisions::report))
         .route("/decisions/{id}/reconfirm", post(decisions::reconfirm))
         .route("/decisions/{id}/revoke", post(decisions::revoke))
+        .route("/match/lines", get(crate::matching::list))
+        .route("/match/line", get(crate::matching::get))
+        .route("/match/line/runs", post(crate::matching::record))
+        .route("/match/line/accept", post(crate::matching::accept))
+        .route(
+            "/evidence-requests",
+            get(crate::evidence_requests::list).post(crate::evidence_requests::create),
+        )
+        .route("/evidence-requests/preview", get(crate::evidence_requests::preview))
+        .route("/evidence-requests/{id}", get(crate::evidence_requests::get))
+        .route(
+            "/evidence-requests/{id}/approve",
+            post(crate::evidence_requests::approve),
+        )
+        .route("/evidence-requests/{id}/cancel", post(crate::evidence_requests::cancel))
+        .route(
+            "/evidence-requests/{id}/document",
+            get(crate::evidence_requests::document),
+        )
         .route("/security/summary", get(incidents::summary))
         .route("/security/status", get(crate::ops::status))
         .route("/dashboard/summary", get(insights::dashboard))

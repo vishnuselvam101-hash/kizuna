@@ -348,16 +348,16 @@ fn role(r: &Option<String>) -> ApiResult<String> {
     }
 }
 
-struct Prepared {
-    claim: ClaimOut,
-    role: String,
-    materiality: Materiality,
-    artifact_sha256: Option<String>,
+pub(crate) struct Prepared {
+    pub(crate) claim: ClaimOut,
+    pub(crate) role: String,
+    pub(crate) materiality: Materiality,
+    pub(crate) artifact_sha256: Option<String>,
 }
 
 /// Inserts a decision with its dependencies and derivation snapshot.
 #[allow(clippy::too_many_arguments)]
-async fn insert_decision(
+pub(crate) async fn insert_decision(
     tx: &mut Tx,
     p: &Principal,
     req: &CreateReq,
@@ -456,7 +456,7 @@ async fn insert_decision(
     Ok(id)
 }
 
-async fn artifact_sha(tx: &mut Tx, c: &ClaimOut) -> ApiResult<Option<String>> {
+pub(crate) async fn artifact_sha(tx: &mut Tx, c: &ClaimOut) -> ApiResult<Option<String>> {
     match c.artifact_id {
         Some(a) => Ok(
             sqlx::query_scalar("SELECT encode(sha256, 'hex') FROM artifacts WHERE id = $1")

@@ -6,8 +6,10 @@ export type View =
   | "records"
   | "revisions"
   | "findings"
+  | "match"
   | "decisions"
   | "affected"
+  | "rerequests"
   | "reports"
   | "users"
   | "integrations"
@@ -21,8 +23,8 @@ export interface Section {
 export const SECTIONS: Section[] = [
   { id: "overview", views: [{ id: "dashboard" }] },
   { id: "evidence", views: [{ id: "documents" }, { id: "records" }, { id: "revisions" }] },
-  { id: "conflicts", views: [{ id: "findings" }] },
-  { id: "decisions", views: [{ id: "decisions" }, { id: "affected" }] },
+  { id: "conflicts", views: [{ id: "findings" }, { id: "match" }] },
+  { id: "decisions", views: [{ id: "decisions" }, { id: "affected" }, { id: "rerequests" }] },
   { id: "reports", views: [{ id: "reports" }] },
   { id: "admin", views: [{ id: "users", perm: "user_read" }, { id: "integrations", perm: "user_manage" }, { id: "security", perm: "audit_read" }] },
 ];

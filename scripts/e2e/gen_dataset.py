@@ -10,6 +10,11 @@ Stdlib only. All names and values are synthetic; no customer data.
 Fault types (DIRECTIVE §13): wrong_revision, duplicate_component_id, conflicting_spec, wrong_unit,
 missing_approval, expired_document (document-level, one per faulty part), malicious_upload (file-level) and
 unauthorised_request (request-level, executed by driver.py).
+
+Quality three-way match case (`--match-lines`, separate RNG stream so the original case is unchanged): PO lines
+with drawing, mill sheet and inspection report, one injected mismatch per faulty line (MATCH_FAULTS), ground truth
+in ground_truth.json["match"]; plus re-request scenarios (evidence changes on accepted clean lines and the exact
+supplier documents that must be resent).
 """
 
 from __future__ import annotations
@@ -285,15 +290,170 @@ def generate(seed: int, n_parts: int) -> tuple[dict[str, bytes], list[dict], dic
     return files, manifest, truth
 
 
+MATCH_FAULTS = [
+    "po_revision_stale",
+    "drawing_number_mismatch",
+    "certificate_revision_mismatch",
+    "po_drawing_material_mismatch",
+    "certificate_material_mismatch",
+    "certificate_type_insufficient",
+    "measurement_out_of_tolerance",
+    "property_out_of_spec",
+    "measurement_missing",
+    "traceability_missing",
+    "certificate_missing",
+]
+MATCH_SUPPLIERS = ["Nagoya Forge", "Sendai Steel", "Kobe Tube Works"]
+
+
+def match_case(seed: int, n_lines: int, taken: list[str]) -> tuple[dict[str, bytes], list[dict], dict]:
+    """PO line ↔ drawing ↔ certificates with injected mismatches; one part per line."""
+    rng = random.Random(seed * 7919 + 15)  # noqa: S311 (synthetic data, determinism wanted)
+    pns: list[str] = []
+    while len(pns) < n_lines:
+        pn = f"MX-{rng.randint(10000, 99999)}"
+        if all(lev(loose(pn), loose(o)) >= 3 for o in pns + taken):
+            pns.append(pn)
+    faults: list[str | None] = [MATCH_FAULTS[i % len(MATCH_FAULTS)] for i in range(2 * len(MATCH_FAULTS))]
+    faults += [None] * (n_lines - len(faults))
+    rng.shuffle(faults)
+    files: dict[str, bytes] = {}
+    manifest: list[dict] = []
+    lines: list[dict] = []
+    po_rows = ["PO Number,Line,Part No,Drawing No,Rev,Material,Qty,Vendor,Certificate type"]
+
+    def add(name: str, data: bytes, kind: str) -> None:
+        files[name] = data
+        manifest.append({"file": name, "kind": kind, "expect": "accepted"})
+
+    for i, (pn, fault) in enumerate(zip(pns, faults, strict=True)):
+        po, line = f"PO-{8100 + i // 3}", str(i % 3 + 1)
+        rev = rng.choice("BCDE")
+        mat = rng.choice(MATERIALS)
+        sup = rng.choice(MATCH_SUPPLIERS)
+        dn = f"DM-{3000 + i}"
+        length, od = rng.randint(40, 400), rng.randint(10, 90)
+        tol, od_tol = rng.choice(["0.1", "0.2"]), "0.05"
+        ts_min = rng.choice([400, 490, 520])
+        req_type = "EN 10204 3.2" if fault == "certificate_type_insufficient" else rng.choice(["EN 10204 3.1", "EN 10204 2.2"])
+        sup_type = "EN 10204 3.1"
+        lot, heat = f"L{rng.randint(1000, 9999)}", f"H{rng.randint(10000, 99999)}"
+
+        def drawing(r: str, ln: int) -> bytes:
+            return make_pdf(
+                [
+                    "DRAWING TITLE BLOCK",
+                    f"Drawing No: {dn}",
+                    f"Part Number: {pn}",
+                    f"Rev: {r}",
+                    f"Material: {mat}",
+                    f"Length (mm): {ln}",
+                    f"Length tolerance: +/-{tol}",
+                    f"Outer diameter (mm): {od}",
+                    f"Outer diameter tolerance: +/-{od_tol}",
+                    f"Tensile strength (MPa): min {ts_min}",
+                    "Approval Status: Released",
+                ]
+            )
+
+        add(f"match/drawing_{pn}_{rev}.pdf", drawing(rev, length), "drawing")
+        if fault == "po_revision_stale":
+            add(f"match/drawing_{pn}_{chr(ord(rev) + 1)}.pdf", drawing(chr(ord(rev) + 1), length + 5), "drawing")
+        po_dn = f"DM-{3500 + i}" if fault == "drawing_number_mismatch" else dn
+        po_mat = rng.choice([m for m in MATERIALS if m != mat]) if fault == "po_drawing_material_mismatch" else mat
+        po_rows.append(f"{po},{line},{pn},{po_dn},{rev},{po_mat},{rng.randint(10, 400)},{sup},{req_type}")
+        docs: dict[str, str] = {}
+        if fault != "certificate_missing":
+            ms_mat = rng.choice([m for m in MATERIALS if m != mat]) if fault == "certificate_material_mismatch" else mat
+            ts = ts_min - rng.randint(5, 30) if fault == "property_out_of_spec" else ts_min + rng.randint(5, 80)
+            ms = [
+                "MILL TEST CERTIFICATE (INSPECTION CERTIFICATE)",
+                f"Part Number: {pn}",
+                f"PO Number: {po}",
+                f"PO Line: {line}",
+                *([] if fault == "traceability_missing" else [f"Heat No: {heat}"]),
+                f"Certificate type: {sup_type}",
+                f"Material: {ms_mat}",
+                f"Tensile strength (MPa): {ts}",
+                f"Supplier: {sup}",
+            ]
+            docs["mill_sheet"] = f"match/millsheet_{pn}.pdf"
+            add(docs["mill_sheet"], make_pdf(ms), "inspection_report")
+            ir_rev = chr(ord(rev) - 1) if fault == "certificate_revision_mismatch" else rev
+            meas = length + rng.choice([-1, 1]) * float(tol) * rng.choice([0, 0.25, 0.5])
+            if fault == "measurement_out_of_tolerance":
+                meas = length + rng.choice([-1, 1]) * float(tol) * 3
+            od_meas = od + rng.choice([-1, 1]) * float(od_tol) * rng.choice([0, 0.4])
+            ir = [
+                "INSPECTION REPORT",
+                f"Part Number: {pn}",
+                f"PO Number: {po}",
+                f"PO Line: {line}",
+                f"Lot: {lot}",
+                f"Rev: {ir_rev}",
+                f"Measured length (mm): {meas:.3f}",
+                *([] if fault == "measurement_missing" else [f"Measured outer diameter (mm): {od_meas:.3f}"]),
+                "Result: pass",
+                f"Supplier: {sup}",
+            ]
+            docs["inspection_report"] = f"match/inspection_{pn}.pdf"
+            add(docs["inspection_report"], make_pdf(ir), "inspection_report")
+        lines.append(
+            {
+                "purchase_order": po,
+                "po_line": line,
+                "part": pn,
+                "supplier": sup.upper(),
+                "fault": fault,
+                "expected_kinds": [fault] if fault else [],
+                "docs": docs,
+                "values": {"tol": tol, "material": mat, "ts_min": ts_min},
+            }
+        )
+    add("match/purchase_orders_match.csv", ("\n".join(po_rows) + "\n").encode(), "purchase_order")
+    # Re-request scenarios on accepted clean lines: which supplier documents must be resent after each change.
+    clean = [x for x in lines if not x["fault"]]
+    scen = [
+        ("tolerance_tightened", "mfg.tolerance.length.plus", lambda v: {"value_num": str(float(v["tol"]) / 2)}, ["inspection_report"]),
+        ("material_changed", "mfg.material", lambda v: {"value_text": "SUS316L"}, ["mill_sheet"]),
+        ("property_limit_raised", "mfg.property.tensile_strength.min", lambda v: {"value_num": str(v["ts_min"] + 200)}, ["mill_sheet"]),
+        ("approval_withdrawn", "mfg.approval.status", lambda v: {"value_text": "pending"}, []),
+    ]
+    resupply = []
+    for x, (sid, pred, newv, docs) in zip(clean, scen, strict=False):
+        resupply.append(
+            {
+                "id": sid,
+                "purchase_order": x["purchase_order"],
+                "po_line": x["po_line"],
+                "part": x["part"],
+                "supplier": x["supplier"],
+                "predicate": pred,
+                "new": newv(x["values"]),
+                "expected_docs": [x["docs"][d] for d in docs],
+            }
+        )
+    truth = {"lines": lines, "faults": MATCH_FAULTS, "resupply": resupply}
+    return files, manifest, truth
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--parts", type=int, default=24)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--match-lines", type=int, default=30)
     a = ap.parse_args()
     if a.parts < 7:
         ap.error("--parts must be >= 7 (one per document fault type plus a clean part)")
     files, manifest, truth = generate(a.seed, a.parts)
+    if a.match_lines:
+        if a.match_lines < 2 * len(MATCH_FAULTS) + 4:
+            ap.error(f"--match-lines must be 0 or >= {2 * len(MATCH_FAULTS) + 4} (two per mismatch type plus 4 clean)")
+        mf, mm, mt = match_case(a.seed, a.match_lines, [p["part"] for p in truth["parts"]])
+        files.update(mf)
+        manifest.extend(mm)
+        truth["match"] = mt
     out = Path(a.out)
     for name, data in files.items():
         p = out / "files" / name

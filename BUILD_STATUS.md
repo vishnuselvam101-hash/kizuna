@@ -28,6 +28,12 @@ Since: extraction uses a short lease row instead of a held connection (8 concurr
 tenant timezone (IANA, admin screen, audited) drives expiry "today" and report dates; checkpoints are chained (KZCP2);
 JA/EN manual merged and updated (idle timeout, re-auth, time zone, re-extract).
 
+## Innovation I1 + I4: three-way match and minimal re-request (2026-11-05, branch `innov-match`)
+| Command | Result |
+|---|---|
+| `scripts/check.sh` (own DB `kizuna_test_match`) | **pass**: fmt, clippy `-D warnings`, 241 Rust tests incl. `tests/innov_match.rs` (3, real PostgreSQL + sandboxed extraction), audits 0, 62 pytest, 57 vitest (+7 match/re-request UI incl. axe EN/JA) |
+| `scripts/e2e.sh --seed 7` / `--seed 11 --parts 48` | pass. Match case: 30 PO lines, 22 injected mismatches (11 kinds × 2): precision 1.00, recall 1.00 (tp 22, fp 0, fn 0) on both seeds. Re-request: 4 evidence changes → 3 documents requested (all expected) vs 6 under "resend everything"; the approval change asks the supplier for nothing. SYNTHETIC: generator and rules were built together, so this shows the pipeline works on known layouts, not accuracy on real documents. `dirty: true` in provenance = the untracked research note only |
+
 ## M7 results (2026-11-05, this host)
 | Command | Result |
 |---|---|
