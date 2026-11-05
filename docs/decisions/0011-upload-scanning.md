@@ -3,7 +3,7 @@
 Status: accepted (2026-11-05)
 
 ## Decision
-- Uploads are typed by content (magic bytes) against an allowlist: PDF, XLSX, CSV/UTF-8 text, PNG, JPEG, TIFF.
+- Uploads are typed by content (magic bytes) against an allowlist: PDF, XLSX, CSV (UTF-8 or Shift_JIS/CP932 text), PNG, JPEG, TIFF.
   Declared MIME type and file name are recorded but never trusted; names are display-only and sanitised.
 - `evidence-core::scan` (static, no parsing/execution): PDF active-content markers (/JavaScript, /JS, /Launch,
   /EmbeddedFile, /RichMedia, /XFA, /SubmitForm) → quarantine; XLSX central directory checks (entry count, total and

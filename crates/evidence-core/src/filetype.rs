@@ -47,7 +47,21 @@ fn is_dxf(b: &[u8]) -> bool {
     lines.next() == Some("0") && lines.next() == Some("SECTION")
 }
 
-/// Detects an allowed type from magic bytes. Text is accepted as CSV only if it is valid UTF-8 without control characters (except tab/CR/LF).
+/// Structurally valid Shift_JIS/CP932 text (ASCII, half-width katakana, lead+trail double-byte pairs). Japanese
+/// CSV exports are mostly CP932; the extraction worker decodes them (`csv_encoding: shift_jis` import setting).
+fn is_shift_jis(b: &[u8]) -> bool {
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            0x00..=0x7F | 0xA1..=0xDF => i += 1,
+            0x81..=0x9F | 0xE0..=0xFC if matches!(b.get(i + 1), Some(0x40..=0x7E | 0x80..=0xFC)) => i += 2,
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// Detects an allowed type from magic bytes. Text is accepted as CSV only if it is valid UTF-8 or Shift_JIS without control characters (except tab/CR/LF).
 pub fn detect(b: &[u8]) -> Option<FileType> {
     if b.starts_with(b"%PDF-") {
         Some(FileType::Pdf)
@@ -63,7 +77,7 @@ pub fn detect(b: &[u8]) -> Option<FileType> {
         && !b
             .iter()
             .any(|&c| c < 0x20 && !matches!(c, b'\t' | b'\n' | b'\r') || c == 0x7f)
-        && std::str::from_utf8(b).is_ok()
+        && (std::str::from_utf8(b).is_ok() || is_shift_jis(b))
     {
         if is_dxf(b) {
             Some(FileType::Dxf)
@@ -85,7 +99,15 @@ mod tests {
         assert_eq!(detect(b"part,rev\nA-1,C\n"), Some(FileType::Csv));
         assert_eq!(detect(b"MZ\x90\0\x03"), None, "executables rejected");
         assert_eq!(detect(b"a,b\0c"), None);
-        assert_eq!(detect(&[0xC3, 0x28]), None, "invalid UTF-8");
+        assert_eq!(detect(&[0xFD, 0x28]), None, "neither UTF-8 nor Shift_JIS");
+        // "品番,材質\nBRK-1,鉄\n" and half-width "ﾊﾟｰﾂ" in CP932: Japanese CSV exports must not be refused at upload.
+        assert_eq!(
+            detect(b"\x95i\x94\xd4,\x8d\xde\x8e\xbf\nBRK-1,\x93S\n"),
+            Some(FileType::Csv)
+        );
+        assert_eq!(detect(b"\xca\xdf\xb0\xc2\n"), Some(FileType::Csv));
+        assert_eq!(detect(b"a,\x95"), None, "truncated double-byte character");
+        assert_eq!(detect(b"a,\x95\x0a"), None, "invalid trail byte");
         assert_eq!(detect(b""), None);
         assert_eq!(FileType::from_media_type("text/csv"), Some(FileType::Csv));
         assert_eq!(detect(b"  0\r\nSECTION\r\n  2\r\nHEADER\r\n"), Some(FileType::Dxf));
