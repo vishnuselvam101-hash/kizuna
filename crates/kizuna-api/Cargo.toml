@@ -16,6 +16,7 @@ conflict-engine = { path = "../conflict-engine" }
 domain-manufacturing = { path = "../domain-manufacturing" }
 dependency-engine = { path = "../dependency-engine" }
 security-detection = { path = "../security-detection" }
+integrity-signals = { path = "../integrity-signals" }
 rust_decimal.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "macros", "multipart"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "fs", "io-util", "process", "sync"] }

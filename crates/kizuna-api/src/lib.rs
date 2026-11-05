@@ -17,6 +17,7 @@ pub mod error;
 pub mod extraction;
 pub mod incidents;
 pub mod insights;
+pub mod integrity;
 pub mod keyring;
 pub mod ops;
 pub mod ratelimit;
