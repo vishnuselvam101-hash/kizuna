@@ -9,6 +9,7 @@ import io
 import re
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 from posixpath import normpath
 from xml.parsers import expat
 
@@ -136,7 +137,7 @@ class _Zip:
         try:
             with self.z.open(info) as f:
                 data = f.read(limit + 1)  # header sizes can lie: cap the actual inflated bytes too
-        except (zipfile.BadZipFile, EOFError, NotImplementedError, RuntimeError) as e:
+        except (zipfile.BadZipFile, EOFError, NotImplementedError, RuntimeError, zlib.error) as e:
             raise ExtractionError("xlsx_bad_zip") from e
         if len(data) > limit:
             raise ExtractionError("xlsx_member_too_large")

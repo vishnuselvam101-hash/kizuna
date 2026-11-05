@@ -216,3 +216,11 @@ def test_fuzz_mutated_documents_never_crash(media, edits, cut):
     assert isinstance(r["ok"], bool)
     assert r["ok"] or r["error"] != "extractor_crashed", "unexpected exception type: add a structured error"
     json.dumps(r)
+
+
+def test_regression_corrupt_deflate_stream_is_a_structured_error():
+    # Found by the mutation fuzzer: a NUL byte inside the first member's deflate data raised zlib.error.
+    d = bytearray(SEEDS[XLSX])
+    d[104:105] = b"\x00"
+    r = run(XLSX, bytes(d[:1079]))
+    assert r["ok"] or r["error"] != "extractor_crashed", r
