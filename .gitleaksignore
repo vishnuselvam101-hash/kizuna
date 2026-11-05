@@ -1,0 +1,38 @@
+# Historical E2E reports (commits 18fe6a6, c24c469) contained bearer tokens of throwaway E2E databases that were
+# dropped at the end of each run, so the tokens can never authenticate. The driver now redacts credentials
+# (scripts/e2e/driver.py:redact). Exact fingerprints only; no path or rule is ignored.
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:172
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:173
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:183
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:184
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:194
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:195
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:205
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:206
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:216
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:217
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:227
+c24c469f51df8823fb381754b7947f8c4ac4c6d1:reports/e2e/e2e-seed7.json:generic-api-key:228
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:171
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:172
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:182
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:183
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:193
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:194
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:204
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:205
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:215
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:216
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:226
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed7.json:generic-api-key:227
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:187
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:188
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:198
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:199
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:210
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:220
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:221
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:231
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:232
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:242
+18fe6a609f34dc8e42571a96c43daf8fce6cc3f2:reports/e2e/e2e-seed11.json:generic-api-key:243

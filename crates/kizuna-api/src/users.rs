@@ -40,7 +40,7 @@ pub async fn insert_user(
     if name.trim().is_empty() || name.chars().count() > 200 {
         return Err(ApiError::BadRequest("invalid_display_name"));
     }
-    crypto::check_password_policy(password).map_err(|_| ApiError::BadRequest("password_policy"))?;
+    crypto::check_password_policy(password, &email).map_err(|e| ApiError::BadRequest(e.code()))?;
     let pw = password.to_owned();
     let hash = tokio::task::spawn_blocking(move || crypto::hash_password(&pw))
         .await
@@ -291,6 +291,7 @@ pub async fn reset_mfa(
     if r.rows_affected() == 0 {
         return Err(ApiError::NotFound);
     }
+    crate::webauthn::clear_all(&mut tx, id).await?;
     let n = revoke_user_sessions(&mut tx, p.tenant_id, id, None, "mfa_reset").await?;
     audit::append(
         &mut tx,

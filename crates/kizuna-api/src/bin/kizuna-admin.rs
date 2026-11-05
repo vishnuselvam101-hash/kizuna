@@ -7,11 +7,13 @@
 //! kizuna-admin unlock <tenant-slug> <email>
 //! kizuna-admin verify-audit <tenant-slug>
 //! kizuna-admin emergency-unlock <tenant-slug>   (re-enable admins, lift IP blocks/restrictions; audited)
+//! kizuna-admin rotate-data-key [<tenant-slug>]       (re-encrypts secrets under KIZUNA_DATA_KEY; all tenants if omitted)
 
 use std::io::BufRead;
 
 use kizuna_api::audit::{self, Record};
-use kizuna_api::{auth, db, users};
+use kizuna_api::keyring::{self, DataKeys};
+use kizuna_api::{auth, db, users, webauthn};
 use policy_engine::Role;
 use serde_json::json;
 use uuid::Uuid;
@@ -102,6 +104,7 @@ async fn main() -> R<()> {
             let u = user_id(&mut tx, email).await?;
             sqlx::query("UPDATE users SET totp_enabled = false, totp_secret_enc = NULL, totp_pending_enc = NULL, totp_last_step = NULL WHERE id = $1")
                 .bind(u).execute(&mut *tx).await?;
+            webauthn::clear_all(&mut tx, u).await?;
             let n = auth::revoke_user_sessions(&mut tx, t, u, None, "operator_mfa_reset").await?;
             audit::append(
                 &mut tx,
@@ -144,10 +147,48 @@ async fn main() -> R<()> {
                 std::process::exit(2);
             }
         }
+        ["rotate-data-key", rest @ ..] if rest.len() <= 1 => {
+            let keys = DataKeys::from_lookup(&|k| std::env::var(k).ok())?;
+            let tenants: Vec<Uuid> = match rest.first() {
+                Some(slug) => vec![tenant_id(&pool, slug).await?],
+                None => {
+                    sqlx::query_scalar("SELECT id FROM tenants ORDER BY id")
+                        .fetch_all(&pool)
+                        .await?
+                }
+            };
+            let mut failed = false;
+            for t in tenants {
+                let mut tx = db::tenant_tx(&pool, t).await?;
+                let now = time::OffsetDateTime::now_utc();
+                let s = keyring::reencrypt_tenant(&mut tx, &keys, t, now).await?;
+                let stale = keyring::stale_count(&mut tx, &keys).await?;
+                audit::append(
+                    &mut tx,
+                    t,
+                    op(
+                        "crypto.data_key_rotated",
+                        "tenant",
+                        t,
+                        json!({ "key_id": keys.current_id(), "rewritten": s.rewritten, "unreadable": s.unreadable, "stale_remaining": stale }),
+                    ),
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                tx.commit().await?;
+                failed |= stale > 0;
+                println!("{t}: {}", json!({ "stats": s, "stale_remaining": stale }));
+            }
+            if failed {
+                eprintln!("some secrets are not under the current key; keep the old keys configured");
+                std::process::exit(2);
+            }
+        }
         _ => {
             eprintln!(
                 "usage: kizuna-admin migrate | create-tenant <slug> <name> | create-user <slug> <email> <role> <name> \
-                       | reset-mfa <slug> <email> | unlock <slug> <email> | verify-audit <slug> | emergency-unlock <slug>"
+                       | reset-mfa <slug> <email> | unlock <slug> <email> | verify-audit <slug> | emergency-unlock <slug> \
+                       | rotate-data-key [<slug>]"
             );
             std::process::exit(64);
         }

@@ -36,12 +36,14 @@ sha1 = "0.10"
 rand = "0.9"
 base64 = "0.22"
 subtle = "2"
+webauthn-rs = { version = "0.6", features = ["danger-allow-state-serialisation"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [dev-dependencies]
 proptest.workspace = true
 http-body-util = "0.1"
+webauthn-authenticator-rs = { version = "0.6", features = ["softpasskey"] }
 
 [lints]
 workspace = true

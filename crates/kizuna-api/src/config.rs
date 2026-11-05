@@ -3,7 +3,7 @@
 use std::fmt;
 use std::net::SocketAddr;
 
-use base64::Engine;
+use crate::keyring::DataKeys;
 
 /// A secret value whose Debug/Display output is redacted.
 #[derive(Clone)]
@@ -44,8 +44,11 @@ pub struct RateLimits {
 pub struct Config {
     pub database_url: Secret<String>,
     pub bind: SocketAddr,
-    /// 32-byte key for encrypting secrets at rest (TOTP seeds).
-    pub data_key: Secret<[u8; 32]>,
+    /// Versioned 32-byte keys for secrets at rest (TOTP seeds, WebAuthn credentials); see `keyring`.
+    pub data_keys: DataKeys,
+    /// WebAuthn relying party: id (registrable domain) and the exact browser origin.
+    pub webauthn_rp_id: String,
+    pub webauthn_origin: String,
     pub access_ttl_secs: i64,
     pub session_ttl_secs: i64,
     pub max_body_bytes: usize,
@@ -63,13 +66,6 @@ pub struct Config {
     pub extraction_timeout_secs: u64,
     /// Ed25519 seed for signed audit checkpoints (keep outside the database).
     pub audit_signing_key: Option<Secret<[u8; 32]>>,
-}
-
-pub fn parse_data_key(b64: &str) -> Result<[u8; 32], ConfigError> {
-    let raw = base64::engine::general_purpose::STANDARD
-        .decode(b64.trim())
-        .map_err(|_| ConfigError::Invalid("KIZUNA_DATA_KEY"))?;
-    raw.try_into().map_err(|_| ConfigError::Invalid("KIZUNA_DATA_KEY"))
 }
 
 impl Config {
@@ -98,11 +94,17 @@ impl Config {
         if session_ttl_secs < access_ttl_secs {
             return Err(ConfigError::Invalid("KIZUNA_SESSION_TTL_SECS"));
         }
+        let webauthn_rp_id = get("KIZUNA_WEBAUTHN_RP_ID").unwrap_or_else(|| "localhost".into());
+        let webauthn_origin = get("KIZUNA_WEBAUTHN_ORIGIN").unwrap_or_else(|| "http://localhost:8080".into());
+        crate::webauthn::build(&webauthn_rp_id, &webauthn_origin)
+            .map_err(|_| ConfigError::Invalid("KIZUNA_WEBAUTHN_ORIGIN"))?;
         let here = std::env::current_dir().unwrap_or_default();
         Ok(Config {
             database_url: Secret::new(req("KIZUNA_DATABASE_URL")?),
             bind,
-            data_key: Secret::new(parse_data_key(&req("KIZUNA_DATA_KEY")?)?),
+            data_keys: DataKeys::from_lookup(&get)?,
+            webauthn_rp_id,
+            webauthn_origin,
             access_ttl_secs,
             session_ttl_secs,
             max_body_bytes: num("KIZUNA_MAX_BODY_BYTES", 64 * 1024, 1024, 1024 * 1024)? as usize,
@@ -137,9 +139,7 @@ impl Config {
             },
             audit_signing_key: match get("KIZUNA_AUDIT_SIGNING_KEY").filter(|v| !v.is_empty()) {
                 None => None,
-                Some(v) => Some(Secret::new(
-                    parse_data_key(&v).map_err(|_| ConfigError::Invalid("KIZUNA_AUDIT_SIGNING_KEY"))?,
-                )),
+                Some(v) => Some(Secret::new(crate::keyring::parse_key(&v, "KIZUNA_AUDIT_SIGNING_KEY")?)),
             },
             extraction_timeout_secs: num("KIZUNA_EXTRACTION_TIMEOUT_SECS", 45, 5, 50)? as u64,
         })
@@ -149,6 +149,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
     use std::collections::HashMap;
 
     fn base() -> HashMap<&'static str, String> {
@@ -197,5 +198,14 @@ mod tests {
         let mut m = base();
         m.insert("KIZUNA_ACCESS_TTL_SECS", "999999".into());
         assert!(Config::from_lookup(|k| m.get(k).cloned()).is_err());
+        let mut m = base();
+        m.insert("KIZUNA_WEBAUTHN_ORIGIN", "not a url".into());
+        assert!(Config::from_lookup(|k| m.get(k).cloned()).is_err());
+        let mut m = base();
+        m.insert("KIZUNA_WEBAUTHN_ORIGIN", "https://evil.example".into());
+        assert!(
+            Config::from_lookup(|k| m.get(k).cloned()).is_err(),
+            "origin must match rp id"
+        );
     }
 }

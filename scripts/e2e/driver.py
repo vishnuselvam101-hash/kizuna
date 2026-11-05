@@ -67,6 +67,18 @@ class Api:
         )
 
 
+SECRET_KEYS = {"access_token", "refresh_token", "password", "totp_code", "secret_base32", "otpauth_uri"}
+
+
+def redact(v):
+    """Reports never contain credentials, even from throwaway databases."""
+    if isinstance(v, dict):
+        return {k: ("[REDACTED]" if k in SECRET_KEYS else redact(x)) for k, x in v.items()}
+    if isinstance(v, list):
+        return [redact(x) for x in v]
+    return v
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True)
@@ -312,7 +324,7 @@ def main() -> int:
         "security_event_kinds": sec_kinds,
         "checks": checks,
     }
-    Path(a.out).write_text(json.dumps(result, indent=1, default=list))
+    Path(a.out).write_text(json.dumps(redact(result), indent=1, default=list))
     print(
         f"\nfindings={len(conflicts)} precision={precision:.3f} recall(rule faults)={recall:.3f} "
         f"overall fault recall={result['overall_fault_recall']:.3f} ({detected}/{injected})"

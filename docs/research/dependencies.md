@@ -19,11 +19,18 @@ review is manual (this table).
 | uuid, time, serde, serde_json, thiserror, tracing(-subscriber) | current | MIT/Apache-2.0 | basics | |
 | ed25519-dalek | 2 | BSD-3-Clause | signed audit checkpoints | RUSTSEC-2022-0093 fixed in 2.0 |
 | rust_decimal | 1 | MIT | exact decimal unit conversion / tolerance checks | no floats in rules |
+| webauthn-rs | 0.6.2 | MPL-2.0 | WebAuthn ceremonies (ADR 0006) | kanidm project, SUSE-audited lineage; pure RustCrypto backend (`crypto-glue`), no OpenSSL; feature `danger-allow-state-serialisation` only so ceremony state can be sealed server-side (never sent to clients). MPL-2.0 is file-level copyleft: we link unmodified; modifying its files would require publishing those files. `cargo audit` 2026-11-05: 0 advisories (425 crates) |
 | proptest (dev) | 1 | MIT/Apache-2.0 | property tests | |
+| webauthn-authenticator-rs (dev, `softpasskey`) | 0.6.2 | MPL-2.0 | software authenticator for WebAuthn integration tests | test-only, not in the server binary |
 | http-body-util (dev) | 0.1 | MIT | test body reads | |
 
 Not adopted: `governor` (own 60-line limiter, ADR 0008), `jsonwebtoken` (opaque tokens, ADR 0005), `totp-rs`
-(TOTP from RustCrypto HMAC, RFC vectors), `webauthn-rs` (MPL-2.0, deferred), MinIO (AGPL-3.0, ADR 0009).
+(TOTP from RustCrypto HMAC, RFC vectors), MinIO (AGPL-3.0, ADR 0009).
+
+## Bundled data
+| File | Source | Licence | Use |
+|---|---|---|---|
+| `crates/kizuna-api/data/common-passwords.txt` | SecLists `Passwords/Common-Credentials/xato-net-10-million-passwords-1000000.txt` (commit c205c36, file sha256 424a3e03…caf51), filtered to ≥12 chars, lower-cased, de-duplicated: 46,146 entries | MIT (SecLists, `data/common-passwords.LICENSE`) | offline common/breached password screening; no network calls |
 
 ## Python (services/extraction, via uv)
 | Package | Licence | Use |
