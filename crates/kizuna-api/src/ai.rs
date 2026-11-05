@@ -16,6 +16,32 @@ use crate::db::{self, Tx};
 use crate::error::ApiResult;
 
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
+/// Concurrent AI calls per process, and at most one per tenant: a slow free provider used by one tenant cannot
+/// occupy capacity other tenants need (review M5-M7 L6). Busy → immediate fallback to rules (`ai_busy`).
+const MAX_CONCURRENT_AI_CALLS: usize = 8;
+static AI_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(MAX_CONCURRENT_AI_CALLS);
+static AI_TENANTS: std::sync::Mutex<Vec<Uuid>> = std::sync::Mutex::new(Vec::new());
+
+struct TenantSlot(Uuid);
+
+impl TenantSlot {
+    fn take(t: Uuid) -> Option<Self> {
+        let mut g = AI_TENANTS.lock().ok()?;
+        if g.contains(&t) {
+            return None;
+        }
+        g.push(t);
+        Some(TenantSlot(t))
+    }
+}
+
+impl Drop for TenantSlot {
+    fn drop(&mut self) {
+        if let Ok(mut g) = AI_TENANTS.lock() {
+            g.retain(|x| *x != self.0);
+        }
+    }
+}
 
 pub struct Suggested {
     pub claims: Vec<ClaimInput>,
@@ -57,6 +83,14 @@ pub async fn suggest(
         tx.commit().await?;
         return done(Ok(None), refused);
     }
+    let Some(_tenant_slot) = TenantSlot::take(tenant) else {
+        tx.commit().await?;
+        return done(Err("ai_busy"), refused);
+    };
+    let Ok(_slot) = AI_SLOTS.try_acquire() else {
+        tx.commit().await?;
+        return done(Err("ai_busy"), refused);
+    };
     let system = aimap::system_prompt();
     let user = aimap::user_prompt(kind, &cands);
     let prompt_hash = crate::crypto::sha256(format!("{system}\n{user}").as_bytes());

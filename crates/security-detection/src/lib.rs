@@ -145,6 +145,10 @@ impl Default for DetectionSettings {
     }
 }
 
+/// At most this many `authz.denied` events are recorded per user and minute (`kizuna-api` auth.rs). R4 counts a
+/// 10-minute window, so its threshold (and adaptive cap) must stay well below 10 × this, or R4 could never fire.
+pub const AUTHZ_EVENTS_RECORDED_PER_MIN: u32 = 30;
+
 /// Allowed range per setting. Lower bounds keep every rule able to fire; upper bounds stop a tenant (or a stolen
 /// admin session) from switching detection off by setting absurd thresholds.
 const BOUNDS: [(&str, usize, usize); 11] = [
@@ -152,7 +156,7 @@ const BOUNDS: [(&str, usize, usize); 11] = [
     ("brute_force_lock", 3, 100),
     ("spray_failures", 3, 200),
     ("spray_users", 2, 50),
-    ("authz_denials", 3, 500),
+    ("authz_denials", 3, 150),
     ("privileged_ops", 2, 200),
     ("upload_abuse", 2, 200),
     ("extraction_failures", 2, 200),
@@ -164,6 +168,21 @@ const BOUNDS: [(&str, usize, usize); 11] = [
 impl DetectionSettings {
     pub fn bounds() -> BTreeMap<&'static str, [usize; 2]> {
         BOUNDS.iter().map(|(k, lo, hi)| (*k, [*lo, *hi])).collect()
+    }
+
+    /// Less sensitive than `old`: any threshold raised, adaptive switched on, or a larger adaptive factor/baseline.
+    pub fn weaker_than(&self, old: &DetectionSettings) -> bool {
+        let (a, b) = (
+            serde_json::to_value(&self.thresholds).unwrap_or_default(),
+            serde_json::to_value(&old.thresholds).unwrap_or_default(),
+        );
+        let raised = a.as_object().is_some_and(|m| {
+            m.iter()
+                .any(|(k, v)| v.as_u64().unwrap_or(0) > b[k].as_u64().unwrap_or(0))
+        });
+        raised
+            || (self.mode == Mode::Adaptive
+                && (old.mode == Mode::Static || self.adaptive_max_factor > old.adaptive_max_factor))
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
@@ -204,6 +223,7 @@ const VOLUME_RULES: [(usize, i64, &[&str], bool); 5] = [
             "admin.user_disabled",
             "auth.mfa_reset",
             "auth.sessions_revoked",
+            "admin.settings_changed",
         ],
         true,
     ),
@@ -248,7 +268,19 @@ pub fn effective_thresholds(s: &DetectionSettings, history: &[Event], now: i64) 
             _ => &mut t.exports,
         };
         let base = *slot;
-        let cap = base.saturating_mul(s.adaptive_max_factor.max(1) as usize);
+        // Never above the setting's upper bound (e.g. R4 must stay below what is recorded per window, review L1).
+        let name = [
+            "authz_denials",
+            "privileged_ops",
+            "upload_abuse",
+            "extraction_failures",
+            "exports",
+        ][idx];
+        let hi = BOUNDS.iter().find(|b| b.0 == name).map_or(usize::MAX, |b| b.2);
+        let cap = base
+            .saturating_mul(s.adaptive_max_factor.max(1) as usize)
+            .min(hi)
+            .max(base);
         *slot = (peak + 1).clamp(base, cap);
     }
     t
@@ -293,7 +325,7 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
     let credential_fail = |e: &&Event| {
         matches!(
             e.details.get("reason").map(String::as_str),
-            Some("bad_password" | "bad_totp" | "reauth_bad_password")
+            Some("bad_password" | "bad_totp" | "reauth_bad_password" | "bad_webauthn" | "bad_recovery_code")
         )
     };
     let cf: Vec<&Event> = fails.iter().copied().filter(credential_fail).collect();
@@ -380,6 +412,7 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
             "admin.user_disabled",
             "auth.mfa_reset",
             "auth.sessions_revoked",
+            "admin.settings_changed",
         ],
     );
     for (actor, es) in group_by(&priv_ops, |e| e.user.clone()) {
@@ -485,6 +518,36 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detection_bounds_stay_below_recording_caps() {
+        let hi = BOUNDS.iter().find(|b| b.0 == "authz_denials").unwrap().2;
+        assert!(
+            hi * 2 <= 10 * AUTHZ_EVENTS_RECORDED_PER_MIN as usize,
+            "R4 bound {hi} too close to the recording cap"
+        );
+        let mut s = DetectionSettings::default();
+        s.thresholds.authz_denials = 151;
+        assert_eq!(s.validate(), Err("authz_denials"));
+        // Adaptive never exceeds the bound either.
+        s.thresholds.authz_denials = 100;
+        s.mode = Mode::Adaptive;
+        s.adaptive_max_factor = 5;
+        let now = 100 * 86_400;
+        let hist: Vec<Event> = (0..400)
+            .map(|i| {
+                ev(
+                    i,
+                    "authz.denied",
+                    Some("u1"),
+                    "1.1.1.1",
+                    now - 2 * 86_400 + (i % 300) as i64,
+                    "",
+                )
+            })
+            .collect();
+        assert_eq!(effective_thresholds(&s, &hist, now).authz_denials, 150);
+    }
 
     #[test]
     fn settings_defaults_bounds_and_unknown_keys() {

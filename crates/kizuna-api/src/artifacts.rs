@@ -412,13 +412,54 @@ pub async fn content(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
 /// Releases a quarantined artifact after human review (privileged, MFA, audited).
 pub async fn release(State(st): State<AppState>, p: Principal, Path(id): Path<Uuid>) -> ApiResult<Json<ArtifactOut>> {
     p.require(&st, Permission::IncidentManage).await?;
-    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let status: Option<String> = sqlx::query_scalar("SELECT status FROM artifacts WHERE id = $1 FOR UPDATE")
+    // Four-eyes: nobody releases a document they uploaded (review M5-M7 L8).
+    {
+        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        let own: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM artifacts WHERE id = $1 AND created_by = $2) \
+             OR EXISTS (SELECT 1 FROM artifact_captures WHERE artifact_id = $1 AND uploaded_by = $2)",
+        )
         .bind(id)
-        .fetch_optional(&mut *tx)
+        .bind(p.user_id)
+        .fetch_one(&mut *tx)
         .await?;
-    if status.ok_or(ApiError::NotFound)? != "quarantined" {
+        tx.commit().await?;
+        p.require_on(
+            &st,
+            Permission::IncidentManage,
+            &policy_engine::Resource {
+                tenant_id: p.tenant_id,
+                kind: "artifact",
+                owner_user_id: own.then_some(p.user_id),
+            },
+        )
+        .await?;
+    }
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let row: Option<(String, Value)> =
+        sqlx::query_as("SELECT status, scan_result FROM artifacts WHERE id = $1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let (status, scan) = row.ok_or(ApiError::NotFound)?;
+    if status != "quarantined" {
         return Err(ApiError::Conflict("not_quarantined"));
+    }
+    // Quarantined by an integrity incident: the stored bytes must verify again before release.
+    if scan.get("quarantined_by_incident").is_some() {
+        tx.commit().await?;
+        let (intact, _, _) = verify_integrity(&st, &p, id).await?;
+        if !intact {
+            return Err(ApiError::Conflict("integrity_check_failed"));
+        }
+        tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        let still: Option<String> = sqlx::query_scalar("SELECT status FROM artifacts WHERE id = $1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if still.as_deref() != Some("quarantined") {
+            return Err(ApiError::Conflict("not_quarantined"));
+        }
     }
     sqlx::query(
         "UPDATE artifacts SET status = 'accepted', scan_result = scan_result || jsonb_build_object('released_by', $2::text, 'released_at', now()) WHERE id = $1",

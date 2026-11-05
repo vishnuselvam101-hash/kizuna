@@ -267,7 +267,7 @@ async fn extract_locked(
             return Err(ApiError::Conflict("extraction_suspended"));
         }
     }
-    let _permit = st.worker_permits.acquire().await.map_err(ApiError::internal)?;
+    let permit = st.worker_permits.acquire().await.map_err(ApiError::internal)?;
     let started = OffsetDateTime::now_utc();
     // The tenant's saved import settings (latest version) drive the worker and the long-table mapping.
     let import = {
@@ -303,6 +303,8 @@ async fn extract_locked(
     for r in &mut records {
         integerize(&mut r.location);
     }
+    // The sandbox slot is released before the (slow, external) AI step (review M5-M7 L6).
+    drop(permit);
     if let Some(m) = &import.mapping {
         records = domain_manufacturing::apply_column_mapping(&records, m);
     }
@@ -474,7 +476,7 @@ async fn extract_locked(
                     new_claim: cid.to_string(),
                     new: crate::decisions::snapshot_of(&fresh),
                 })
-            } else if o.review_status != "ai_suggested" {
+            } else if o.review_status == "accepted" || !o.extraction_method.starts_with("ai:") {
                 // A reviewed claim replaced by an unreviewed suggestion is no longer evidence.
                 Some(dependency_engine::Change::Withdrawn {
                     old_claim: o.id.to_string(),
@@ -504,7 +506,7 @@ async fn extract_locked(
             continue;
         }
         not_reconfirmed += 1;
-        if o.review_status != "ai_suggested" {
+        if o.review_status == "accepted" || !o.extraction_method.starts_with("ai:") {
             sqlx::query("UPDATE claims SET review_status = 'needs_evidence' WHERE id = $1")
                 .bind(o.id)
                 .execute(&mut *tx)
@@ -643,7 +645,8 @@ pub async fn load_facts_of(tx: &mut Tx, subject_type: &str, only_subject: Option
     let rows: Vec<FactRow> = sqlx::query_as(
         "SELECT c.id, c.subject_key, c.predicate, c.value_text, c.value_num::text, c.value_unit, c.revision, c.scope, \
                 CASE WHEN c.extraction_method = 'manual' THEN 'manual' ELSE coalesce(a.kind, 'manual') END FROM claims c LEFT JOIN artifacts a ON a.id = c.artifact_id \
-         WHERE c.subject_type = $1 AND c.superseded_at IS NULL AND c.review_status NOT IN ('rejected', 'ai_suggested')",
+         WHERE c.subject_type = $1 AND c.superseded_at IS NULL AND c.review_status <> 'rejected' \
+         AND (c.extraction_method NOT LIKE 'ai:%' OR c.review_status = 'accepted')",
     )
     .bind(subject_type)
     .fetch_all(&mut **tx)
@@ -1035,12 +1038,13 @@ pub async fn review_claim(
 ) -> ApiResult<Json<ClaimOut>> {
     let (decision, comment) = check_review(&req)?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let row: Option<(Option<OffsetDateTime>, String)> =
-        sqlx::query_as("SELECT superseded_at, review_status FROM claims WHERE id = $1 FOR UPDATE")
+    let row: Option<(Option<OffsetDateTime>, String, String)> =
+        sqlx::query_as("SELECT superseded_at, review_status, extraction_method FROM claims WHERE id = $1 FOR UPDATE")
             .bind(id)
             .fetch_optional(&mut *tx)
             .await?;
-    let (superseded, current) = row.ok_or(ApiError::NotFound)?;
+    let (superseded, current, method) = row.ok_or(ApiError::NotFound)?;
+    let ai_origin = method.starts_with("ai:");
     let owners = claim_owners(&mut tx, &[id]).await?;
     p.require_on(
         &st,
@@ -1062,6 +1066,8 @@ pub async fn review_claim(
     let status = match decision {
         "approve" => "accepted",
         "reject" => "rejected",
+        // AI provenance is sticky: only approve or reject moves a suggestion out of `ai_suggested` (M5-M7 M1).
+        _ if current == "ai_suggested" => "ai_suggested",
         _ => "needs_evidence",
     };
     insert_review(&mut tx, &p, "claim", id, decision, &comment).await?;
@@ -1083,10 +1089,23 @@ pub async fn review_claim(
     )
     .await?;
     let out = claims::fetch(&mut tx, id).await?;
-    // An accepted AI suggestion becomes evidence now (it was kept away from decisions while ai_suggested).
-    if current == "ai_suggested" && status == "accepted" {
+    // AI-origin claims are evidence only while accepted: entering `accepted` notifies dependents as new evidence,
+    // leaving it (request evidence) withdraws it.
+    if ai_origin && status == "accepted" && current != "accepted" {
         crate::decisions::on_claim_change(&mut tx, p.tenant_id, p.user_id, crate::decisions::new_evidence(&out))
             .await?;
+    }
+    if ai_origin && current == "accepted" && status == "needs_evidence" {
+        crate::decisions::on_claim_change(
+            &mut tx,
+            p.tenant_id,
+            p.user_id,
+            dependency_engine::Change::Withdrawn {
+                old_claim: id.to_string(),
+                reason: "AI-origin claim no longer accepted".into(),
+            },
+        )
+        .await?;
     }
     if status == "rejected" {
         crate::decisions::on_claim_change(

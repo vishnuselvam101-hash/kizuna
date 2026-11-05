@@ -76,7 +76,9 @@ async fn regression_m1r5_verify_has_no_false_alarm_under_concurrent_appends() {
     let verifies = async {
         let mut bad = 0;
         for _ in 0..15 {
-            if c.get("/api/v1/audit/verify", &tok).await.body["intact"] != true {
+            // Verification is rate limited (review M5-M7 M2): 429s are not alarms; every answered call must be intact.
+            let r = c.get("/api/v1/audit/verify", &tok).await;
+            if r.status == StatusCode::OK && r.body["intact"] != true {
                 bad += 1;
             }
         }

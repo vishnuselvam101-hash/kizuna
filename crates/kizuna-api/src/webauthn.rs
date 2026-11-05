@@ -379,6 +379,20 @@ pub async fn login_finish(
         .fetch_optional(&st.pool)
         .await?;
     let tenant = tenant.ok_or_else(invalid)?;
+    // A block applied after the challenge was issued still applies (review M5-M7 I2).
+    if crate::incidents::ip_blocked(&st.pool, tenant, &ip).await? {
+        sec::try_record(
+            &st.pool,
+            Some(tenant),
+            Kind::BlockedRequest,
+            None,
+            Some(&ip),
+            json!({ "endpoint": "webauthn_login" }),
+        )
+        .await
+        .ok();
+        return Err(ApiError::Forbidden("blocked"));
+    }
     let mut tx = db::tenant_tx(&st.pool, tenant).await?;
     let Some((uid, state)) =
         take_challenge::<PasskeyAuthentication>(&st, &mut tx, tenant, req.challenge_id, "login", None).await?

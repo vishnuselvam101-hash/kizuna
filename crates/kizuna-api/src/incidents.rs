@@ -39,7 +39,8 @@ pub fn forget_baseline(tenant: Uuid) {
 }
 
 /// The tenant's thresholds: configured values (defaults if unset); in adaptive mode raised from the tenant's own
-/// history, recomputed at most every 10 minutes.
+/// history, recomputed at most every 10 minutes. Events that opened an incident (unless closed as false positive)
+/// never count toward the baseline (review M5-M7 L2).
 pub async fn thresholds_for(tx: &mut Tx, tenant: Uuid) -> ApiResult<Thresholds> {
     let settings = crate::tenant_settings::detection(tx).await?;
     if settings.mode == security_detection::Mode::Static {
@@ -53,7 +54,13 @@ pub async fn thresholds_for(tx: &mut Tx, tenant: Uuid) -> ApiResult<Thresholds> 
         return Ok(t.clone());
     }
     let rows: Vec<(String, Option<Uuid>, OffsetDateTime)> = sqlx::query_as(
-        "SELECT kind, user_id, occurred_at FROM security_events WHERE tenant_id = $1          AND occurred_at > now() - make_interval(days => $2) AND occurred_at <= now() - interval '1 hour'          AND kind IN ('authz.denied', 'admin.role_changed', 'admin.user_disabled', 'auth.mfa_reset',          'auth.sessions_revoked', 'ingest.upload_rejected', 'ingest.artifact_quarantined', 'ingest.extraction_failed',          'export.report') ORDER BY occurred_at DESC LIMIT 100000",
+        "SELECT e.kind, e.user_id, e.occurred_at FROM security_events e WHERE e.tenant_id = $1 \
+         AND e.occurred_at > now() - make_interval(days => $2) AND e.occurred_at <= now() - interval '1 hour' \
+         AND e.kind IN ('authz.denied', 'admin.role_changed', 'admin.user_disabled', 'auth.mfa_reset', \
+         'auth.sessions_revoked', 'admin.settings_changed', 'ingest.upload_rejected', 'ingest.artifact_quarantined', \
+         'ingest.extraction_failed', 'export.report') \
+         AND NOT EXISTS (SELECT 1 FROM incidents i WHERE i.status <> 'false_positive' AND i.event_ids ? e.id::text) \
+         ORDER BY e.occurred_at DESC LIMIT 100000",
     )
     .bind(tenant)
     .bind(settings.baseline_days as i32)
@@ -391,11 +398,15 @@ async fn execute(
             ("executed", "artifact quarantined".into())
         }
         ActionKind::RestrictUploads => {
-            sqlx::query("UPDATE users SET upload_blocked_until = now() + make_interval(secs => $2) WHERE id = $1")
-                .bind(user()?)
-                .bind(UPLOAD_RESTRICT_SECS as f64)
-                .execute(&mut **tx)
-                .await?;
+            sqlx::query(
+                "UPDATE users SET upload_blocked_until = now() + make_interval(secs => $2), upload_blocked_by_action = $3 \
+                 WHERE id = $1",
+            )
+            .bind(user()?)
+            .bind(UPLOAD_RESTRICT_SECS as f64)
+            .bind(aid)
+            .execute(&mut **tx)
+            .await?;
             (
                 "executed",
                 format!("uploads restricted for {} minutes", UPLOAD_RESTRICT_SECS / 60),
@@ -459,20 +470,36 @@ async fn revert(
             Ok("account re-enabled".into())
         }
         "block_ip" => {
-            sqlx::query("DELETE FROM ip_blocks WHERE ip = $1")
+            // Only this action's own block: a newer block of the same address stays (review M5-M7 L5).
+            let n = sqlx::query("DELETE FROM ip_blocks WHERE ip = $1 AND action_id = $2")
                 .bind(target)
+                .bind(aid)
                 .execute(&mut **tx)
-                .await?;
-            Ok("block lifted".into())
+                .await?
+                .rows_affected();
+            Ok(if n == 0 {
+                "block already replaced by a newer action; left in place".into()
+            } else {
+                "block lifted".into()
+            })
         }
         "quarantine_artifact" => Err("release_via_artifact_review"),
         "restrict_uploads" => {
             let u = Uuid::parse_str(target).map_err(|_| ApiError::BadRequest("invalid_target"))?;
-            sqlx::query("UPDATE users SET upload_blocked_until = NULL WHERE id = $1")
-                .bind(u)
-                .execute(&mut **tx)
-                .await?;
-            Ok("upload restriction lifted".into())
+            let n = sqlx::query(
+                "UPDATE users SET upload_blocked_until = NULL, upload_blocked_by_action = NULL \
+                 WHERE id = $1 AND upload_blocked_by_action = $2",
+            )
+            .bind(u)
+            .bind(aid)
+            .execute(&mut **tx)
+            .await?
+            .rows_affected();
+            Ok(if n == 0 {
+                "restriction already replaced by a newer action; left in place".into()
+            } else {
+                "upload restriction lifted".into()
+            })
         }
         "suspend_extraction" => {
             sqlx::query("UPDATE tenant_controls SET extraction_suspended_until = NULL WHERE tenant_id = $1")
@@ -689,11 +716,15 @@ pub async fn decide_action(
     p.require(&st, Permission::IncidentManage).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let (kind, target, _policy, status) = load_action(&mut tx, incident, action).await?;
-    let subject: String = sqlx::query_scalar("SELECT subject FROM incidents WHERE id = $1")
+    let (subject, inc_status): (String, String) = sqlx::query_as("SELECT subject, status FROM incidents WHERE id = $1")
         .bind(incident)
         .fetch_one(&mut *tx)
         .await?;
     not_about_self(&st, &p, &subject, Some(&target)).await?;
+    // Actions of a closed incident can only be reverted, never approved (review M5-M7 L5).
+    if verb == "approve" && !matches!(inc_status.as_str(), "open" | "contained") {
+        return Err(ApiError::Conflict("incident_closed"));
+    }
     let comment = req.comment.unwrap_or_default().chars().take(500).collect::<String>();
     match verb.as_str() {
         "approve" => {
@@ -788,6 +819,15 @@ pub async fn resolve(
     if r.rows_affected() == 0 {
         return Err(ApiError::Conflict("incident_not_open"));
     }
+    // Pending proposals of a closed incident are closed with it.
+    sqlx::query(
+        "UPDATE response_actions SET status = 'rejected', detail = 'incident closed', decided_by = $2, updated_at = now() \
+         WHERE incident_id = $1 AND status = 'proposed'",
+    )
+    .bind(id)
+    .bind(p.user_id)
+    .execute(&mut *tx)
+    .await?;
     audit::append(
         &mut tx,
         p.tenant_id,

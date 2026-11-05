@@ -181,6 +181,7 @@ pub struct ChainVerifier {
     tenant_id: Uuid,
     prev: [u8; 32],
     checked: usize,
+    base: usize,
     broken: Option<Break>,
 }
 
@@ -190,6 +191,19 @@ impl ChainVerifier {
             tenant_id,
             prev: GENESIS,
             checked: 0,
+            base: 0,
+            broken: None,
+        }
+    }
+
+    /// Continues a chain after a trusted anchor (e.g. a verified signed checkpoint at `after_seq` with `hash`).
+    pub fn resume(tenant_id: Uuid, after_seq: i64, hash: [u8; 32]) -> Self {
+        let base = usize::try_from(after_seq.max(0)).unwrap_or(0);
+        ChainVerifier {
+            tenant_id,
+            prev: hash,
+            checked: base,
+            base,
             broken: None,
         }
     }
@@ -233,7 +247,7 @@ impl ChainVerifier {
 
     pub fn report(&self) -> VerifyReport {
         VerifyReport {
-            events_checked: self.checked,
+            events_checked: self.checked - self.base,
             first_break: self.broken.clone(),
             head_hash: self.prev,
         }

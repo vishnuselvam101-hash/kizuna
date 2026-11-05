@@ -66,6 +66,9 @@ pub struct Config {
     pub extraction_timeout_secs: u64,
     /// Ed25519 seed for signed audit checkpoints (keep outside the database).
     pub audit_signing_key: Option<Secret<[u8; 32]>>,
+    /// Retired audit signing keys (comma-separated in `KIZUNA_AUDIT_SIGNING_KEYS_PREVIOUS`): old checkpoints stay
+    /// verifiable by their stored key id after a rotation.
+    pub audit_signing_keys_previous: Vec<Secret<[u8; 32]>>,
     /// External AI label mapping (OFF unless configured; tenants must still opt in). See ADR 0016.
     pub ai: Option<AiConfig>,
 }
@@ -180,6 +183,13 @@ impl Config {
                 None => None,
                 Some(v) => Some(Secret::new(crate::keyring::parse_key(&v, "KIZUNA_AUDIT_SIGNING_KEY")?)),
             },
+            audit_signing_keys_previous: get("KIZUNA_AUDIT_SIGNING_KEYS_PREVIOUS")
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(|v| crate::keyring::parse_key(v, "KIZUNA_AUDIT_SIGNING_KEYS_PREVIOUS").map(Secret::new))
+                .collect::<Result<_, _>>()?,
             extraction_timeout_secs: num("KIZUNA_EXTRACTION_TIMEOUT_SECS", 45, 5, 50)? as u64,
             ai: match (
                 get("KIZUNA_AI_BASE_URL").filter(|v| !v.is_empty()),

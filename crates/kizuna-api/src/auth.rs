@@ -89,7 +89,10 @@ impl Principal {
             Decision::Deny(reason) => {
                 // At most 30 recorded denials per user per minute: a flood of forbidden requests cannot turn into
                 // unbounded event writes and detection runs (final review H1). The request is still denied.
-                if !st.limiter.check(&format!("authz-event:{}", self.user_id), 30) {
+                if !st.limiter.check(
+                    &format!("authz-event:{}", self.user_id),
+                    security_detection::AUTHZ_EVENTS_RECORDED_PER_MIN,
+                ) {
                     return Err(ApiError::Forbidden(reason.code()));
                 }
                 sec::record(

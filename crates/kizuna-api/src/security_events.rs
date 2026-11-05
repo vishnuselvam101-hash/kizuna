@@ -41,6 +41,8 @@ pub enum Kind {
     BlockedRequest,
     /// A document label looked like an instruction to the AI and was refused (ADR 0016).
     PromptInjectionSuspected,
+    /// A tenant security/ingest setting changed (detection thresholds, AI opt-in, import settings).
+    SettingsChanged,
 }
 
 impl Kind {
@@ -69,6 +71,7 @@ impl Kind {
             Kind::ExportReport => "export.report",
             Kind::BlockedRequest => "response.blocked_request",
             Kind::PromptInjectionSuspected => "ingest.prompt_injection_suspected",
+            Kind::SettingsChanged => "admin.settings_changed",
         }
     }
 
@@ -87,7 +90,8 @@ impl Kind {
             | Kind::QuarantineReleased
             | Kind::ContainmentApplied
             | Kind::BlockedRequest
-            | Kind::PromptInjectionSuspected => "medium",
+            | Kind::PromptInjectionSuspected
+            | Kind::SettingsChanged => "medium",
             Kind::RefreshTokenReuse => "high",
             Kind::AuditChainBroken | Kind::ArtifactIntegrityFailure => "critical",
         }

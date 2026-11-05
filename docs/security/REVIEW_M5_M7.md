@@ -8,7 +8,7 @@ Out of scope (already reviewed): M1 review, `REVIEW_M2_M4.md`, the 2026-11-05 "f
 
 Severity: **High** = fix before release. **Medium** = required. **Low** = should fix. **Info** = for information.
 
-Counts: High 0 · Medium 2 · Low 8 · Info 4
+Counts: High 0 · Medium 2 · Low 8 · Info 4 — **all fixed on main 2026-11-05** (`tests/review_m5_m7_regressions.rs`, `tests/deploy_csp.rs`).
 
 ---
 
@@ -19,7 +19,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
   `webauthn_challenges`, `mfa_recovery_codes` (0006), `import_settings` (0008), `tenant_settings`, `ai_calls` (0010).
   Append-only triggers on `audit_checkpoints`, `import_settings`, `tenant_settings`, `ai_calls`. Grants are minimal
   (column-level UPDATE on `incidents`/`response_actions`). Roles are NOSUPERUSER/NOBYPASSRLS (DEPLOYMENT.md:36-37).
-- **Authz, deny by default:** all 67 routes in `app.rs:72-140` were enumerated. Every handler except the
+- **Authz, deny by default:** all 67 API method handlers in `app.rs:72-140` (plus `/healthz`) were enumerated. Every handler except the
   unauthenticated login/refresh/WebAuthn-login/recover endpoints starts with `p.require(...)`/`require_on(...)`
   before any read. New routes: `/security/*` (SecurityEventRead / IncidentManage), `/audit/checkpoints*`
   (AuditVerify), `/integrations/*` + `/security/detection-settings` (GET UserRead / SecurityEventRead,
@@ -48,6 +48,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
 ## Medium
 
 ### M1. An AI suggestion becomes usable evidence through "request evidence", without anyone accepting it
+**Status: fixed** (2026-11-05): AI provenance sticky (`request_evidence` keeps `ai_suggested`; DB trigger allows only accept/reject out of it); rules/compare/decisions use AI-origin claims only when `accepted`; entering/leaving `accepted` notifies dependents. Test `m7_ai_request_evidence_does_not_launder_suggestion`.
 - **Where:** `crates/kizuna-api/src/verification.rs:856-866` (`request_evidence` → `needs_evidence` for any current
   status, including `ai_suggested`), `:881-885` (the new-evidence hook runs only for `ai_suggested → accepted`),
   `:441` (rules exclude only `rejected`/`ai_suggested`), `decisions.rs:520-526` (decisions refuse only
@@ -69,6 +70,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
   reviewer → decision allowed and dependents notified.
 
 ### M2. Any Auditor can stall all audited writes of a tenant (checkpoint lock held during full-chain verification; no rate limits)
+**Status: fixed**: checkpoint verification runs in a REPEATABLE READ snapshot without the head lock, incrementally from the last valid checkpoint; `/audit/verify`, `/audit/checkpoints*`, `/reports` limited to 6/min per user and 20/min per tenant; report sections capped at 10 000 rows (`truncated`). Test `m5_checkpoints_incremental_and_audit_endpoints_rate_limited`.
 - **Where:** `crates/kizuna-api/src/audit.rs:280-290` (`create_checkpoint`: `SELECT … FROM audit_heads … FOR UPDATE`,
   then `verify_tenant` over the whole chain in 1000-row batches, inside the same transaction); `audit.rs:49-60`
   (every `audit::append` needs that same row lock); `audit.rs:353-385` (`verify_checkpoints`: one query per stored
@@ -94,6 +96,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
 ## Low
 
 ### L1. A tenant admin can switch off "authorization probing" detection within the allowed bounds
+**Status: fixed**: `authz_denials` bound 150 (≤ half the 300 recordable per window, shared const `AUTHZ_EVENTS_RECORDED_PER_MIN`); adaptive cap clamped to the bound. Tests `detection_bounds_stay_below_recording_caps`, `thresholds_bounded_and_settings_changes_emit_security_events`.
 - **Where:** `crates/security-detection/src/lib.rs:155` (`authz_denials` upper bound 500 per 10 min);
   `crates/kizuna-api/src/auth.rs:92` (at most 30 `authz.denied` events recorded per user per minute = 300 per 10 min).
 - **Scenario:** a stolen admin+MFA session sets `authz_denials` to 301-500 via `PUT /security/detection-settings`;
@@ -104,6 +107,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
 - **Regression test:** `detection_bounds_stay_below_recording_caps` (unit) + API test: `authz_denials: 301` → 400.
 
 ### L2. Adaptive baseline learns from events that already fired an incident
+**Status: fixed**: baseline excludes events referenced by any incident not closed as false positive. Test `adaptive_baseline_ignores_incident_events`.
 - **Where:** `crates/kizuna-api/src/incidents.rs:55-63` (baseline query takes all events 1 h–N days old);
   `security-detection/src/lib.rs:224-253`.
 - **Scenario:** in adaptive mode an insider triggers R4/R7 once (sessions revoked / uploads restricted for 1 h, then
@@ -115,6 +119,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
   incident 2 days ago → effective `authz_denials` stays at the configured value.
 
 ### L3. Weakening security settings is audited but never alerts
+**Status: fixed**: `admin.settings_changed` security event (with `weakening` flag) for detection, AI and import settings, counted by R5; audit details hold previous→new settings. Test `thresholds_bounded_and_settings_changes_emit_security_events`.
 - **Where:** `tenant_settings.rs:32-65` (`save`: audit only), `insights.rs:201-256` (`put_settings`: audit only, and
   the audit detail stores only the version, not what changed).
 - **Scenario:** detection thresholds raised to the maximum, adaptive mode on, AI egress enabled or the long-table
@@ -126,6 +131,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
   `/security-events`.
 
 ### L4. The audit signing key cannot be rotated without raising a false "audit chain broken" alarm
+**Status: fixed**: `KIZUNA_AUDIT_SIGNING_KEYS_PREVIOUS`; verification by stored key id (`current`/`retired`/`unknown_key`); unknown keys reported, not alarmed. Test `checkpoints_survive_signing_key_rotation`.
 - **Where:** `audit.rs:327-334` (`check_one` requires `c.public_key == current key`), `audit.rs:353-385`
   (`verify_checkpoints` re-labels every stored checkpoint with the *current* public key and records
   `AuditChainBroken` on any failure), `config.rs:179-182` (single key, no previous keys); `key_id` is stored but unused.
@@ -138,6 +144,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
   intact, no security event; drop old key → reported as `unknown_key`, not tampering.
 
 ### L5. Containment bookkeeping: revert lifts other actions' blocks; actions of closed incidents stay approvable
+**Status: fixed**: block/upload reverts scoped to the action id (`users.upload_blocked_by_action`); approve refused on closed incidents (`incident_closed`); resolve rejects pending proposals. Test `revert_only_lifts_own_block_and_closed_incident_actions_not_approvable`.
 - **Where:** `incidents.rs:461-466` (`DELETE FROM ip_blocks WHERE ip = $1`, ignores `action_id`), `:476-482`
   (same for `restrict_uploads`), `:683-724` (`decide_action` does not check the incident status), `:761-790`
   (`resolve` leaves `proposed` actions pending).
@@ -149,6 +156,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
 - **Regression test:** `revert_only_lifts_own_block`, `closed_incident_actions_not_approvable`.
 
 ### L6. A slow AI provider holds one of the two global extraction slots
+**Status: fixed**: sandbox permit dropped before the AI step; one AI call per tenant and 8 per process (`try_acquire`, busy → `ai_fallback:ai_busy`). Test `slow_ai_provider_does_not_block_other_tenants`.
 - **Where:** `verification.rs:217` (`worker_permits`, 2 per process, all tenants) and `:269` (`ai::suggest`, up to
   `KIZUNA_AI_TIMEOUT_SECS` ≤ 30 s, called while the permit and the per-artifact lock connection are held).
 - **Scenario:** one opted-in tenant with a throttled free provider keeps both slots busy for up to 30 s per
@@ -158,6 +166,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
 - **Regression test:** with the mock provider sleeping 10 s, a second tenant's extraction completes in < 5 s.
 
 ### L7. The SPA is served without CSP or frame-ancestors
+**Status: fixed**: CSP (`default-src 'self'`, no inline script, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'none'`), `X-Frame-Options DENY`, Permissions-Policy in the Caddy config (`docs/deploy/DEPLOYMENT.md`; `deploy/Caddyfile.pilot` checked too once merged). Test `deploy_csp.rs`.
 - **Where:** `docs/deploy/DEPLOYMENT.md:141-148` (Caddy `header` block: HSTS, nosniff, referrer only; "CSP should be
   added once the asset list is final"). API headers (`app.rs:63-71`) do not apply to the static files.
 - **Scenario:** no defence-in-depth against XSS (in-memory tokens can still be used by injected script) and the
@@ -169,6 +178,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
   `frame-ancestors 'none'`.
 
 ### L8. Artifact release has no four-eyes rule and no integrity re-check
+**Status: fixed**: release passes the uploader as resource owner (`NoSelfReview`); integrity-incident quarantines need a passing integrity check first. Test `uploader_cannot_release_own_quarantine_and_reports_are_audited`.
 - **Where:** `artifacts.rs:413-425` (`release`: IncidentManage only, `Resource` owner not set, no `verify_integrity`).
 - **Scenario:** an admin uploads a file the scanner quarantines (e.g. active PDF) and releases it themselves; or an
   artifact quarantined by an `artifact_integrity_failure` incident is released without the bytes being repaired
@@ -182,13 +192,13 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4
 
 ## Info
 
-- **I1.** `POST /reports` (organisation-wide export) is recorded only as a security event (`insights.rs:150`), not in
+- **I1. (fixed: `export.report` audit record; test above)** `POST /reports` (organisation-wide export) is recorded only as a security event (`insights.rs:150`), not in
   the tamper-evident audit chain; add an `export.report` audit record for exports.
-- **I2.** `login_finish` (`webauthn.rs:362-418`) does not re-check `ip_blocked`; a challenge obtained up to 5 min
+- **I2. (fixed: `login_finish` re-checks the IP block)** `login_finish` (`webauthn.rs:362-418`) does not re-check `ip_blocked`; a challenge obtained up to 5 min
   before a block can still finish. Low impact (start is blocked; blocks are login-only by design).
-- **I3.** R1 brute force counts `bad_password`/`bad_totp`/`reauth_bad_password` only (`security-detection/src/lib.rs:296`);
+- **I3. (fixed: R1 counts `bad_webauthn` and `bad_recovery_code`)** R1 brute force counts `bad_password`/`bad_totp`/`reauth_bad_password` only (`security-detection/src/lib.rs:296`);
   `bad_webauthn` and `bad_recovery_code` count toward lockout but never toward the incident.
-- **I4.** The audit signing key lives in the server environment; checkpoints protect against a DB-only attacker, not
+- **I4. (stated in THREAT_MODEL T4)** The audit signing key lives in the server environment; checkpoints protect against a DB-only attacker, not
   an app-host compromise (consistent with BUILD_STATUS M1 #6; state it in THREAT_MODEL).
 
 ## Checked and dropped (no finding)

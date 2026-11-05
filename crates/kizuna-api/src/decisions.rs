@@ -521,7 +521,7 @@ pub async fn create(
             return Err(ApiError::Conflict("claim_rejected"));
         }
         // An AI suggestion is not evidence until a person has reviewed it.
-        if c.review_status == "ai_suggested" {
+        if c.extraction_method.starts_with("ai:") && c.review_status != "accepted" {
             return Err(ApiError::Conflict("claim_ai_suggested_unreviewed"));
         }
         let artifact_sha256 = artifact_sha(&mut tx, &c).await?;

@@ -91,6 +91,7 @@ pub async fn org_report(
     ApiJson(req): ApiJson<OrgReportReq>,
 ) -> ApiResult<Response> {
     p.require(&st, Permission::AuditRead).await?;
+    audit::heavy_limit(&st, &p)?;
     let parse = |s: &Option<String>| {
         s.as_deref()
             .map(|v| {
@@ -109,7 +110,7 @@ pub async fn org_report(
     let findings: Vec<Value> = sqlx::query_scalar(
         "SELECT json_build_object('id', id, 'kind', kind, 'subject', subject_key, 'status', status, 'why', explanation->>'why', \
            'detected_at', detected_at)::jsonb FROM conflicts WHERE ($1 OR status IN ('open', 'needs_evidence')) \
-           AND ($2::timestamptz IS NULL OR detected_at >= $2) AND ($3::timestamptz IS NULL OR detected_at < $3) ORDER BY detected_at",
+           AND ($2::timestamptz IS NULL OR detected_at >= $2) AND ($3::timestamptz IS NULL OR detected_at < $3) ORDER BY detected_at LIMIT 10001",
     )
     .bind(all)
     .bind(from)
@@ -120,7 +121,7 @@ pub async fn org_report(
         "SELECT json_build_object('id', id, 'title', title, 'subject', subject_key, 'outcome', outcome, 'status', status, \
            'derivation_sha256', encode(derivation_sha256, 'hex'))::jsonb FROM decisions \
          WHERE ($1 OR status = 'potentially_affected') AND ($2::timestamptz IS NULL OR decided_at >= $2) \
-           AND ($3::timestamptz IS NULL OR decided_at < $3) ORDER BY decided_at",
+           AND ($3::timestamptz IS NULL OR decided_at < $3) ORDER BY decided_at LIMIT 10001",
     )
     .bind(all)
     .bind(from)
@@ -129,6 +130,11 @@ pub async fn org_report(
     .await?;
     let chain = audit::verify_tenant(&mut tx, p.tenant_id).await?;
     tx.commit().await?;
+    // Bounded output: narrow the date range when a report would exceed 10 000 rows per section.
+    let (mut findings, mut decisions) = (findings, decisions);
+    let truncated = findings.len() > 10_000 || decisions.len() > 10_000;
+    findings.truncate(10_000);
+    decisions.truncate(10_000);
     let mut body = json!({
         "report_version": "kizuna-org-report@1",
         "generated_at": OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
@@ -138,6 +144,7 @@ pub async fn org_report(
         "decisions": decisions,
         "audit_chain": { "intact": chain.intact, "events": chain.events_checked, "head_sha256": chain.head_hash },
         "statement": "Hashes show integrity since capture, not that document contents are true or authentic.",
+        "truncated": truncated,
     });
     let sha = crate::crypto::sha256(
         audit_engine::canonical_json(&body)
@@ -150,6 +157,21 @@ pub async fn org_report(
         body["signature"] = json!({ "algorithm": "ed25519", "public_key": hex::encode(audit_engine::checkpoint::public_key(k.expose())),
             "signature": hex::encode(audit_engine::checkpoint::sign(k.expose(), &msg)) });
     }
+    // Exports are part of the tamper-evident audit chain too (review M5-M7 I1).
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    audit::append(
+        &mut tx,
+        p.tenant_id,
+        audit::Record::user(
+            p.user_id,
+            "export.report",
+            "report",
+            hex::encode(sha),
+            json!({ "report": "org", "scope": if all { "all" } else { "open_findings" }, "truncated": truncated }),
+        ),
+    )
+    .await?;
+    tx.commit().await?;
     crate::security_events::record(
         &st.pool,
         Some(p.tenant_id),
@@ -224,6 +246,10 @@ pub async fn put_settings(
         .bind(p.tenant_id.to_string())
         .execute(&mut *tx)
         .await?;
+    let previous: Value = sqlx::query_scalar("SELECT settings FROM import_settings ORDER BY version DESC LIMIT 1")
+        .fetch_optional(&mut *tx)
+        .await?
+        .unwrap_or_else(|| json!({}));
     let cur: i32 = sqlx::query_scalar("SELECT coalesce(max(version), 0) FROM import_settings")
         .fetch_one(&mut *tx)
         .await?;
@@ -245,11 +271,13 @@ pub async fn put_settings(
             "settings.import_updated",
             "tenant",
             p.tenant_id,
-            json!({ "version": cur + 1 }),
+            json!({ "version": cur + 1, "previous": previous, "settings": req.settings }),
         ),
     )
     .await?;
     tx.commit().await?;
+    // The long-table mapping and limits change how every future document becomes claims (review L3).
+    crate::tenant_settings::alert_change(&st, &p, "import", cur + 1, false).await;
     Ok(Json(json!({ "version": cur + 1 })))
 }
 

@@ -29,7 +29,14 @@ pub async fn latest(tx: &mut Tx, kind: &str) -> ApiResult<(i32, Value, Option<(U
     })
 }
 
-async fn save(tx: &mut Tx, p: &Principal, kind: &'static str, expected: i32, settings: &Value) -> ApiResult<i32> {
+/// Saves a new version; returns it with the previous settings (for diffs and alerts).
+async fn save(
+    tx: &mut Tx,
+    p: &Principal,
+    kind: &'static str,
+    expected: i32,
+    settings: &Value,
+) -> ApiResult<(i32, Value)> {
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 29))")
         .bind(format!("{}:{kind}", p.tenant_id))
         .execute(&mut **tx)
@@ -41,6 +48,7 @@ async fn save(tx: &mut Tx, p: &Principal, kind: &'static str, expected: i32, set
     if cur != expected {
         return Err(ApiError::Conflict("settings_version_conflict"));
     }
+    let (_, previous, _) = latest(tx, kind).await?;
     sqlx::query("INSERT INTO tenant_settings (tenant_id, kind, version, settings, updated_by) VALUES ($1,$2,$3,$4,$5)")
         .bind(p.tenant_id)
         .bind(kind)
@@ -57,11 +65,25 @@ async fn save(tx: &mut Tx, p: &Principal, kind: &'static str, expected: i32, set
             &format!("settings.{kind}_updated"),
             "tenant",
             p.tenant_id,
-            json!({ "version": cur + 1, "settings": settings }),
+            json!({ "version": cur + 1, "previous": previous, "settings": settings }),
         ),
     )
     .await?;
-    Ok(cur + 1)
+    Ok((cur + 1, previous))
+}
+
+/// Settings changes are security-relevant: recorded as `admin.settings_changed` (feeds R5 privileged bursts and the
+/// security screen), flagged `weakening` when detection gets less sensitive or data egress is enabled (review L3).
+pub async fn alert_change(st: &AppState, p: &Principal, kind: &str, version: i32, weakening: bool) {
+    crate::security_events::record(
+        &st.pool,
+        Some(p.tenant_id),
+        crate::security_events::Kind::SettingsChanged,
+        Some(p.user_id),
+        Some(&p.ip),
+        json!({ "settings": kind, "version": version, "weakening": weakening }),
+    )
+    .await;
 }
 
 fn meta(v: i32, s: Value, by: Option<(Uuid, OffsetDateTime)>) -> Value {
@@ -136,8 +158,16 @@ pub async fn put_ai(State(st): State<AppState>, p: Principal, ApiJson(req): ApiJ
         json!({ "enabled": false })
     };
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let v = save(&mut tx, &p, "ai_extraction", req.expected_version, &settings).await?;
+    let (v, prev) = save(&mut tx, &p, "ai_extraction", req.expected_version, &settings).await?;
     tx.commit().await?;
+    alert_change(
+        &st,
+        &p,
+        "ai_extraction",
+        v,
+        req.enabled && prev["enabled"] != json!(true),
+    )
+    .await;
     Ok(Json(json!({ "version": v, "settings": settings })))
 }
 
@@ -182,8 +212,10 @@ pub async fn put_detection(
         .map_err(|_| ApiError::BadRequest("invalid_thresholds"))?;
     let settings = json!(req.settings);
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let v = save(&mut tx, &p, "detection", req.expected_version, &settings).await?;
+    let (v, prev) = save(&mut tx, &p, "detection", req.expected_version, &settings).await?;
     tx.commit().await?;
+    let old: security_detection::DetectionSettings = serde_json::from_value(prev).unwrap_or_default();
+    alert_change(&st, &p, "detection", v, req.settings.weaker_than(&old)).await;
     crate::incidents::forget_baseline(p.tenant_id);
     Ok(Json(json!({ "version": v, "settings": settings })))
 }

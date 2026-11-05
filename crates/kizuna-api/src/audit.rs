@@ -143,15 +143,22 @@ pub struct ChainStatus {
 /// Recomputes the whole chain in batches and compares its end with the stored head (detects tail truncation).
 /// Call inside a snapshot transaction (`db::tenant_snapshot_tx`) so concurrent appends cannot cause false alarms.
 pub async fn verify_tenant(tx: &mut Tx, tenant: Uuid) -> Result<ChainStatus, ApiError> {
+    verify_from(tx, tenant, None).await
+}
+
+/// Verifies the chain from a trusted anchor `(seq, hash)` (or from genesis) to the stored head.
+pub async fn verify_from(tx: &mut Tx, tenant: Uuid, anchor: Option<(i64, [u8; 32])>) -> Result<ChainStatus, ApiError> {
     db::set_tenant(tx, tenant).await?;
     let head: Option<(i64, Vec<u8>)> =
         sqlx::query_as("SELECT last_seq, last_hash FROM audit_heads WHERE tenant_id = $1")
             .bind(tenant)
             .fetch_optional(&mut **tx)
             .await?;
-    let mut v = ChainVerifier::new(tenant);
-    let mut last = 0i64;
-    let mut total = 0usize;
+    let (mut v, mut last) = match anchor {
+        Some((seq, h)) => (ChainVerifier::resume(tenant, seq, h), seq),
+        None => (ChainVerifier::new(tenant), 0i64),
+    };
+    let mut total = usize::try_from(last).unwrap_or(0);
     loop {
         let rows: Vec<Row> = sqlx::query_as(&format!(
             "SELECT {COLS} FROM audit_events WHERE tenant_id = $1 AND seq > $2 ORDER BY seq LIMIT 1000"
@@ -234,8 +241,19 @@ pub async fn list_events(
     ))
 }
 
+/// Full-chain work is O(chain): per user 6/min and per tenant 20/min (review M5-M7 M2).
+pub fn heavy_limit(st: &AppState, p: &Principal) -> ApiResult<()> {
+    if !st.limiter.check(&format!("heavy:user:{}", p.user_id), 6)
+        || !st.limiter.check(&format!("heavy:tenant:{}", p.tenant_id), 20)
+    {
+        return Err(ApiError::TooManyRequests);
+    }
+    Ok(())
+}
+
 pub async fn verify(State(st): State<AppState>, p: Principal) -> ApiResult<Json<ChainStatus>> {
     p.require(&st, Permission::AuditVerify).await?;
+    heavy_limit(&st, &p)?;
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
     let status = verify_tenant(&mut tx, p.tenant_id).await?;
     if !status.intact {
@@ -276,16 +294,59 @@ fn key_id(public: &[u8; 32]) -> String {
     hex::encode(&crate::crypto::sha256(public)[..8])
 }
 
-/// Signs the current chain head (only if the chain verifies). Export the returned JSON outside the database.
+/// Verification keys by key id: the current signing key and retired ones (review M5-M7 L4).
+fn verification_keys(st: &AppState) -> Vec<(String, [u8; 32], bool)> {
+    let mut out = Vec::new();
+    if let Some(k) = &st.cfg.audit_signing_key {
+        let p = audit_engine::checkpoint::public_key(k.expose());
+        out.push((key_id(&p), p, true));
+    }
+    for k in &st.cfg.audit_signing_keys_previous {
+        let p = audit_engine::checkpoint::public_key(k.expose());
+        out.push((key_id(&p), p, false));
+    }
+    out
+}
+
+type CpRow = (i64, Vec<u8>, OffsetDateTime, String, Vec<u8>);
+
+/// Signs the chain head of a consistent snapshot (only if the chain verifies). Verification starts at the latest
+/// checkpoint whose signature and stored hash still check out (incremental), and no lock is held while verifying,
+/// so audited writes of the tenant never wait for it (review M5-M7 M2). Export the returned JSON outside the DB.
 pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Checkpoint>> {
     p.require(&st, Permission::AuditVerify).await?;
+    heavy_limit(&st, &p)?;
     let seed = signing_key(&st)?;
-    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    sqlx::query("SELECT 1 FROM audit_heads WHERE tenant_id = $1 FOR UPDATE")
-        .bind(p.tenant_id)
-        .execute(&mut *tx)
-        .await?;
-    let status = verify_tenant(&mut tx, p.tenant_id).await?;
+    let keys = verification_keys(&st);
+    let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
+    let last: Option<CpRow> = sqlx::query_as(
+        "SELECT seq, head_hash, signed_at, key_id, signature FROM audit_checkpoints ORDER BY seq DESC LIMIT 1",
+    )
+    .fetch_optional(&mut *tx)
+    .await?;
+    let mut anchor = None;
+    if let Some((seq, head, at, kid, sig)) = last
+        && let Some((_, public, _)) = keys.iter().find(|k| k.0 == kid)
+    {
+        let c = Checkpoint {
+            tenant_id: p.tenant_id,
+            seq,
+            head_hash: hex::encode(&head),
+            signed_at_us: micros(at),
+            key_id: kid,
+            public_key: hex::encode(public),
+            signature: hex::encode(sig),
+        };
+        let r = check_one(&mut tx, &keys, &c).await?;
+        if r["signature_valid"] == true
+            && r["chain_matches"] == true
+            && let Ok(h) = <[u8; 32]>::try_from(head.as_slice())
+        {
+            anchor = Some((seq, h));
+        }
+    }
+    let status = verify_from(&mut tx, p.tenant_id, anchor).await?;
+    tx.commit().await?;
     if !status.intact {
         return Err(ApiError::Conflict("audit_chain_not_intact"));
     }
@@ -295,6 +356,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
     let sig = audit_engine::checkpoint::sign(&seed, &msg);
     let public = audit_engine::checkpoint::public_key(&seed);
     let kid = key_id(&public);
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     sqlx::query("INSERT INTO audit_checkpoints (id, tenant_id, seq, head_hash, signed_at, key_id, signature, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
         .bind(Uuid::now_v7())
         .bind(p.tenant_id)
@@ -314,7 +376,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
             "audit.checkpoint",
             "audit_log",
             status.head_seq,
-            json!({ "key_id": kid }),
+            json!({ "key_id": kid, "incremental_from": anchor.map(|a| a.0) }),
         ),
     )
     .await?;
@@ -330,53 +392,73 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
     }))
 }
 
-/// Checks a checkpoint's signature (against the configured key) and that the stored chain still has that hash at
-/// that position.
-async fn check_one(tx: &mut Tx, public: &[u8; 32], c: &Checkpoint) -> ApiResult<Value> {
+/// Checks a checkpoint's signature against the key named by its key id (current or retired) and that the stored
+/// chain still has that hash at that position. `key_status`: `current`, `retired` or `unknown_key` (cannot be
+/// checked: not evidence of tampering).
+async fn check_one(tx: &mut Tx, keys: &[(String, [u8; 32], bool)], c: &Checkpoint) -> ApiResult<Value> {
     let head = hex::decode(&c.head_hash).unwrap_or_default();
     let sig = hex::decode(&c.signature).unwrap_or_default();
-    let sig_ok = c.public_key == hex::encode(public)
-        && audit_engine::checkpoint::verify(
-            public,
-            &audit_engine::checkpoint::message(c.tenant_id, c.seq, &head, c.signed_at_us),
-            &sig,
-        );
+    let key = keys.iter().find(|k| k.0 == c.key_id);
+    let key_status = match key {
+        Some((_, _, true)) => "current",
+        Some(_) => "retired",
+        None => "unknown_key",
+    };
+    let sig_ok = key.is_some_and(|(_, public, _)| {
+        c.public_key == hex::encode(public)
+            && audit_engine::checkpoint::verify(
+                public,
+                &audit_engine::checkpoint::message(c.tenant_id, c.seq, &head, c.signed_at_us),
+                &sig,
+            )
+    });
     let stored: Option<Vec<u8>> = sqlx::query_scalar("SELECT hash FROM audit_events WHERE tenant_id = $1 AND seq = $2")
         .bind(c.tenant_id)
         .bind(c.seq)
         .fetch_optional(&mut **tx)
         .await?;
     let chain_ok = stored.as_deref() == Some(head.as_slice());
-    Ok(json!({ "seq": c.seq, "signature_valid": sig_ok, "chain_matches": chain_ok }))
+    Ok(
+        json!({ "seq": c.seq, "key_id": c.key_id, "key_status": key_status, "signature_valid": sig_ok, "chain_matches": chain_ok }),
+    )
 }
 
 pub async fn verify_checkpoints(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::AuditVerify).await?;
-    let public = audit_engine::checkpoint::public_key(&signing_key(&st)?);
+    heavy_limit(&st, &p)?;
+    signing_key(&st)?;
+    let keys = verification_keys(&st);
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
-    type CpRow = (i64, Vec<u8>, OffsetDateTime, String, Vec<u8>);
     let rows: Vec<CpRow> =
         sqlx::query_as("SELECT seq, head_hash, signed_at, key_id, signature FROM audit_checkpoints ORDER BY seq")
             .fetch_all(&mut *tx)
             .await?;
     let mut results = Vec::new();
     for (seq, head, at, kid, sig) in rows {
+        let public = keys
+            .iter()
+            .find(|k| k.0 == kid)
+            .map(|k| hex::encode(k.1))
+            .unwrap_or_default();
         let c = Checkpoint {
             tenant_id: p.tenant_id,
             seq,
             head_hash: hex::encode(head),
             signed_at_us: micros(at),
             key_id: kid,
-            public_key: hex::encode(public),
+            public_key: public,
             signature: hex::encode(sig),
         };
-        results.push(check_one(&mut tx, &public, &c).await?);
+        results.push(check_one(&mut tx, &keys, &c).await?);
     }
     let chain = verify_tenant(&mut tx, p.tenant_id).await?;
     tx.commit().await?;
+    // Checkpoints under a key that is no longer configured cannot be checked; they are reported, not alarmed.
+    let unknown_keys = results.iter().filter(|r| r["key_status"] == "unknown_key").count();
     let all_ok = chain.intact
         && results
             .iter()
+            .filter(|r| r["key_status"] != "unknown_key")
             .all(|r| r["signature_valid"] == true && r["chain_matches"] == true);
     if !all_ok {
         crate::security_events::record(
@@ -390,7 +472,7 @@ pub async fn verify_checkpoints(State(st): State<AppState>, p: Principal) -> Api
         .await;
     }
     Ok(Json(
-        json!({ "intact": all_ok, "chain": chain, "checkpoints": results }),
+        json!({ "intact": all_ok, "chain": chain, "checkpoints": results, "unverifiable_unknown_key": unknown_keys }),
     ))
 }
 
@@ -401,12 +483,14 @@ pub async fn verify_external(
     ApiJson(c): ApiJson<Checkpoint>,
 ) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::AuditVerify).await?;
+    heavy_limit(&st, &p)?;
     if c.tenant_id != p.tenant_id {
         return Err(ApiError::Forbidden("cross_tenant"));
     }
-    let public = audit_engine::checkpoint::public_key(&signing_key(&st)?);
+    signing_key(&st)?;
+    let keys = verification_keys(&st);
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
-    let r = check_one(&mut tx, &public, &c).await?;
+    let r = check_one(&mut tx, &keys, &c).await?;
     let chain = verify_tenant(&mut tx, p.tenant_id).await?;
     tx.commit().await?;
     if r["signature_valid"] != true {

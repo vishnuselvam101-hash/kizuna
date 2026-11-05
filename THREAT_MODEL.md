@@ -19,7 +19,7 @@ audit and security logs (integrity); decision records (integrity, non-repudiatio
 | T1 | S | Credential stuffing / brute force | argon2id, per-IP + per-account rate limits, lockout, security events | M1 implemented |
 | T2 | S | Stolen refresh token replay | rotation + reuse detection revokes family | M1 implemented |
 | T3 | S | Phishing of admin credentials | TOTP required for privileged actions; WebAuthn planned | M1 TOTP; WebAuthn designed only |
-| T4 | T | Tampering with audit log in DB | append-only grants + triggers + hash chain verify + Ed25519 checkpoints exported outside DB | M1 chain; M5 checkpoints |
+| T4 | T | Tampering with audit log in DB | append-only grants + triggers + hash chain verify + Ed25519 checkpoints exported outside DB; retired keys verifiable by key id. The signing key lives in the server environment: checkpoints defeat a DB-only attacker, not an app-host compromise (keep exported checkpoints off-host) | M1 chain; M5 checkpoints; M7 rotation |
 | T5 | I | Cross-tenant data access through bug | RLS FORCE + tenant check in policy-engine + tenant-isolation tests | M1 implemented |
 | T6 | E | Privilege escalation via role change | UserManage privileged (MFA), last-admin guard, audit of role changes | M1 implemented |
 | T7 | R | User denies an action | audit events with actor, session, hash chain | M1 implemented |
