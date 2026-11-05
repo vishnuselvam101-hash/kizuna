@@ -270,7 +270,14 @@ fn parse_date(v: &str) -> Option<String> {
         p[1].parse::<u32>().ok()?,
         p[2].parse::<u32>().ok()?,
     );
-    ((1900..=2200).contains(&y) && (1..=12).contains(&m) && (1..=31).contains(&d))
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let days = match m {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    ((1900..=2200).contains(&y) && (1..=12).contains(&m) && (1..=days).contains(&d))
         .then(|| format!("{y:04}-{m:02}-{d:02}"))
 }
 
@@ -453,6 +460,15 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dates_must_exist_on_the_calendar() {
+        assert_eq!(parse_date("2026/11/05").as_deref(), Some("2026-11-05"));
+        assert_eq!(parse_date("２０２８．０２．２９").as_deref(), Some("2028-02-29"));
+        for bad in ["2026-02-29", "2026-02-30", "2026-04-31", "2100-02-29", "2026-13-01"] {
+            assert_eq!(parse_date(bad), None, "{bad}");
+        }
+    }
 
     fn rec(label: &str, value: &str, group: &str) -> Record {
         Record {
