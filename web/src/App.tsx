@@ -47,7 +47,11 @@ function Shell({ api }: { api: Api }) {
 
   const go = useCallback((v: View) => {
     setView(v);
-    requestAnimationFrame(() => main.current?.focus());
+    // Move focus for screen readers without letting the browser scroll <main> under the sticky bar.
+    requestAnimationFrame(() => {
+      main.current?.focus({ preventScroll: true });
+      if (window.scrollY > 0) window.scrollTo({ top: 0 });
+    });
   }, []);
   const logout = useCallback(async () => {
     try {

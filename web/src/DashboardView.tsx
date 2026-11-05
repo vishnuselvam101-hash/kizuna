@@ -84,7 +84,7 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void })
   const affectedN = c?.decisions.potentially_affected ?? 0;
   const kpis = c
     ? [
-        { k: "dash.kpi.documents", v: docs, sub: t("dash.kpi.notAccepted", { n: fmtNum(quarantined) }), go: "documents" as View, tone: quarantined ? "warn" : "" },
+        { k: "dash.kpi.documents", v: docs, sub: t("dash.kpi.notAccepted", { n: fmtNum(quarantined) }), go: "documents" as View, tone: "", subTone: quarantined ? "warn" : "" },
         { k: "dash.kpi.openFindings", v: openN, sub: t("dash.kpi.needsEvidence", { n: fmtNum(c.conflicts.needs_evidence ?? 0) }), go: "findings" as View, tone: openN ? "crit" : "" },
         { k: "dash.kpi.decisions", v: c.decisions.valid ?? 0, sub: t("dash.kpi.validOfTotal", { n: fmtNum(sum(c.decisions)) }), go: "decisions" as View, tone: "" },
         { k: "dash.kpi.affected", v: affectedN, sub: t("dash.kpi.affectedSub"), go: "affected" as View, tone: affectedN ? "crit" : "" },
@@ -104,12 +104,12 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void })
                 <button className="kpi-btn" onClick={() => onNavigate(k.go)}>
                   <span className="kpi-label">{t(k.k as never)}</span>
                   <span className="kpi-value num">{fmtNum(k.v)}</span>
-                  <span className="kpi-sub">{k.sub}</span>
+                  <span className={`kpi-sub ${"subTone" in k ? k.subTone : ""}`}>{k.sub}</span>
                 </button>
               </li>
             ))}
             {s.chain && (
-              <li className={`kpi ${s.chain.intact ? "" : "crit"}`}>
+              <li className={`kpi ${s.chain.intact ? "ok" : "crit"}`}>
                 <button className="kpi-btn" onClick={() => onNavigate("reports")}>
                   <span className="kpi-label">{t("dash.kpi.auditChain")}</span>
                   <span className="kpi-value">{s.chain.intact ? t("audit.intact") : t("audit.broken")}</span>
@@ -139,7 +139,7 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void })
                   {s.open.slice(0, 6).map((c) => (
                     <li key={c.id}>
                       <Badge group="conflict.kind" value={c.kind} tone="crit" /> <b className="mono">{c.subject_key}</b>
-                      <span className="muted"> — {c.explanation.why}</span>
+                      <span className="muted att-why">{c.explanation.why}</span>
                     </li>
                   ))}
                 </ul>
@@ -153,7 +153,8 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void })
                 <ul className="list">
                   {affected.slice(0, 6).map((d) => (
                     <li key={d.id}>
-                      <Badge group="decision.status" value={d.status} /> {d.title} <span className="mono muted">{d.subject_key}</span>
+                      <Badge group="decision.status" value={d.status} /> {d.title}
+                      <span className="mono muted att-why">{d.subject_key}</span>
                     </li>
                   ))}
                 </ul>

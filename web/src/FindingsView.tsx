@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DataTable } from "./DataTable";
-import { claimValue, confidence, sourceLocation } from "./format";
+import { claimValue, confidence, confidenceShort, sourceLocation } from "./format";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
 import type { Claim, Conflict, ConflictDetail } from "./types";
@@ -32,7 +32,7 @@ function SourceCard({ c, d }: { c: Claim; d: ConflictDetail }) {
         )}
         <dt>{t("evidence.method")}</dt>
         <dd>
-          {tv("method", c.extraction_method)} · {confidence(t, c.confidence_bps)}
+          {tv("method", c.extraction_method)} · <span className="num">{confidenceShort(t, c.confidence_bps)}</span>
         </dd>
         <dt>{t("evidence.review")}</dt>
         <dd>

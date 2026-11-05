@@ -117,6 +117,7 @@ export function mountKnot(canvas: HTMLCanvasElement): Dispose {
   };
 }
 
+const SWING = 0.5;
 const LAYER_X: Record<string, number> = { document: -8, claim: -3, subject: 2.5, finding: 7.5, decision: 7.5 };
 
 /** Evidence graph as an orbiting faceted structure; click a node to pick it. */
@@ -154,6 +155,30 @@ export function mountGraph(canvas: HTMLCanvasElement, g: Graph, onPick: (id: str
     meshes.push(m);
     root.add(m);
   }
+  // Centre the structure and keep it framed: the camera distance follows the canvas aspect so
+  // nodes are never clipped at narrow widths or left floating off-centre on wide ones.
+  const box = new THREE.Box3();
+  pos.forEach((p) => box.expandByPoint(p));
+  const centre = box.getCenter(new THREE.Vector3());
+  pos.forEach((p) => p.sub(centre));
+  meshes.forEach((m) => m.position.sub(centre));
+  const size = box.getSize(new THREE.Vector3());
+  // The group swings about y, so horizontal reach is the x–z radius, not just the x extent.
+  let reach = 0;
+  pos.forEach((p) => (reach = Math.max(reach, Math.hypot(p.x, p.z))));
+  reach += 0.8; // node size + breathing room
+  const halfH = size.y / 2 + 1;
+  const tanHalf = Math.tan(THREE.MathUtils.degToRad(s.camera.fov / 2));
+  const frameCamera = () => {
+    // Nodes lie on rings in the y–z plane: the top/bottom extremes sit near z = 0, so only a
+    // small depth allowance is needed for the nearer side nodes.
+    // Width: a node at reach r swung by up to SWING rad sits at x = r·cos, z = r·sin toward the camera.
+    const dW = reach * (Math.cos(SWING) / (tanHalf * s.camera.aspect) + Math.sin(SWING));
+    const d = Math.max(halfH / tanHalf + 1.5, dW, 6);
+    s.camera.position.set(0, d * 0.12, d);
+    s.camera.lookAt(0, 0, 0);
+  };
+  frameCamera();
   const pts: number[] = [];
   for (const [a, b] of g.edges) {
     const pa = pos.get(a), pb = pos.get(b);
@@ -181,7 +206,8 @@ export function mountGraph(canvas: HTMLCanvasElement, g: Graph, onPick: (id: str
   canvas.addEventListener("click", onClick);
   canvas.addEventListener("mousemove", onMove);
   s.start((t) => {
-    root.rotation.y = Math.sin(t * 0.00008) * 0.5;
+    frameCamera();
+    root.rotation.y = Math.sin(t * 0.00008) * SWING;
     root.rotation.x = Math.sin(t * 0.00005) * 0.12;
   });
   return () => {
