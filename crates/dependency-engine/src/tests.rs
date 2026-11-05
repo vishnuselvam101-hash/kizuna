@@ -300,3 +300,147 @@ fn material_impact_wins_over_immaterial_for_the_same_decision() {
         assert!(out[0].material, "order {order}: {out:?}");
     }
 }
+
+fn arb_materiality() -> impl Strategy<Value = Materiality> {
+    prop_oneof![
+        Just(Materiality::AnyChange),
+        Just(Materiality::Informational),
+        prop_oneof![Just("0"), Just("0.5"), Just("2"), Just("bad")]
+            .prop_map(|t| Materiality::NumericAbs { threshold: t.into() }),
+    ]
+}
+
+fn arb_snapshot() -> impl Strategy<Value = Snapshot> {
+    (
+        proptest::option::of(prop_oneof![Just("1"), Just("1.5"), Just("25.4"), Just("3")]),
+        proptest::option::of(prop_oneof![Just("mm"), Just("in"), Just("kg"), Just("zz")]),
+        proptest::option::of(prop_oneof![Just("Steel"), Just(" steel "), Just("Brass")]),
+        proptest::option::of(prop_oneof![Just("C"), Just("c"), Just("D")]),
+        proptest::option::of(prop_oneof![Just("acme"), Just("ACME"), Just("other")]),
+    )
+        .prop_map(|(num, unit, text, revision, supplier)| Snapshot {
+            num: num.map(Into::into),
+            unit: unit.map(Into::into),
+            text: text.map(Into::into),
+            revision: revision.map(Into::into),
+            scope: supplier
+                .map(|s| BTreeMap::from([("supplier".to_string(), s.to_string())]))
+                .unwrap_or_default(),
+        })
+}
+
+/// (decision, kind, materiality, snapshot, applicability revision). kind < 4: claim c{kind}; else on decision.
+type EdgeSpec = (usize, usize, usize, Materiality, Snapshot, Option<&'static str>);
+
+fn build_deps(n: usize, edges: &[EdgeSpec], dag: bool) -> Vec<Dep> {
+    let mut deps = Vec::new();
+    for (dec, kind, on, m, s, rev) in edges {
+        let (dec, on) = (dec % n, on % n);
+        let app: BTreeMap<String, String> = rev
+            .map(|r| BTreeMap::from([("revision".into(), r.into())]))
+            .unwrap_or_default();
+        if *kind < 4 {
+            deps.push(Dep {
+                decision: format!("D{dec}"),
+                claim: Some(format!("c{kind}")),
+                on_decision: None,
+                subject: "BRK-100".into(),
+                predicate: Some("len".into()),
+                applicability: app,
+                materiality: m.clone(),
+                snapshot: s.clone(),
+            });
+        } else if !dag || on < dec {
+            deps.push(Dep {
+                decision: format!("D{dec}"),
+                claim: None,
+                on_decision: Some(format!("D{on}")),
+                subject: "BRK-100".into(),
+                predicate: None,
+                applicability: BTreeMap::new(),
+                materiality: m.clone(),
+                snapshot: Snapshot::default(),
+            });
+        }
+    }
+    deps
+}
+
+fn arb_change() -> impl Strategy<Value = Change> {
+    (0usize..5, 0usize..3, arb_snapshot()).prop_map(|(c, kind, new)| match kind {
+        0 => Change::Superseded {
+            old_claim: format!("c{c}"),
+            new_claim: "cN".into(),
+            new,
+        },
+        1 => Change::Withdrawn {
+            old_claim: format!("c{c}"),
+            reason: "rejected".into(),
+        },
+        _ => Change::NewEvidence {
+            new_claim: if c == 4 { "cN".into() } else { format!("c{c}") },
+            subject: "BRK-100".into(),
+            predicate: "len".into(),
+            new,
+        },
+    })
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(512))]
+    /// New (indexed, dirty-bit) algorithm == frozen v1 algorithm: same impacts, order, materiality, reasons, paths
+    /// and semantic changes, on random DAGs and on graphs with cycles, for every change kind and for revocation.
+    #[test]
+    fn new_equals_reference(n in 1usize..30, dag in any::<bool>(),
+                            edges in proptest::collection::vec((0usize..30, 0usize..8, 0usize..30, arb_materiality(),
+                                arb_snapshot(), proptest::option::of(prop_oneof![Just("C"), Just("D")])), 0..120),
+                            change in arb_change(), revoked in 0usize..30) {
+        let deps = build_deps(n, &edges, dag);
+        let new = assess(&deps, &change);
+        prop_assert_eq!(&new, &reference::assess(&deps, &change));
+        let r = format!("D{}", revoked % n);
+        prop_assert_eq!(upstream_withdrawn(&deps, &r, "was revoked"), reference::upstream_withdrawn(&deps, &r, "was revoked"));
+        // The bound is exact: Ok (and identical) up to the true fan-out, an explicit review-batch result beyond it.
+        let len = new.len();
+        prop_assert_eq!(assess_bounded(&deps, &change, len), Ok(new.clone()));
+        if len > 0 {
+            prop_assert_eq!(assess_bounded(&deps, &change, len - 1), Err(NeedsReviewBatch { limit: len - 1, reached: len }));
+        }
+    }
+}
+
+#[test]
+fn bounded_fan_out_reports_review_batch() {
+    let mut deps = vec![claim_dep(
+        "D0",
+        "c1",
+        Materiality::AnyChange,
+        snap(Some("1"), None, None),
+    )];
+    for i in 1..1000 {
+        deps.push(dec_dep(&format!("D{i}"), "D0"));
+    }
+    let ch = Change::Withdrawn {
+        old_claim: "c1".into(),
+        reason: "x".into(),
+    };
+    let e = assess_bounded(&deps, &ch, 100).unwrap_err();
+    assert_eq!(
+        e,
+        NeedsReviewBatch {
+            limit: 100,
+            reached: 101
+        }
+    );
+    assert_eq!(
+        e.to_string(),
+        "invalidation fan-out exceeds 100 decisions: needs a review batch"
+    );
+    assert_eq!(assess_bounded(&deps, &ch, 1000).unwrap().len(), 1000);
+    assert_eq!(
+        upstream_withdrawn_bounded(&deps, "D0", "was revoked", 998)
+            .unwrap_err()
+            .reached,
+        999
+    );
+}

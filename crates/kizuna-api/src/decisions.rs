@@ -8,7 +8,10 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
-use dependency_engine::{Change, Dep, ENGINE_VERSION, Impact, Materiality, Snapshot, assess, upstream_withdrawn};
+use dependency_engine::{
+    Change, Dep, ENGINE_VERSION, Impact, Materiality, NeedsReviewBatch, Snapshot, assess_bounded,
+    upstream_withdrawn_bounded,
+};
 use policy_engine::Permission;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -117,6 +120,20 @@ async fn load_deps(tx: &mut Tx, claim: Option<Uuid>, subject_pred: Option<(&str,
     Ok(rows.into_iter().map(to_dep).collect())
 }
 
+/// Most decisions one evidence change or revocation may flag inline. Beyond it the engine stops with an explicit
+/// result instead of unbounded work, and the request fails (nothing is committed) so the change is handled as a
+/// reviewed batch rather than silently leaving dependants unflagged.
+const FANOUT_LIMIT: usize = 10_000;
+
+fn review_batch(e: NeedsReviewBatch) -> ApiError {
+    tracing::warn!(
+        limit = e.limit,
+        reached = e.reached,
+        "invalidation fan-out bound reached"
+    );
+    ApiError::Conflict("invalidation would flag too many decisions: needs a review batch")
+}
+
 async fn apply_impacts(
     tx: &mut Tx,
     tenant: Uuid,
@@ -211,7 +228,7 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
                     },
                     Change::NewEvidence { .. } => unreachable!("matched above"),
                 };
-                for i in assess(&deps, &ch) {
+                for i in assess_bounded(&deps, &ch, FANOUT_LIMIT).map_err(review_batch)? {
                     match impacts.get(&i.decision) {
                         Some(prev) if prev.material || !i.material => {}
                         _ => {
@@ -219,6 +236,12 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
                         }
                     }
                 }
+            }
+            if impacts.len() > FANOUT_LIMIT {
+                return Err(review_batch(NeedsReviewBatch {
+                    limit: FANOUT_LIMIT,
+                    reached: impacts.len(),
+                }));
             }
             apply_impacts(tx, tenant, actor, impacts.into_values().collect(), Some(old), None).await
         }
@@ -275,7 +298,8 @@ pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Cha
                 other => other.clone(),
             };
             let cause = Uuid::parse_str(new_claim).ok();
-            apply_impacts(tx, tenant, actor, assess(&deps, &ch), cause, None).await
+            let impacts = assess_bounded(&deps, &ch, FANOUT_LIMIT).map_err(review_batch)?;
+            apply_impacts(tx, tenant, actor, impacts, cause, None).await
         }
     }
 }
@@ -945,7 +969,7 @@ pub async fn revoke(
         &mut tx,
         p.tenant_id,
         p.user_id,
-        upstream_withdrawn(&deps, &id.to_string(), "was revoked"),
+        upstream_withdrawn_bounded(&deps, &id.to_string(), "was revoked", FANOUT_LIMIT).map_err(review_batch)?,
         None,
         Some(id),
     )

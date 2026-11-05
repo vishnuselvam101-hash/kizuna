@@ -2,7 +2,8 @@
 //! it, decide materiality per dependency, and propagate only material impacts through decision→decision edges.
 //! Nothing is invalidated by blanket downstream traversal; decisions are flagged, never re-decided.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::fmt;
 use std::str::FromStr;
 
 use conflict_engine::units::{QtyCmp, compare, parse_unit, to_base};
@@ -14,7 +15,7 @@ pub mod cover;
 
 pub const ENGINE_VERSION: &str = "dep-engine@1";
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Snapshot {
     pub text: Option<String>,
     pub num: Option<String>,
@@ -35,7 +36,7 @@ impl Snapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Materiality {
     /// Any change of value (unit-aware: 25.4 mm == 1 in) is material.
@@ -124,7 +125,7 @@ pub fn materiality(m: &Materiality, old: &Snapshot, new: &Snapshot) -> (bool, St
     }
 }
 
-fn applicable(app: &BTreeMap<String, String>, new: &Snapshot) -> bool {
+pub(crate) fn applicable(app: &BTreeMap<String, String>, new: &Snapshot) -> bool {
     app.iter().all(|(k, v)| {
         if k == "revision" {
             new.revision.as_ref().is_none_or(|r| r.eq_ignore_ascii_case(v))
@@ -134,144 +135,383 @@ fn applicable(app: &BTreeMap<String, String>, new: &Snapshot) -> bool {
     })
 }
 
-pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
-    let mut direct: Vec<Impact> = Vec::new();
-    for d in deps {
-        let imp = match change {
-            Change::Superseded {
-                old_claim,
-                new_claim,
-                new,
-            } if d.claim.as_deref() == Some(old_claim) => {
-                // A correction that moves the claim to another revision or applicability scope is material
-                // regardless of the value (review finding M1).
-                let up = |r: &Option<String>| r.as_deref().map(str::to_uppercase);
-                let moved = up(&d.snapshot.revision) != up(&new.revision)
-                    || d.snapshot.scope != new.scope
-                    || !applicable(&d.applicability, new);
-                let (material, why) = if moved && d.materiality != Materiality::Informational {
-                    (true, "applicability changed (revision or scope)".to_string())
-                } else {
-                    materiality(&d.materiality, &d.snapshot, new)
-                };
-                Some(Impact {
-                    decision: d.decision.clone(),
-                    material,
-                    cause_kind: "superseded",
-                    reason: format!("evidence corrected: {why}"),
-                    path: vec![old_claim.clone(), new_claim.clone(), d.decision.clone()],
-                    semantic_change: json!({ "from": d.snapshot.display(), "to": new.display(), "predicate": d.predicate }),
-                })
-            }
-            Change::Withdrawn { old_claim, reason } if d.claim.as_deref() == Some(old_claim) => Some(Impact {
-                decision: d.decision.clone(),
-                material: d.materiality != Materiality::Informational,
-                cause_kind: "withdrawn",
-                reason: format!("evidence withdrawn: {reason}"),
-                path: vec![old_claim.clone(), d.decision.clone()],
-                semantic_change: json!({ "from": d.snapshot.display(), "to": null, "predicate": d.predicate }),
-            }),
-            Change::NewEvidence {
-                new_claim,
-                subject,
-                predicate,
-                new,
-            } if d.claim.is_some()
-                && d.claim.as_deref() != Some(new_claim)
-                && &d.subject == subject
-                && d.predicate.as_deref() == Some(predicate)
-                && applicable(&d.applicability, new) =>
-            {
-                let (material, why) = materiality(&d.materiality, &d.snapshot, new);
-                // Confirming evidence (same value) is not a change at all.
-                (why != "same quantity (unit-aware)" && why != "same value").then(|| Impact {
-                    decision: d.decision.clone(),
-                    material,
-                    cause_kind: "new_evidence",
-                    reason: format!("new applicable evidence disagrees: {why}"),
-                    path: vec![new_claim.clone(), d.decision.clone()],
-                    semantic_change: json!({ "from": d.snapshot.display(), "to": new.display(), "predicate": predicate }),
-                })
-            }
-            _ => None,
-        };
-        if let Some(i) = imp {
-            direct.push(i);
-        }
-    }
-    // One impact per decision: material wins over immaterial.
-    let mut by_decision: BTreeMap<String, Impact> = BTreeMap::new();
-    for i in direct {
-        match by_decision.get(&i.decision) {
-            Some(prev) if prev.material || !i.material => {}
-            _ => {
-                by_decision.insert(i.decision.clone(), i);
-            }
-        }
-    }
-    propagate(deps, by_decision)
+/// Explicit result when an invalidation would touch more decisions than the caller allows: the work stops at the
+/// bound (deterministically, at the same point every time) and the change must be handled as a review batch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NeedsReviewBatch {
+    pub limit: usize,
+    /// Decisions already reached when the bound was crossed (always `limit + 1`).
+    pub reached: usize,
 }
 
-/// Decisions that depend on a revoked/withdrawn decision.
+impl fmt::Display for NeedsReviewBatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "invalidation fan-out exceeds {} decisions: needs a review batch",
+            self.limit
+        )
+    }
+}
+
+impl std::error::Error for NeedsReviewBatch {}
+
+/// Unbounded [`assess_bounded`].
+pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
+    assess_bounded(deps, change, usize::MAX).unwrap_or_else(|e| unreachable!("{e}"))
+}
+
+/// Unbounded [`upstream_withdrawn_bounded`].
 pub fn upstream_withdrawn(deps: &[Dep], decision: &str, reason: &str) -> Vec<Impact> {
-    let mut seeds = BTreeMap::new();
-    for d in deps.iter().filter(|d| d.on_decision.as_deref() == Some(decision)) {
-        let material = d.materiality != Materiality::Informational;
-        if seeds.get(&d.decision).is_some_and(|p: &Impact| p.material || !material) {
-            continue;
+    upstream_withdrawn_bounded(deps, decision, reason, usize::MAX).unwrap_or_else(|e| unreachable!("{e}"))
+}
+
+/// Impacts of one evidence change, at most one per decision, sorted by decision id. Same results as
+/// [`reference::assess`] (property-tested), in O(deps + affected paths) instead of O(affected x deps).
+pub fn assess_bounded(deps: &[Dep], change: &Change, max_affected: usize) -> Result<Vec<Impact>, NeedsReviewBatch> {
+    let mut run = Run::new(deps, max_affected);
+    let mut memo: HashMap<MemoKey<'_>, Option<(bool, String)>> = HashMap::new();
+    for d in deps {
+        if let Some(i) = direct_impact(d, change, &mut memo) {
+            run.seed(&d.decision, i)?;
         }
-        seeds.insert(
-            d.decision.clone(),
+    }
+    run.propagate()?;
+    Ok(run.into_impacts())
+}
+
+/// Decisions that depend on a revoked/withdrawn decision (bounded like [`assess_bounded`]).
+pub fn upstream_withdrawn_bounded(
+    deps: &[Dep],
+    decision: &str,
+    reason: &str,
+    max_affected: usize,
+) -> Result<Vec<Impact>, NeedsReviewBatch> {
+    let mut run = Run::new(deps, max_affected);
+    run.index_children();
+    let children = match run.ids.get(decision) {
+        Some(&p) => run.children_of(p).to_vec(),
+        None => Vec::new(),
+    };
+    for k in children {
+        let d = &deps[k as usize];
+        run.seed(
+            &d.decision,
             Impact {
                 decision: d.decision.clone(),
-                material,
+                material: d.materiality != Materiality::Informational,
                 cause_kind: "upstream_decision",
                 reason: format!("upstream decision {decision} {reason}"),
                 path: vec![decision.to_string(), d.decision.clone()],
                 semantic_change: json!({ "upstream_decision": decision }),
             },
-        );
+        )?;
     }
-    propagate(deps, seeds)
+    run.propagate()?;
+    Ok(run.into_impacts())
 }
 
-/// Propagates material impacts breadth-first through decision→decision dependencies.
-fn propagate(deps: &[Dep], mut by_decision: BTreeMap<String, Impact>) -> Vec<Impact> {
-    let mut queue: VecDeque<(String, Vec<String>)> = by_decision
-        .values()
-        .filter(|i| i.material)
-        .map(|i| (i.decision.clone(), i.path.clone()))
-        .collect();
-    while let Some((dec, path)) = queue.pop_front() {
-        for d in deps.iter().filter(|d| d.on_decision.as_deref() == Some(&dec)) {
-            let material = d.materiality != Materiality::Informational;
-            // Each decision is queued at most once (when it first becomes material), so cycles terminate.
-            if by_decision
-                .get(&d.decision)
-                .is_some_and(|prev| prev.material || !material)
-            {
-                continue;
+/// FxHash-style hasher for the interning tables. Keys are server-generated decision ids (UUIDs), not attacker-chosen
+/// strings, so the DoS resistance of SipHash buys nothing here while it is the largest single cost of indexing.
+#[derive(Default, Clone, Copy)]
+struct FxHasher(u64);
+
+impl std::hash::Hasher for FxHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut b = [0u8; 8];
+            b[..chunk.len()].copy_from_slice(chunk);
+            self.0 = (self.0.rotate_left(5) ^ u64::from_le_bytes(b)).wrapping_mul(0x517c_c1b7_2722_0a95);
+        }
+    }
+
+    fn finish(&self) -> u64 {
+        // murmur3 fmix64: the multiply-rotate state is weak in the low bits hashbrown uses for bucket selection.
+        let mut h = self.0;
+        h = (h ^ (h >> 33)).wrapping_mul(0xff51_afd7_ed55_8ccd);
+        h = (h ^ (h >> 33)).wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+        h ^ (h >> 33)
+    }
+}
+
+type FastMap<K, V> = HashMap<K, V, std::hash::BuildHasherDefault<FxHasher>>;
+
+type MemoKey<'a> = (&'a Materiality, &'a Snapshot, &'a BTreeMap<String, String>);
+
+/// The direct impact of `change` on one dependency edge. The verdict (material, why) depends only on the edge's
+/// (materiality, snapshot, applicability) and the change, so it is memoised per distinct key for this change:
+/// the many edges that recorded the same claim value cost one evaluation.
+fn direct_impact<'a>(
+    d: &'a Dep,
+    change: &Change,
+    memo: &mut HashMap<MemoKey<'a>, Option<(bool, String)>>,
+) -> Option<Impact> {
+    let mut verdict = |new: &Snapshot, superseded: bool| {
+        memo.entry((&d.materiality, &d.snapshot, &d.applicability))
+            .or_insert_with(|| {
+                if superseded {
+                    // A correction that moves the claim to another revision or applicability scope is material
+                    // regardless of the value (review finding M1).
+                    let up = |r: &Option<String>| r.as_deref().map(str::to_uppercase);
+                    let moved = up(&d.snapshot.revision) != up(&new.revision)
+                        || d.snapshot.scope != new.scope
+                        || !applicable(&d.applicability, new);
+                    Some(if moved && d.materiality != Materiality::Informational {
+                        (true, "applicability changed (revision or scope)".to_string())
+                    } else {
+                        materiality(&d.materiality, &d.snapshot, new)
+                    })
+                } else if applicable(&d.applicability, new) {
+                    // Confirming evidence (same value) is not a change at all.
+                    Some(materiality(&d.materiality, &d.snapshot, new))
+                        .filter(|(_, why)| why != "same quantity (unit-aware)" && why != "same value")
+                } else {
+                    None
+                }
+            })
+            .clone()
+    };
+    match change {
+        Change::Superseded {
+            old_claim,
+            new_claim,
+            new,
+        } if d.claim.as_deref() == Some(old_claim) => {
+            let (material, why) = verdict(new, true)?;
+            Some(Impact {
+                decision: d.decision.clone(),
+                material,
+                cause_kind: "superseded",
+                reason: format!("evidence corrected: {why}"),
+                path: vec![old_claim.clone(), new_claim.clone(), d.decision.clone()],
+                semantic_change: json!({ "from": d.snapshot.display(), "to": new.display(), "predicate": d.predicate }),
+            })
+        }
+        Change::Withdrawn { old_claim, reason } if d.claim.as_deref() == Some(old_claim) => Some(Impact {
+            decision: d.decision.clone(),
+            material: d.materiality != Materiality::Informational,
+            cause_kind: "withdrawn",
+            reason: format!("evidence withdrawn: {reason}"),
+            path: vec![old_claim.clone(), d.decision.clone()],
+            semantic_change: json!({ "from": d.snapshot.display(), "to": null, "predicate": d.predicate }),
+        }),
+        Change::NewEvidence {
+            new_claim,
+            subject,
+            predicate,
+            new,
+        } if d.claim.is_some()
+            && d.claim.as_deref() != Some(new_claim)
+            && &d.subject == subject
+            && d.predicate.as_deref() == Some(predicate) =>
+        {
+            let (material, why) = verdict(new, false)?;
+            Some(Impact {
+                decision: d.decision.clone(),
+                material,
+                cause_kind: "new_evidence",
+                reason: format!("new applicable evidence disagrees: {why}"),
+                path: vec![new_claim.clone(), d.decision.clone()],
+                semantic_change: json!({ "from": d.snapshot.display(), "to": new.display(), "predicate": predicate }),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// How a decision got its impact: a direct (seed) impact, or propagation from a material parent decision.
+enum Origin {
+    Seed(Impact),
+    Via(u32),
+}
+
+struct Slot {
+    material: bool,
+    origin: Origin,
+}
+
+/// One invalidation run over interned decision ids. A decision's slot is its dirty state: empty, immaterial or
+/// material. A material slot is final, so every decision is queued at most once (cycle-safe, O(edges) total).
+struct Run<'a> {
+    deps: &'a [Dep],
+    ids: FastMap<&'a str, u32>,
+    names: Vec<&'a str>,
+    slots: Vec<Option<Slot>>,
+    /// CSR reverse index over interned ids: edges `child_edges[child_start[p]..child_start[p + 1]]` point at
+    /// decision `p`, in input order. Built once, on demand; ids interned later have no children.
+    child_start: Vec<u32>,
+    child_edges: Vec<u32>,
+    limit: usize,
+    reached: usize,
+}
+
+impl<'a> Run<'a> {
+    fn new(deps: &'a [Dep], limit: usize) -> Self {
+        Run {
+            deps,
+            ids: FastMap::default(),
+            names: Vec::new(),
+            slots: Vec::new(),
+            child_start: Vec::new(),
+            child_edges: Vec::new(),
+            limit,
+            reached: 0,
+        }
+    }
+
+    fn index_children(&mut self) {
+        if !self.child_start.is_empty() {
+            return;
+        }
+        let deps = self.deps;
+        let n = deps.iter().filter(|d| d.on_decision.is_some()).count();
+        self.ids.reserve(n);
+        let mut pairs: Vec<(u32, u32)> = Vec::with_capacity(n);
+        for (k, d) in deps.iter().enumerate() {
+            if let Some(on) = d.on_decision.as_deref() {
+                pairs.push((self.id(on), k as u32));
             }
-            let mut p = path.clone();
-            p.push(d.decision.clone());
-            by_decision.insert(
-                d.decision.clone(),
-                Impact {
-                    decision: d.decision.clone(),
-                    material,
-                    cause_kind: "upstream_decision",
-                    reason: format!("depends on potentially affected decision {dec}"),
-                    path: p.clone(),
-                    semantic_change: json!({ "upstream_decision": dec }),
-                },
-            );
-            if material {
-                queue.push_back((d.decision.clone(), p));
+        }
+        let mut start = vec![0u32; self.names.len() + 1];
+        for &(p, _) in &pairs {
+            start[p as usize + 1] += 1;
+        }
+        for i in 1..start.len() {
+            start[i] += start[i - 1];
+        }
+        let mut fill = start.clone();
+        let mut edges = vec![0u32; pairs.len()];
+        for (p, k) in pairs {
+            edges[fill[p as usize] as usize] = k;
+            fill[p as usize] += 1;
+        }
+        (self.child_start, self.child_edges) = (start, edges);
+    }
+
+    fn children_of(&self, p: u32) -> &[u32] {
+        match (self.child_start.get(p as usize), self.child_start.get(p as usize + 1)) {
+            (Some(&a), Some(&b)) => &self.child_edges[a as usize..b as usize],
+            _ => &[],
+        }
+    }
+
+    fn id(&mut self, name: &'a str) -> u32 {
+        *self.ids.entry(name).or_insert_with(|| {
+            self.names.push(name);
+            self.slots.push(None);
+            (self.names.len() - 1) as u32
+        })
+    }
+
+    /// Sets a slot unless it already holds a material impact or the new one is immaterial (material wins; the
+    /// first impact wins among equals). Returns whether the slot changed.
+    fn offer(&mut self, id: u32, material: bool, origin: Origin) -> Result<bool, NeedsReviewBatch> {
+        let slot = &mut self.slots[id as usize];
+        match slot {
+            Some(prev) if prev.material || !material => return Ok(false),
+            Some(_) => {}
+            None => {
+                self.reached += 1;
+                if self.reached > self.limit {
+                    return Err(NeedsReviewBatch {
+                        limit: self.limit,
+                        reached: self.reached,
+                    });
+                }
+            }
+        }
+        *slot = Some(Slot { material, origin });
+        Ok(true)
+    }
+
+    fn seed(&mut self, decision: &'a str, impact: Impact) -> Result<(), NeedsReviewBatch> {
+        let id = self.id(decision);
+        self.offer(id, impact.material, Origin::Seed(impact)).map(drop)
+    }
+
+    /// Breadth-first from the material seeds (in decision-id order), through decision→decision edges in input order.
+    fn propagate(&mut self) -> Result<(), NeedsReviewBatch> {
+        let mut start: Vec<u32> = (0..self.slots.len() as u32)
+            .filter(|&i| self.slots[i as usize].as_ref().is_some_and(|s| s.material))
+            .collect();
+        if start.is_empty() {
+            return Ok(());
+        }
+        start.sort_by_key(|&i| self.names[i as usize]);
+        let mut queue: VecDeque<u32> = start.into();
+        self.index_children();
+        let (deps, child_start, child_edges) = (
+            self.deps,
+            std::mem::take(&mut self.child_start),
+            std::mem::take(&mut self.child_edges),
+        );
+        while let Some(dec) = queue.pop_front() {
+            let (a, b) = match (child_start.get(dec as usize), child_start.get(dec as usize + 1)) {
+                (Some(&a), Some(&b)) => (a as usize, b as usize),
+                _ => (0, 0),
+            };
+            for &k in &child_edges[a..b] {
+                let d = &deps[k as usize];
+                let material = d.materiality != Materiality::Informational;
+                let t = self.id(&d.decision);
+                if self.offer(t, material, Origin::Via(dec))? && material {
+                    queue.push_back(t);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Explanation path of a decision: its seed's path extended by the propagation chain that reached it.
+    fn path(&self, id: u32) -> Vec<String> {
+        let mut chain = Vec::new();
+        let mut cur = id;
+        loop {
+            match self.slots[cur as usize].as_ref().map(|s| &s.origin) {
+                Some(Origin::Via(p)) => {
+                    chain.push(self.names[cur as usize]);
+                    cur = *p;
+                }
+                Some(Origin::Seed(i)) => {
+                    let mut path = i.path.clone();
+                    path.extend(chain.iter().rev().map(|s| s.to_string()));
+                    return path;
+                }
+                None => unreachable!("propagation parents always hold a material impact"),
             }
         }
     }
-    by_decision.into_values().collect()
+
+    fn into_impacts(self) -> Vec<Impact> {
+        let mut order: Vec<u32> = (0..self.slots.len() as u32)
+            .filter(|&i| self.slots[i as usize].is_some())
+            .collect();
+        order.sort_by_key(|&i| self.names[i as usize]);
+        order
+            .into_iter()
+            .map(
+                |i| match self.slots[i as usize].as_ref().map(|s| (s.material, &s.origin)) {
+                    Some((_, Origin::Seed(imp))) => imp.clone(),
+                    Some((material, Origin::Via(p))) => {
+                        let parent = self.names[*p as usize];
+                        Impact {
+                            decision: self.names[i as usize].to_string(),
+                            material,
+                            cause_kind: "upstream_decision",
+                            reason: format!("depends on potentially affected decision {parent}"),
+                            path: self.path(i),
+                            semantic_change: json!({ "upstream_decision": parent }),
+                        }
+                    }
+                    None => unreachable!("filtered to filled slots"),
+                },
+            )
+            .collect()
+    }
 }
+
+#[doc(hidden)]
+pub mod reference;
 
 #[cfg(test)]
 mod tests;
