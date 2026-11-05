@@ -17,7 +17,7 @@ Status: accepted (2026-11-05). Context: ADR 0021 (minimal supplier re-requests);
   follows the artifact (trigger `artifacts_portal_follow`): release → received_for_review, re-quarantine →
   quarantined, rejection → not_accepted (`not_accepted_after_review`); refused type → `file_type_not_accepted`. Nothing else.
 - Database scope: `db::portal_tx` (READ ONLY) sets `kizuna.portal_tenant_id`/`kizuna.portal_supplier_id` and never
-  `kizuna.tenant_id`, so tenant policies match nothing. Migration 0022 adds a RESTRICTIVE `portal_deny` policy to
+  `kizuna.tenant_id`, so tenant policies match nothing. Migration 0027 (and 0029 for later tables) adds a RESTRICTIVE `portal_deny` policy to
   every RLS table (deny whenever the portal scope is set) and opens only `suppliers` (own row),
   `evidence_requests` (own approved) and `portal_uploads` (own), read-only. Writes (upload rows, audit) are done
   by server code in a tenant transaction keyed by the authenticated principal.
@@ -26,7 +26,7 @@ Status: accepted (2026-11-05). Context: ADR 0021 (minimal supplier re-requests);
   artifact and the capture, kind `inspection_report`. Limits: per-supplier `max_upload_mb` (≤ tenant ≤ server) and
   `max_uploads_per_day`, plus the per-minute upload rate per supplier. Extraction and review stay with tenant
   reviewers (four-eyes unchanged): a supplier upload approves nothing.
-- Every portal action is audited (`actor_kind = supplier_user`); every out-of-scope or cross-principal refusal raises `portal.denied` (rate-bounded); failed sign-ins raise `auth.login_failed`.
+- Every portal action that reads requests or uploads documents is audited (upload lists and `me` are not); all portal requests are rate limited per supplier user (120/min) (`actor_kind = supplier_user`); every out-of-scope or cross-principal refusal raises `portal.denied` (rate-bounded); failed sign-ins raise `auth.login_failed`.
 - Requests are never linked by name. A tenant admin attaches each request to a supplier record by id
   (`POST /evidence-requests/{id}/attach-supplier`, audited `evidence_request.supplier_attached`); the link and due
   date are final (`kz_evidence_requests_guard`). Inviting names an existing supplier by id or creates a new record;

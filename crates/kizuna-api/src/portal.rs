@@ -56,6 +56,11 @@ pub async fn deny(st: &AppState, tenant: Uuid, supplier_user: Option<Uuid>, ip: 
     .await;
 }
 
+/// The normalised supplier name used for `suppliers.name_norm`.
+pub fn supplier_norm(name: &str) -> String {
+    norm(name)
+}
+
 fn norm(name: &str) -> String {
     entity_resolution::safe_normalize(name.trim())
         .chars()
@@ -457,6 +462,14 @@ impl FromRequestParts<AppState> for PortalPrincipal {
             deny(st, tenant, None, &ip, "invalid_portal_session", parts.uri.path()).await;
             return Err(ApiError::Unauthorized("invalid_token"));
         };
+        // Every portal request (reads write audit rows) is rate limited per supplier user (security review L3).
+        if !st
+            .limiter
+            .check(&format!("portal:user:{user_id}"), PORTAL_REQUESTS_PER_MIN)
+        {
+            tx.commit().await?;
+            return Err(ApiError::TooManyRequests);
+        }
         if now - last > Duration::seconds(IDLE_TTL_SECS) {
             sqlx::query("UPDATE supplier_sessions SET revoked_at = $2, revoke_reason = 'idle_timeout' WHERE id = $1")
                 .bind(session_id)
@@ -985,6 +998,9 @@ fn project_docs(v: &Value) -> Vec<PortalDoc> {
 }
 
 type ReqRow = (Uuid, String, Option<time::Date>, Value, String, String);
+/// Requests per minute per supplier user across all portal routes.
+pub const PORTAL_REQUESTS_PER_MIN: u32 = 120;
+
 const PORTAL_REQ_COLS: &str = "id, reference, due_on, documents, body_ja, body_en";
 
 fn to_portal(r: ReqRow, with_body: bool) -> PortalRequest {
@@ -1162,6 +1178,23 @@ pub async fn upload(
     let upload_id = Uuid::now_v7();
     {
         let mut tx = db::tenant_tx(&st.pool, pp.tenant_id).await?;
+        // The daily cap is re-checked and the row inserted under a per-supplier lock: parallel uploads cannot overshoot
+        // it (security review L2; the early check above only avoids reading bodies that will be refused).
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 43))")
+            .bind(pp.supplier_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        let today: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM portal_uploads WHERE supplier_id = $1 AND created_at > now() - interval '1 day'",
+        )
+        .bind(pp.supplier_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if today >= i64::from(per_day) {
+            tx.commit().await?;
+            pp.deny(&st, "daily_upload_limit", PATH).await;
+            return Err(ApiError::TooManyRequests);
+        }
         sqlx::query(
             "INSERT INTO portal_uploads (id, tenant_id, supplier_id, supplier_user_id, request_id, original_filename, size_bytes) \
              VALUES ($1,$2,$3,$4,$5,$6,$7)",

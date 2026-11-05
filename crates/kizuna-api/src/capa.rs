@@ -1652,7 +1652,9 @@ pub async fn publish_to_portal(
     Path(rid): Path<Uuid>,
     ApiJson(r): ApiJson<PortalReq>,
 ) -> ApiResult<Json<Value>> {
-    p.require(&st, Permission::DecisionWrite).await?;
+    // Addressing an external party is an admin action with MFA and a recent login (security review L1), and the
+    // portal supplier must be the one the four-eyes-approved letter names.
+    p.require(&st, Permission::UserManage).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     type Row = (
         Uuid,
@@ -1681,11 +1683,18 @@ pub async fn publish_to_portal(
     if c.status == CaseStatus::Closed {
         return Err(ApiError::Conflict("case_closed"));
     }
-    let supplier: Option<String> = sqlx::query_scalar("SELECT name FROM suppliers WHERE id = $1")
+    let row: Option<(String, String)> = sqlx::query_as("SELECT name, name_norm FROM suppliers WHERE id = $1")
         .bind(r.supplier_id)
         .fetch_optional(&mut *tx)
         .await?;
-    let supplier = supplier.ok_or(ApiError::BadRequest("unknown_supplier"))?;
+    let (supplier, name_norm) = row.ok_or(ApiError::BadRequest("unknown_supplier"))?;
+    let letter_supplier: String = sqlx::query_scalar("SELECT supplier FROM capa_supplier_requests WHERE id = $1")
+        .bind(rid)
+        .fetch_one(&mut *tx)
+        .await?;
+    if crate::portal::supplier_norm(&letter_supplier) != name_norm {
+        return Err(ApiError::Conflict("supplier_mismatch"));
+    }
     let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM capa_portal_links WHERE capa_request_id = $1)")
         .bind(rid)
         .fetch_one(&mut *tx)

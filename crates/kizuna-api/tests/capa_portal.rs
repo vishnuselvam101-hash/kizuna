@@ -145,23 +145,26 @@ async fn supplier_submits_8d_response_through_the_portal_as_evidence_only() {
     assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
     let req = r.body["supplier_requests"][0]["id"].as_str().unwrap().to_owned();
     let (acme, acme_tok) = onboard(&c, &admin, "ACME").await;
-    let (_other, other_tok) = onboard(&c, &admin, "Borealis Forge").await;
-    let publish = |tok: String| {
+    let (other, other_tok) = onboard(&c, &admin, "Borealis Forge").await;
+    let publish_to = |tok: String, to: Uuid| {
         let (c, req) = (&c, req.clone());
         async move {
             c.post(
                 &format!("/api/v1/capa/supplier-requests/{req}/portal"),
                 Some(&tok),
-                json!({ "supplier_id": acme }),
+                json!({ "supplier_id": to }),
             )
             .await
         }
     };
+    let publish = |tok: String| publish_to(tok, acme);
     assert_eq!(
-        publish(a.clone()).await.body["error"],
+        publish(admin.clone()).await.body["error"],
         "request_not_approved",
         "a draft is never published"
     );
+    // Addressing a supplier is an admin action (MFA, recent login): a reviewer cannot.
+    assert_eq!(publish(a.clone()).await.status, StatusCode::FORBIDDEN);
     let ok = c
         .post(
             &format!("/api/v1/capa/supplier-requests/{req}/approve"),
@@ -170,10 +173,15 @@ async fn supplier_submits_8d_response_through_the_portal_as_evidence_only() {
         )
         .await;
     assert_eq!(ok.status, StatusCode::OK, "{:?}", ok.body);
-    let p = publish(a.clone()).await;
+    // Only to the supplier the approved letter names.
+    assert_eq!(
+        publish_to(admin.clone(), other).await.body["error"],
+        "supplier_mismatch"
+    );
+    let p = publish(admin.clone()).await;
     assert_eq!(p.status, StatusCode::OK, "{:?}", p.body);
     let er = p.body["evidence_request"].as_str().unwrap().to_owned();
-    assert_eq!(publish(a.clone()).await.body["error"], "already_published");
+    assert_eq!(publish(admin.clone()).await.body["error"], "already_published");
     // ACME sees the 8D request (the approved letter); another supplier does not.
     let mine = c.get("/api/v1/portal/requests", &acme_tok).await;
     assert!(
@@ -258,4 +266,86 @@ async fn overdue_sweep_uses_the_tenant_calendar() {
         time::macros::date!(2026 - 11 - 06)
     );
     tx.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn portal_daily_cap_holds_under_parallel_uploads_and_reads_are_rate_limited() {
+    let c = ctx().await;
+    let (t, _, admin_id, admin) = c.admin().await;
+    let (acme, tok) = onboard(&c, &admin, "Parallel Co").await;
+    // An approved request for this supplier, and a daily cap of 2.
+    let er = Uuid::now_v7();
+    let mut tx = kizuna_api::db::tenant_tx(&c.owner, t).await.unwrap();
+    sqlx::query(
+        "INSERT INTO evidence_requests (id, tenant_id, reference, supplier, engine, decision_ids, documents, requested_count, \
+         baseline_count, exact, body_ja, body_en, content_sha256, status, created_by, reviewed_by, reviewed_at, supplier_id) \
+         VALUES ($1,$2,'RR-1','Parallel Co','t','{}','[]',1,1,true,'x','x',$3,'approved',$4,$4,now(),$5)",
+    )
+    .bind(er)
+    .bind(t)
+    .bind(vec![0u8; 32])
+    .bind(admin_id)
+    .bind(acme)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE suppliers SET max_uploads_per_day = 2 WHERE id = $1")
+        .bind(acme)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let er = er.to_string();
+    let uploads = (0..6).map(|i| {
+        let (c, tok, er) = (&c, tok.clone(), er.clone());
+        async move {
+            let pdf = format!("%PDF-1.7\n% parallel {i}\n%%EOF\n");
+            portal_upload(c, &tok, &er, "p.pdf", pdf.as_bytes()).await.status
+        }
+    });
+    let mut set = Vec::new();
+    for u in uploads {
+        set.push(Box::pin(u));
+    }
+    let mut ok = 0;
+    let results = {
+        let mut out = Vec::new();
+        let mut pending: Vec<_> = set.into_iter().map(Some).collect();
+        std::future::poll_fn(|cx| {
+            let mut more = false;
+            for f in pending.iter_mut() {
+                if let Some(fut) = f {
+                    match fut.as_mut().poll(cx) {
+                        std::task::Poll::Ready(v) => {
+                            out.push(v);
+                            *f = None;
+                        }
+                        std::task::Poll::Pending => more = true,
+                    }
+                }
+            }
+            if more {
+                std::task::Poll::Pending
+            } else {
+                std::task::Poll::Ready(())
+            }
+        })
+        .await;
+        out
+    };
+    for st in &results {
+        if *st == StatusCode::OK {
+            ok += 1;
+        }
+    }
+    assert_eq!(ok, 2, "{results:?}");
+    // Reads (each writes an audit row) are rate limited per supplier user.
+    let mut limited = false;
+    for _ in 0..(kizuna_api::portal::PORTAL_REQUESTS_PER_MIN + 5) {
+        if c.get("/api/v1/portal/requests", &tok).await.status == StatusCode::TOO_MANY_REQUESTS {
+            limited = true;
+            break;
+        }
+    }
+    assert!(limited);
 }

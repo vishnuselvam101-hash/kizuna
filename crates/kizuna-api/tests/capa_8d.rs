@@ -757,7 +757,15 @@ async fn overdue_actions_notify_owner_and_opener_once() {
     )
     .await;
     ok_complete(&s, &case, 4).await;
-    let today = time::OffsetDateTime::now_utc().date();
+    // Due dates are judged on the tenant's calendar day (Asia/Tokyo by default), not the server's UTC date.
+    let today = {
+        let mut tx = kizuna_api::db::tenant_tx(&s.c.owner, s.t).await.unwrap();
+        let d = kizuna_api::db::tenant_today(&mut tx, s.t, time::OffsetDateTime::now_utc())
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        d
+    };
     let past =
         s.c.post(
             &path(&case, "/actions"),
@@ -869,7 +877,7 @@ async fn tenant_isolation_permissions_and_force_rls() {
     .fetch_all(&s.c.owner)
     .await
     .unwrap();
-    assert_eq!(forced.len(), 7);
+    assert_eq!(forced.len(), 8); // incl. capa_portal_links (migration 0029)
     assert!(forced.iter().all(|f| f.1), "{forced:?}");
     // The database itself refuses a self-approved closure.
     let mut tx = kizuna_api::db::tenant_tx(&s.c.owner, s.t).await.unwrap();
