@@ -1,40 +1,22 @@
-"""CSV and XLSX extraction. XLSX is read with zipfile + ElementTree under explicit size limits;
-formulas are never evaluated (only cached values are read) and DTDs/entities are refused."""
+"""CSV and XLSX extraction. XLSX is read with zipfile + ElementTree under explicit limits (member count,
+per-member
+and total inflated bytes, compression ratio, cell count); formulas are never evaluated (only cached values
+are read)
+and DTDs/entities are refused. Paths inside the archive are only ever looked up in the archive itself."""
 
 import csv
 import io
 import re
 import xml.etree.ElementTree as ET
 import zipfile
+from posixpath import normpath
+
+from .errors import ExtractionError
+from .records import Sink, _rec
 
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 REL_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-
-
-class ExtractionError(Exception):
-    pass
-
-
-def rows_to_records(rows, max_records: int, sheet: str | None = None) -> list[dict]:
-    out: list[dict] = []
-    header: list[str] | None = None
-    for rno, row in enumerate(rows, start=1):
-        cells = [(c or "").strip() for c in row]
-        if header is None:
-            if any(cells):
-                header = cells
-            continue
-        for cno, (h, v) in enumerate(zip(header, cells, strict=False), start=1):
-            if not h or not v:
-                continue
-            if len(out) >= max_records:
-                return out
-            loc: dict = {"row": rno, "col": cno}
-            if sheet is not None:
-                loc["sheet"] = sheet[:120]
-                loc["cell"] = f"{col_name(cno)}{rno}"
-            out.append({"label": h, "value": v, "location": loc, "group": f"{sheet or 'csv'}:{rno}"})
-    return out
+MAX_RATIO = 200  # inflated/compressed; real sheets are ~5-30x
 
 
 def col_name(n: int) -> str:
@@ -45,73 +27,157 @@ def col_name(n: int) -> str:
     return s
 
 
-def csv_records(data: bytes, limits: dict) -> list[dict]:
-    text = data.decode("utf-8-sig")
-    sample = text[:4096]
+def rows_to_records(rows, sink: Sink, sheet: str | None, method: str, formulas: set | None = None) -> None:
+    header: list[str] | None = None
+    for rno, row in rows:
+        cells = [(c or "").strip() for c in row]
+        if header is None:
+            if any(cells):
+                header = cells
+            continue
+        for cno, (h, v) in enumerate(zip(header, cells, strict=False), start=1):
+            if not h or not v:
+                continue
+            if sink.full:
+                return
+            loc: dict = {"row": rno, "col": cno}
+            conf = 0.97
+            m = method
+            if sheet is not None:
+                loc["sheet"] = sheet[:120]
+                loc["cell"] = f"{col_name(cno)}{rno}"
+                if formulas and loc["cell"] in formulas:
+                    m, conf = f"{method}-cached-formula", 0.9
+            sink.add(_rec(h, v, loc, f"{sheet or 'csv'}:{rno}", m, conf))
+
+
+def csv_records(data: bytes, limits: dict, sink: Sink) -> list[str]:
+    warnings: list[str] = []
+    for enc in ("utf-8-sig", "cp932"):
+        try:
+            text = data.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ExtractionError("csv_bad_encoding")
+    if enc != "utf-8-sig":
+        warnings.append(f"csv_decoded_as:{enc}")
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
     except csv.Error:
         dialect = csv.excel
-    reader = csv.reader(io.StringIO(text), dialect)
-    return rows_to_records(reader, limits["max_records"])
+
+    def rows():
+        reader = csv.reader(io.StringIO(text), dialect)
+        for rno, row in enumerate(reader, start=1):
+            if rno > limits["max_rows"]:
+                warnings.append("csv_rows_truncated")
+                return
+            yield rno, row[: limits["max_cols"]]
+
+    try:
+        rows_to_records(rows(), sink, None, "csv-cell")
+    except csv.Error as e:
+        raise ExtractionError("csv_malformed") from e
+    return warnings
 
 
-def _read_member(z: zipfile.ZipFile, name: str, limit: int) -> bytes:
-    info = z.getinfo(name)
-    if info.file_size > limit:
-        raise ExtractionError("xlsx_member_too_large")
-    with z.open(info) as f:
-        data = f.read(limit + 1)
-    if len(data) > limit:
-        raise ExtractionError("xlsx_member_too_large")
-    if b"<!DOCTYPE" in data[:4096] or b"<!ENTITY" in data:
-        raise ExtractionError("xlsx_dtd_refused")
-    return data
+class _Zip:
+    def __init__(self, data: bytes, limits: dict):
+        try:
+            self.z = zipfile.ZipFile(io.BytesIO(data))
+            infos = self.z.infolist()
+        except (zipfile.BadZipFile, ValueError, EOFError) as e:
+            raise ExtractionError("xlsx_bad_zip") from e
+        if len(infos) > limits["max_zip_members"]:
+            raise ExtractionError("xlsx_too_many_members")
+        declared = sum(i.file_size for i in infos)
+        if declared > limits["max_total_unzipped"]:
+            raise ExtractionError("xlsx_zip_bomb")
+        for i in infos:
+            if i.file_size > 1024 * 1024 and i.file_size > MAX_RATIO * max(i.compress_size, 1):
+                raise ExtractionError("xlsx_zip_bomb")
+        self.names = {i.filename for i in infos}
+        self.limits = limits
+        self.read_total = 0
 
+    def read(self, name: str) -> bytes:
+        limit = self.limits["max_member_bytes"]
+        info = self.z.getinfo(name)
+        if info.file_size > limit:
+            raise ExtractionError("xlsx_member_too_large")
+        try:
+            with self.z.open(info) as f:
+                data = f.read(limit + 1)  # header sizes can lie: cap the actual inflated bytes too
+        except (zipfile.BadZipFile, EOFError, NotImplementedError, RuntimeError) as e:
+            raise ExtractionError("xlsx_bad_zip") from e
+        if len(data) > limit:
+            raise ExtractionError("xlsx_member_too_large")
+        self.read_total += len(data)
+        if self.read_total > self.limits["max_total_unzipped"]:
+            raise ExtractionError("xlsx_zip_bomb")
+        if b"<!DOCTYPE" in data[:4096] or b"<!ENTITY" in data:
+            raise ExtractionError("xlsx_dtd_refused")
+        return data
 
-def _parse(xml: bytes) -> ET.Element:
-    # Safe here: _read_member refuses any DTD/ENTITY declaration before parsing, ElementTree never
-    # resolves external entities, and expat >= 2.4 bounds entity amplification. Sizes are capped.
-    return ET.fromstring(xml)  # noqa: S314
+    def xml(self, name: str) -> ET.Element:
+        try:
+            # Safe here: read() refuses any DTD/ENTITY declaration before parsing, ElementTree never resolves
+            # external entities, and expat >= 2.4 bounds entity amplification. Sizes are capped.
+            return ET.fromstring(self.read(name))  # noqa: S314
+        except ET.ParseError as e:
+            raise ExtractionError("xlsx_bad_xml") from e
 
 
 def _ref_to_col(ref: str) -> int:
-    m = re.match(r"([A-Z]+)", ref or "")
+    m = re.match(r"([A-Z]{1,3})", ref or "")
     n = 0
     for ch in m.group(1) if m else "":
         n = n * 26 + ord(ch) - 64
     return n
 
 
-def xlsx_records(data: bytes, limits: dict) -> list[dict]:
-    member_limit = limits["max_member_bytes"]
-    try:
-        z = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile as e:
-        raise ExtractionError("xlsx_bad_zip") from e
-    names = set(z.namelist())
+def _sheet_path(target: str) -> str | None:
+    p = normpath("xl/" + target.lstrip("/").removeprefix("xl/"))
+    return p if p.startswith("xl/") else None
+
+
+def xlsx_records(data: bytes, limits: dict, sink: Sink) -> list[str]:
+    z = _Zip(data, limits)
+    warnings: list[str] = []
     shared: list[str] = []
-    if "xl/sharedStrings.xml" in names:
-        root = _parse(_read_member(z, "xl/sharedStrings.xml", member_limit))
-        for si in root.findall("m:si", NS):
+    if "xl/sharedStrings.xml" in z.names:
+        for si in z.xml("xl/sharedStrings.xml").findall("m:si", NS):
             shared.append("".join(t.text or "" for t in si.iter(f"{{{NS['m']}}}t")))
-    wb = _parse(_read_member(z, "xl/workbook.xml", member_limit))
+    if "xl/workbook.xml" not in z.names:
+        raise ExtractionError("xlsx_no_workbook")
+    wb = z.xml("xl/workbook.xml")
     rels = {}
-    if "xl/_rels/workbook.xml.rels" in names:
-        rroot = _parse(_read_member(z, "xl/_rels/workbook.xml.rels", member_limit))
-        for r in rroot:
+    if "xl/_rels/workbook.xml.rels" in z.names:
+        for r in z.xml("xl/_rels/workbook.xml.rels"):
             rels[r.get("Id")] = r.get("Target", "")
-    out: list[dict] = []
-    for sh in wb.findall("m:sheets/m:sheet", NS)[: limits["max_sheets"]]:
-        target = rels.get(sh.get(REL_NS), "")
-        path = "xl/" + target.lstrip("/").removeprefix("xl/")
-        if path not in names or ".." in path:
+    sheets = wb.findall("m:sheets/m:sheet", NS)
+    if len(sheets) > limits["max_sheets"]:
+        warnings.append("xlsx_sheets_truncated")
+    cells_seen = 0
+    for sh in sheets[: limits["max_sheets"]]:
+        path = _sheet_path(rels.get(sh.get(REL_NS), ""))
+        if path is None or path not in z.names:
+            warnings.append("xlsx_sheet_target_invalid")
             continue
-        root = _parse(_read_member(z, path, member_limit))
+        root = z.xml(path)
         rows = []
+        formulas: set[str] = set()
         for row in root.findall("m:sheetData/m:row", NS):
             cells: dict[int, str] = {}
             for c in row.findall("m:c", NS):
+                cells_seen += 1
+                if cells_seen > limits["max_cells"]:
+                    raise ExtractionError("xlsx_too_many_cells")
+                col = _ref_to_col(c.get("r", ""))
+                if not 0 < col <= limits["max_cols"]:
+                    continue
                 t = c.get("t")
                 if t == "inlineStr":
                     val = "".join(x.text or "" for x in c.iter(f"{{{NS['m']}}}t"))
@@ -120,8 +186,14 @@ def xlsx_records(data: bytes, limits: dict) -> list[dict]:
                     val = v.text if v is not None and v.text else ""
                     if t == "s" and val.isdigit() and int(val) < len(shared):
                         val = shared[int(val)]
-                cells[_ref_to_col(c.get("r", ""))] = val
+                if c.find("m:f", NS) is not None:
+                    formulas.add(c.get("r", ""))
+                cells[col] = val
+            try:
+                rno = int(row.get("r") or len(rows) + 1)
+            except ValueError:
+                rno = len(rows) + 1
             width = max(cells) if cells else 0
-            rows.append([cells.get(i, "") for i in range(1, width + 1)])
-        out.extend(rows_to_records(rows, limits["max_records"] - len(out), sheet=sh.get("name", "sheet")))
-    return out
+            rows.append((rno, [cells.get(i, "") for i in range(1, width + 1)]))
+        rows_to_records(rows, sink, sh.get("name", "sheet"), "xlsx-cell", formulas)
+    return warnings
