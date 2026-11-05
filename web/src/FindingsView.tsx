@@ -44,10 +44,21 @@ function SourceCard({ c, d }: { c: Claim; d: ConflictDetail }) {
 }
 
 /** Every finding answers the seven questions of DIRECTIVE §12; no section is ever silently omitted. */
-export function FindingDetail({ d, onReview, canReview }: { d: ConflictDetail; onReview: (decision: string, comment: string) => void; canReview: boolean }) {
+export function FindingDetail({
+  d,
+  onReview,
+  canReview,
+}: {
+  d: ConflictDetail;
+  onReview: (decision: string, comment: string, faulty?: string[]) => void;
+  canReview: boolean;
+}) {
   const { t, tv, fmtDate } = useI18n();
   const [comment, setComment] = useState("");
   const [needComment, setNeedComment] = useState(false);
+  // Rejecting confirms the finding and must name the evidence that is wrong (it is withdrawn from decisions).
+  const [faulty, setFaulty] = useState<string[]>([]);
+  const [needFaulty, setNeedFaulty] = useState(false);
   const c = d.conflict;
   const extra = Object.entries(c.explanation).filter(([k]) => k !== "why");
   const affected = d.potentially_affected_decisions ?? [];
@@ -57,8 +68,18 @@ export function FindingDetail({ d, onReview, canReview }: { d: ConflictDetail; o
       return;
     }
     setNeedComment(false);
+    if (decision === "reject") {
+      if (!faulty.length) {
+        setNeedFaulty(true);
+        return;
+      }
+      setNeedFaulty(false);
+      onReview(decision, comment.trim(), faulty);
+      return;
+    }
     onReview(decision, comment.trim());
   }
+  const toggleFaulty = (id: string, on: boolean) => setFaulty((f) => (on ? [...f, id] : f.filter((x) => x !== id)));
   return (
     <article className="finding" aria-labelledby="finding-h">
       <header className="finding-head">
@@ -149,6 +170,21 @@ export function FindingDetail({ d, onReview, canReview }: { d: ConflictDetail; o
           <p id="f-comment-hint" className={needComment ? "notice crit" : "muted"} role={needComment ? "alert" : undefined}>
             {t("finding.commentHint")}
           </p>
+          <fieldset className="faulty" aria-describedby="f-faulty-hint">
+            <legend>{t("finding.faulty")}</legend>
+            {[
+              [d.claim_a, "finding.faultyA"] as const,
+              ...(d.claim_b ? [[d.claim_b, "finding.faultyB"] as const] : []),
+            ].map(([cl, key]) => (
+              <label key={cl.id} className="check">
+                <input type="checkbox" checked={faulty.includes(cl.id)} onChange={(e) => toggleFaulty(cl.id, e.target.checked)} />
+                {t(key, { value: `${claimValue(cl)} · ${d.sources.find((s) => s.claim_id === cl.id)?.display_name ?? t("evidence.manual")}` })}
+              </label>
+            ))}
+            <p id="f-faulty-hint" className={needFaulty ? "notice crit" : "sr-only"} role={needFaulty ? "alert" : undefined}>
+              {needFaulty ? t("finding.faultyNeeded") : ""}
+            </p>
+          </fieldset>
           <div className="actions">
             <button onClick={() => submit("approve")}>{t("finding.approve")}</button>
             <button className="danger" onClick={() => submit("reject")}>
@@ -188,10 +224,10 @@ export function FindingsView() {
       setMsg(t("findings.ran", { n: r.findings_new, obsolete: r.marked_obsolete }));
       list.reload();
     });
-  const review = (decision: string, comment: string) =>
+  const review = (decision: string, comment: string, faulty?: string[]) =>
     guard(async () => {
       if (!detail) return;
-      await api.request("POST", `/conflicts/${detail.conflict.id}/review`, { decision, comment: comment || null });
+      await api.request("POST", `/conflicts/${detail.conflict.id}/review`, { decision, comment: comment || null, ...(faulty ? { faulty_claims: faulty } : {}) });
       setMsg(t("findings.reviewed"));
       await fetchDetail(detail.conflict.id);
       list.reload();
@@ -251,7 +287,7 @@ export function FindingsView() {
             />
           )}
         </Panel>
-        <div>{detail ? <FindingDetail d={detail} onReview={review} canReview={can("review_decide")} /> : <Empty text={t("findings.select")} />}</div>
+        <div>{detail ? <FindingDetail key={detail.conflict.id} d={detail} onReview={review} canReview={can("review_decide")} /> : <Empty text={t("findings.select")} />}</div>
       </div>
     </div>
   );
