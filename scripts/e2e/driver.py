@@ -163,9 +163,15 @@ def main() -> int:
     #    accepted kinds include the finding's kind; every other finding is a FP. A fault counts as
     #    detected when at least one TP finding hits it.
     by_part = {p["part"]: p for p in truth["parts"]}
+    match_truth = truth.get("match") or {"lines": [], "resupply": []}
+    match_parts = {x["part"] for x in match_truth["lines"]}
     tp = fp = 0
     fp_list, hit = [], set()
+    conflicts_on_match_parts = 0
     for c in conflicts:
+        if c["subject_key"] in match_parts:  # scored by the three-way match section below
+            conflicts_on_match_parts += 1
+            continue
         p = by_part.get(c["subject_key"])
         if p and p["fault"] and c["kind"] in p["accepted_kinds"]:
             tp += 1
@@ -251,6 +257,7 @@ def main() -> int:
                     "status": d2.get("decision", {}).get("status") if isinstance(d2, dict) else d2,
                 },
             )
+    match_result = run_match_case(api, tok, ids, match_truth, check) if match_truth["lines"] else None
     s, av = api.req("GET", "/api/v1/audit/verify", tok["auditor"])
     check("audit chain intact", s == 200 and av.get("intact") is True, av)
 
@@ -317,6 +324,8 @@ def main() -> int:
             "candidate_pairs": sorted(got_pairs),
             "unexpected": er_fp,
         },
+        "conflicts_on_match_parts": conflicts_on_match_parts,
+        "three_way_match": match_result,
         "per_fault_type": per_fault,
         "overall_fault_recall": round(detected / injected, 4) if injected else 0.0,
         "malicious_uploads": mal_results,
@@ -329,6 +338,14 @@ def main() -> int:
         f"\nfindings={len(conflicts)} precision={precision:.3f} recall(rule faults)={recall:.3f} "
         f"overall fault recall={result['overall_fault_recall']:.3f} ({detected}/{injected})"
     )
+    if match_result:
+        r = match_result["resupply"]
+        print(
+            f"three-way match: precision={match_result['precision']:.3f} recall={match_result['recall']:.3f} "
+            f"(tp={match_result['tp']} fp={match_result['fp']} fn={match_result['fn']}); re-request: "
+            f"{r['requested_documents']} docs requested vs naive {r['naive_baseline_documents']}, "
+            f"precision={r['precision']:.3f} recall={r['recall']:.3f}"
+        )
     for k, v in per_fault.items():
         print(f"  {k:24s} {v['detected']}/{v['injected']}")
     ok = all(c["ok"] for c in checks)
@@ -337,6 +354,136 @@ def main() -> int:
     if a.min_precision is not None and precision < a.min_precision:
         ok = False
     return 0 if ok else 1
+
+
+def run_match_case(api: Api, tok: dict, ids: dict, mt: dict, check) -> dict:
+    """Quality three-way match (precision/recall per (PO line, finding kind)) and minimal re-requests."""
+    t0 = time.perf_counter()
+    s, body = api.req("GET", "/api/v1/match/lines", tok["viewer"])
+    match_s = time.perf_counter() - t0
+    check("viewer lists PO line matches", s == 200, s)
+    got_lines = body.get("lines", []) if isinstance(body, dict) else []
+    key = lambda po, ln: f"{po}/{ln}"  # noqa: E731
+    got = {key(x["purchase_order"], x["po_line"]): set(x["kinds"]) for x in got_lines}
+    tp = fp = fn = 0
+    per_kind: dict[str, dict] = {}
+    fps, fns = [], []
+    for x in mt["lines"]:
+        k = key(x["purchase_order"], x["po_line"])
+        want, have = set(x["expected_kinds"]), got.get(k, set())
+        for kind in want | have:
+            d = per_kind.setdefault(kind, {"tp": 0, "fp": 0, "fn": 0})
+            if kind in want and kind in have:
+                tp += 1
+                d["tp"] += 1
+            elif kind in have:
+                fp += 1
+                d["fp"] += 1
+                fps.append({"line": k, "kind": kind, "fault": x["fault"]})
+            else:
+                fn += 1
+                d["fn"] += 1
+                fns.append({"line": k, "kind": kind})
+    truth_keys = {key(x["purchase_order"], x["po_line"]) for x in mt["lines"]}
+    stray = sorted(k for k in got if k not in truth_keys and got[k])
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    recall = tp / (tp + fn) if tp + fn else 0.0
+    check("every PO line of the match case is listed", truth_keys <= set(got), sorted(truth_keys - set(got)))
+    # A faulty line cannot be approved; clean lines are accepted (decision with typed dependencies).
+    faulty = next(x for x in mt["lines"] if x["fault"])
+    s, b = api.req(
+        "POST",
+        "/api/v1/match/line/accept",
+        tok["reviewer"],
+        body={"po": faulty["purchase_order"], "line": faulty["po_line"], "outcome": "approved", "rationale": "e2e"},
+    )
+    check("approval refused while blocking findings are open", s == 409, b)
+    s, b = api.req(
+        "POST",
+        "/api/v1/match/line/accept",
+        tok["analyst"],
+        body={"po": faulty["purchase_order"], "line": faulty["po_line"], "outcome": "rejected", "rationale": "e2e"},
+    )
+    check("analyst cannot record an acceptance", s == 403, s)
+    decisions: dict[str, str] = {}
+    for x in (x for x in mt["lines"] if not x["fault"]):
+        s, b = api.req(
+            "POST",
+            "/api/v1/match/line/accept",
+            tok["reviewer"],
+            body={"po": x["purchase_order"], "line": x["po_line"], "outcome": "approved", "rationale": "e2e clean"},
+        )
+        if s == 200:
+            decisions[key(x["purchase_order"], x["po_line"])] = b["decision"]["id"]
+    n_clean = sum(1 for x in mt["lines"] if not x["fault"])
+    check("clean PO lines accepted", len(decisions) == n_clean, f"{len(decisions)}/{n_clean}")
+    # Evidence changes, then the minimal re-request plan.
+    for sc in mt["resupply"]:
+        s, cl = api.req("GET", f"/api/v1/claims?subject_type=part&subject_key={sc['part']}", tok["reviewer"])
+        c = next((c for c in cl if c["predicate"] == sc["predicate"] and not c.get("superseded_at")), None) if s == 200 else None
+        if not check(f"scenario {sc['id']}: claim found", c is not None, sc["predicate"]):
+            continue
+        body = {k: c[k] for k in ("subject_type", "subject_key", "predicate", "value_unit", "revision", "scope") if c.get(k) is not None}
+        body.update(sc["new"])
+        body["reason"] = f"e2e scenario {sc['id']}"
+        s, b = api.req("POST", f"/api/v1/claims/{c['id']}/supersede", tok["reviewer"], body=body)
+        check(f"scenario {sc['id']}: evidence corrected", s == 200, b)
+    flagged = 0
+    for sc in mt["resupply"]:
+        did = decisions.get(key(sc["purchase_order"], sc["po_line"]))
+        s, d = api.req("GET", f"/api/v1/decisions/{did}", tok["viewer"])
+        flagged += s == 200 and d["decision"]["status"] == "potentially_affected"
+    check("every changed line's acceptance is flagged", flagged == len(mt["resupply"]), f"{flagged}/{len(mt['resupply'])}")
+    untouched = [d for k, d in decisions.items() if k not in {key(x["purchase_order"], x["po_line"]) for x in mt["resupply"]}]
+    still_valid = sum(1 for d in untouched if api.req("GET", f"/api/v1/decisions/{d}", tok["viewer"])[1]["decision"]["status"] == "valid")
+    check("unchanged lines stay valid", still_valid == len(untouched), f"{still_valid}/{len(untouched)}")
+    s, plan = api.req("GET", "/api/v1/evidence-requests/preview", tok["viewer"])
+    check("re-request preview", s == 200, s)
+    plan = plan if isinstance(plan, dict) else {"suppliers": [], "no_supplier_action": []}
+    want_docs = {ids[f] for sc in mt["resupply"] for f in sc["expected_docs"]}
+    got_docs = {d["doc"] for sp in plan["suppliers"] for d in sp["documents"]}
+    baseline = sum(sp["baseline_count"] for sp in plan["suppliers"])
+    rtp = len(want_docs & got_docs)
+    internal = next(sc for sc in mt["resupply"] if not sc["expected_docs"])
+    internal_dec = decisions.get(key(internal["purchase_order"], internal["po_line"]))
+    check(
+        "internal change asks the supplier for nothing",
+        any(x["decision_id"] == internal_dec for x in plan["no_supplier_action"]),
+        plan["no_supplier_action"],
+    )
+    s, drafts = api.req("POST", "/api/v1/evidence-requests", tok["reviewer"], body={})
+    drafts = drafts if isinstance(drafts, list) else []
+    check("one draft per supplier with documents", s == 200 and len(drafts) == sum(1 for sp in plan["suppliers"] if sp["documents"]), s)
+    if drafts:
+        s, txt = api.req("GET", f"/api/v1/evidence-requests/{drafts[0]['id']}/document?lang=ja", tok["viewer"])
+        check("draft downloads as JA text marked unapproved", s == 200 and isinstance(txt, str) and txt.startswith("【下書き"), s)
+        s, _ = api.req("POST", f"/api/v1/evidence-requests/{drafts[0]['id']}/approve", tok["reviewer2"], body={})
+        check("approval needs an MFA-verified reviewer session", s == 403, s)
+    return {
+        "timings_s": {"match_lines": round(match_s, 3)},
+        "lines": len(mt["lines"]),
+        "faulty_lines": sum(1 for x in mt["lines"] if x["fault"]),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "per_kind": per_kind,
+        "false_positives": fps,
+        "missed": fns,
+        "stray_lines_with_findings": stray,
+        "resupply": {
+            "scenarios": [sc["id"] for sc in mt["resupply"]],
+            "expected_documents": len(want_docs),
+            "requested_documents": len(got_docs),
+            "correct_documents": rtp,
+            "precision": round(rtp / len(got_docs), 4) if got_docs else 0.0,
+            "recall": round(rtp / len(want_docs), 4) if want_docs else 0.0,
+            "naive_baseline_documents": baseline,
+            "exact_cover": all(sp["exact"] for sp in plan["suppliers"]),
+            "drafts": len(drafts),
+        },
+    }
 
 
 if __name__ == "__main__":

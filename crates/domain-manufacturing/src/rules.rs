@@ -187,7 +187,7 @@ impl Rule for ExpiryRule {
 /// Inspection measurements outside nominal ± tolerance of the matching revision.
 pub struct ToleranceRule;
 
-fn in_unit(v: Decimal, from: Option<&str>, to: Option<&str>) -> Option<Decimal> {
+pub(crate) fn in_unit(v: Decimal, from: Option<&str>, to: Option<&str>) -> Option<Decimal> {
     match (from, to) {
         (None, None) => Some(v),
         (Some(a), Some(b)) if a == b => Some(v),

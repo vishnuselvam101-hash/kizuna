@@ -10,6 +10,7 @@ import { FindingsView } from "./FindingsView";
 import { I18nProvider, useI18n, type Lang } from "./i18n";
 import { IntegrationsView } from "./IntegrationsView";
 import { LoginView } from "./LoginView";
+import { MatchView, ReRequestView } from "./MatchView";
 import { SECTIONS, sectionOf, type View } from "./nav";
 import { currentTheme, Prefs, setTheme } from "./Prefs";
 import { RecordsView } from "./RecordsView";
@@ -141,6 +142,8 @@ function Shell({ api }: { api: Api }) {
             {view === "findings" && <FindingsView />}
             {view === "decisions" && <DecisionsView />}
             {view === "affected" && <AffectedView />}
+            {view === "match" && <MatchView />}
+            {view === "rerequests" && <ReRequestView />}
             {view === "reports" && <ReportsView />}
             {view === "users" && <UsersView />}
             {view === "integrations" && <IntegrationsView />}

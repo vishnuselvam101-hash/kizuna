@@ -1,4 +1,5 @@
-//! Deterministic record → claim mapping (`mfg-map@1`). Document text is data: labels are matched against a fixed
+//! Deterministic record → claim mapping (`mfg-map@2`; @2 adds heat number, certificate type, property bounds and
+//! side-specific drawing references for the quality three-way match). Document text is data: labels are matched against a fixed
 //! vocabulary and nothing in a document can add predicates, change rules or trigger actions.
 
 use std::collections::BTreeMap;
@@ -8,7 +9,7 @@ use evidence_core::claim::{ClaimInput, parse_decimal};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub const MAPPING_VERSION: &str = "mfg-map@1";
+pub const MAPPING_VERSION: &str = "mfg-map@2";
 
 /// One label/value pair produced by the extraction worker. `group` ties values of one row/document together.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -47,6 +48,8 @@ pub(crate) enum Field {
     PoLine,
     Quantity,
     Lot,
+    Heat,
+    CertificateType,
     Result,
 }
 
@@ -117,7 +120,18 @@ pub(crate) fn field(label: &str) -> Option<Field> {
         "po number" | "po no" | "po" | "purchase order" | "purchase order number" | "注文番号" => Field::PoNumber,
         "line" | "po line" | "line no" => Field::PoLine,
         "quantity" | "qty" | "数量" => Field::Quantity,
-        "lot" | "lot number" | "lot no" | "ロット" => Field::Lot,
+        "lot" | "lot number" | "lot no" | "ロット" | "ロット番号" => Field::Lot,
+        "heat" | "heat no" | "heat number" | "charge no" | "cast no" | "溶解番号" | "チャージ番号" | "ヒート番号" => {
+            Field::Heat
+        }
+        "certificate type"
+        | "cert type"
+        | "inspection document"
+        | "inspection document type"
+        | "en 10204"
+        | "en 10204 type"
+        | "証明書種類"
+        | "検査証明書種類" => Field::CertificateType,
         "result" | "inspection result" | "judgement" | "判定" => Field::Result,
         "tolerance" | "tol" => Field::Tolerance(None),
         _ => {
@@ -242,6 +256,35 @@ fn parse_quantity(v: &str, label_unit: Option<&str>) -> Option<(String, Option<S
     Some((num, unit))
 }
 
+fn side_prefix(doc_like: bool, kind: &str) -> &'static str {
+    match (doc_like, kind) {
+        (true, _) => "mfg",
+        (false, "purchase_order") => "po",
+        _ => "qa",
+    }
+}
+
+/// One-sided specification limits: "min 520", "≥ 520 MPa", "520 min", "520以上" → ("min", 520, unit); "max", "≤",
+/// "以下" → "max". A bare number is not a bound (returns None).
+fn parse_bound(v: &str, label_unit: Option<&str>) -> Option<(&'static str, String, Option<String>)> {
+    let t = safe_normalize(v).to_lowercase();
+    let t = t.trim();
+    const MIN: [&str; 5] = ["min.", "min", "≥", ">=", "＞＝"];
+    const MAX: [&str; 5] = ["max.", "max", "≤", "<=", "＜＝"];
+    for (bound, words, suffix) in [("min", MIN, "以上"), ("max", MAX, "以下")] {
+        let rest = words
+            .iter()
+            .find_map(|w| t.strip_prefix(w))
+            .or_else(|| words.iter().find_map(|w| t.strip_suffix(w)))
+            .or_else(|| t.strip_suffix(suffix));
+        if let Some(r) = rest {
+            let (n, u) = parse_quantity(r.trim().trim_start_matches(':').trim(), label_unit)?;
+            return Some((bound, n, u));
+        }
+    }
+    None
+}
+
 /// "±0.1", "+/-0.1 mm", "+0.1/-0.2", "0.05" → (plus, minus, unit).
 fn parse_tolerance(v: &str, label_unit: Option<&str>) -> Option<(String, String, Option<String>)> {
     let t = safe_normalize(v).replace("+/-", "±").replace("+-", "±");
@@ -343,6 +386,9 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
         if let Some(l) = first(&Field::Lot) {
             scope.insert("lot".into(), json!(safe_normalize(&l)));
         }
+        if let Some(h) = first(&Field::Heat) {
+            scope.insert("heat".into(), json!(safe_normalize(&h)));
+        }
         let single_dim: Vec<&'static str> = items
             .iter()
             .filter_map(|(_, f, _)| {
@@ -382,13 +428,26 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
             };
             let lu = label_unit.as_deref();
             match (f, doc_like, kind) {
-                (Field::Part, ..) | (Field::PoNumber, ..) | (Field::PoLine, ..) | (Field::Lot, ..) => {}
+                (Field::Part, ..)
+                | (Field::PoNumber, ..)
+                | (Field::PoLine, ..)
+                | (Field::Lot, ..)
+                | (Field::Heat, ..) => {}
                 (Field::Revision, true, _) => emit("mfg.revision".into(), Some(safe_normalize(v)), None),
                 (Field::Revision, false, "purchase_order") => {
                     emit("po.revision_ordered".into(), Some(safe_normalize(v)), None)
                 }
                 (Field::Revision, false, _) => emit("qa.revision_inspected".into(), Some(safe_normalize(v)), None),
-                (Field::Drawing, ..) => emit("mfg.drawing_number".into(), Some(safe_normalize(v)), None),
+                (Field::Drawing, true, _) => emit("mfg.drawing_number".into(), Some(safe_normalize(v)), None),
+                (Field::Drawing, false, "purchase_order") => {
+                    emit("po.drawing_number".into(), Some(safe_normalize(v)), None)
+                }
+                (Field::Drawing, false, _) => emit("qa.drawing_number".into(), Some(safe_normalize(v)), None),
+                (Field::CertificateType, ..) => emit(
+                    format!("{}.certificate_type", side_prefix(doc_like, kind)),
+                    Some(safe_normalize(v)),
+                    None,
+                ),
                 (Field::Material, true, _) => emit("mfg.material".into(), Some(safe_normalize(v)), None),
                 (Field::Material, false, "purchase_order") => emit("po.material".into(), Some(safe_normalize(v)), None),
                 (Field::Material, false, _) => emit("qa.material".into(), Some(safe_normalize(v)), None),
@@ -435,6 +494,10 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                 }
                 (Field::Property(p), _, _) => {
                     let pfx = if doc_like { "mfg" } else { "qa" };
+                    if let (true, Some((bound, n, u))) = (doc_like, parse_bound(v, lu)) {
+                        emit(format!("mfg.property.{p}.{bound}"), None, Some((n, u)));
+                        continue;
+                    }
                     match parse_quantity(v, lu) {
                         Some(q) => emit(format!("{pfx}.property.{p}"), None, Some(q)),
                         None => emit(format!("{pfx}.property.{p}"), Some(v.to_string()), None),
@@ -647,5 +710,116 @@ mod fuzz {
             let _ = parse_tolerance(&s, u.as_deref());
             let _ = parse_date(&s);
         }
+    }
+}
+
+#[cfg(test)]
+mod match_mapping_tests {
+    use super::*;
+
+    fn rec(label: &str, value: &str) -> Record {
+        Record {
+            label: label.into(),
+            value: value.into(),
+            location: json!({ "page": 1 }),
+            group: "doc".into(),
+        }
+    }
+
+    type Row = (String, Option<String>, Option<String>, Option<String>);
+
+    fn preds(m: &Mapped) -> Vec<Row> {
+        m.claims
+            .iter()
+            .map(|c| {
+                (
+                    c.predicate.clone(),
+                    c.value_text.clone(),
+                    c.value_num.clone(),
+                    c.value_unit.clone(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn certificate_fields_heat_and_type() {
+        let m = map_records(
+            "inspection_report",
+            &[
+                rec("Part Number", "MX-1"),
+                rec("PO Number", "PO-9"),
+                rec("Heat No", "h 123"),
+                rec("Certificate type", "EN 10204 3.1"),
+                rec("Drawing No", "DM-1"),
+                rec("Tensile strength (MPa)", "560"),
+            ],
+            9000,
+        );
+        let p = preds(&m);
+        assert!(p.contains(&("qa.certificate_type".into(), Some("EN 10204 3.1".into()), None, None)));
+        assert!(p.contains(&("qa.drawing_number".into(), Some("DM-1".into()), None, None)));
+        assert!(p.contains(&(
+            "qa.property.tensile_strength".into(),
+            None,
+            Some("560".into()),
+            Some("MPa".into())
+        )));
+        assert!(m.claims.iter().all(|c| c.scope.as_ref().unwrap()["heat"] == "H 123"));
+    }
+
+    #[test]
+    fn po_side_drawing_reference_and_required_type() {
+        let m = map_records(
+            "purchase_order",
+            &[
+                rec("PO Number", "PO-9"),
+                rec("Part No", "MX-1"),
+                rec("Drawing No", "DM-1"),
+                rec("証明書種類", "3.2"),
+            ],
+            9000,
+        );
+        let p = preds(&m);
+        assert!(p.contains(&("po.drawing_number".into(), Some("DM-1".into()), None, None)));
+        assert!(p.contains(&("po.certificate_type".into(), Some("3.2".into()), None, None)));
+        assert!(
+            !p.iter().any(|x| x.0 == "mfg.drawing_number"),
+            "a PO is not design evidence"
+        );
+    }
+
+    #[test]
+    fn drawing_property_bounds() {
+        for (v, bound, n) in [
+            ("min 520", "min", "520"),
+            ("≥ 520", "min", "520"),
+            ("520 MIN", "min", "520"),
+            ("520以上", "min", "520"),
+            ("max. 35", "max", "35"),
+            ("<=35", "max", "35"),
+        ] {
+            let m = map_records(
+                "drawing",
+                &[rec("Part Number", "MX-1"), rec("Tensile strength (MPa)", v)],
+                9000,
+            );
+            assert_eq!(
+                preds(&m),
+                vec![(
+                    format!("mfg.property.tensile_strength.{bound}"),
+                    None,
+                    Some(n.to_string()),
+                    Some("MPa".into())
+                )],
+                "{v}"
+            );
+        }
+        let m = map_records(
+            "drawing",
+            &[rec("Part Number", "MX-1"), rec("Hardness", "HRC 40")],
+            9000,
+        );
+        assert_eq!(preds(&m)[0].0, "mfg.property.hardness", "no bound keeps the old claim");
     }
 }

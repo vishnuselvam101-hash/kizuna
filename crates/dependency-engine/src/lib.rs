@@ -10,6 +10,8 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub mod cover;
+
 pub const ENGINE_VERSION: &str = "dep-engine@1";
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
