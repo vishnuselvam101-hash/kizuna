@@ -61,9 +61,10 @@ test("sign in → dashboard → conflict review → review recorded → sign out
   fireEvent.click(await screen.findByRole("button", { name: "BRK-100" }));
   await screen.findByRole("heading", { name: "Contradicting source" });
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "PO superseded by rev D" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: /Contradicting source/ }));
   fireEvent.click(screen.getByRole("button", { name: "Reject evidence" }));
   await screen.findByText("Review recorded in the audit trail.");
-  expect(reviewed).toEqual({ decision: "reject", comment: "PO superseded by rev D" });
+  expect(reviewed).toEqual({ decision: "reject", comment: "PO superseded by rev D", faulty_claims: ["c-b"] });
 
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
   await screen.findByRole("heading", { name: "Sign in" });

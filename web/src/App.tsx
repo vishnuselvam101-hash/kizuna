@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AccountView } from "./AccountView";
 import { Api } from "./api";
 import { KnotMark } from "./brand";
 import { CommandPalette, type Command } from "./CommandPalette";
@@ -58,6 +59,8 @@ function Shell({ api }: { api: Api }) {
   const logout = useCallback(async () => {
     try {
       await api.logout();
+    } catch {
+      /* the server already ended the session (e.g. after security-key enrolment); nothing left to revoke */
     } finally {
       endSession();
     }
@@ -72,6 +75,7 @@ function Shell({ api }: { api: Api }) {
         group: t("palette.prefs"),
         run: () => (setTheme(currentTheme() === "dark" ? "light" : "dark"), window.dispatchEvent(new Event("kizuna:theme"))),
       },
+      { id: "go-account", label: t("nav.account"), group: t("palette.session"), run: () => go("account") },
       { id: "logout", label: t("shell.signOut"), group: t("palette.session"), run: logout },
     ],
     [visible, t, go, logout],
@@ -93,7 +97,7 @@ function Shell({ api }: { api: Api }) {
   }
 
   const section = sectionOf(view);
-  const sub = visible.find((s) => s.id === section.id)?.views ?? [];
+  const sub = section ? (visible.find((s) => s.id === section.id)?.views ?? []) : [];
   return (
     <SessionContext.Provider value={session}>
       <div className="app">
@@ -107,7 +111,7 @@ function Shell({ api }: { api: Api }) {
           </div>
           <nav aria-label={t("shell.primaryNav")} className="primary-nav">
             {visible.map((s) => (
-              <button key={s.id} aria-current={s.id === section.id ? "page" : undefined} onClick={() => go(s.views[0].id)}>
+              <button key={s.id} aria-current={s.id === section?.id ? "page" : undefined} onClick={() => go(s.views[0].id)}>
                 {t(`section.${s.id}` as never)}
               </button>
             ))}
@@ -117,9 +121,14 @@ function Shell({ api }: { api: Api }) {
               {t("palette.open")} <kbd>⌘K</kbd>
             </button>
             <Prefs />
-            <span className="who" title={session.me.email}>
+            <button
+              className="ghost who"
+              title={`${session.me.email} — ${t("nav.account")}`}
+              aria-current={view === "account" ? "page" : undefined}
+              onClick={() => go("account")}
+            >
               {session.me.display_name} · {tv("role", session.me.role)}
-            </span>
+            </button>
             <button className="ghost" onClick={logout}>
               {t("shell.signOut")}
             </button>
@@ -151,6 +160,7 @@ function Shell({ api }: { api: Api }) {
             {view === "users" && <UsersView />}
             {view === "integrations" && <IntegrationsView />}
             {view === "security" && <SecurityView />}
+            {view === "account" && <AccountView onRelogin={logout} />}
           </div>
         </main>
         <CommandPalette commands={commands} />

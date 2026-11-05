@@ -48,6 +48,7 @@ Not adopted for `quality-stats`: `statrs` / `rand` (special functions and the Sp
 |---|---|---|
 | react, react-dom 18.3.1 | MIT | UI |
 | vite 8, @vitejs/plugin-react | MIT | build/dev server |
+| qrcode-generator 1.4.4 (pinned) | MIT | TOTP enrolment QR code rendered locally (no external QR service) |
 | vitest 5, jsdom, @testing-library/* | MIT | tests |
 | typescript 5.6 | Apache-2.0 | typecheck |
 

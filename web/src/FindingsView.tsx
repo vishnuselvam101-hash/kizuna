@@ -3,6 +3,7 @@ import { DataTable } from "./DataTable";
 import { claimValue, confidence, confidenceShort, sourceLocation } from "./format";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
+import { AiBadge, ClaimId } from "./claims";
 import type { Claim, Conflict, ConflictDetail } from "./types";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
 
@@ -18,6 +19,10 @@ function SourceCard({ c, d }: { c: Claim; d: ConflictDetail }) {
         {c.revision && <span className="badge info">{t("evidence.revShort", { rev: c.revision })}</span>}
       </p>
       <dl className="kv">
+        <dt>{t("claim.id")}</dt>
+        <dd>
+          <ClaimId id={c.id} />
+        </dd>
         <dt>{t("finding.document")}</dt>
         <dd>{src ? src.display_name : t("evidence.manual")}</dd>
         <dt>{t("finding.location")}</dt>
@@ -36,7 +41,7 @@ function SourceCard({ c, d }: { c: Claim; d: ConflictDetail }) {
         </dd>
         <dt>{t("evidence.review")}</dt>
         <dd>
-          <Badge group="review" value={c.review_status} />
+          <Badge group="review" value={c.review_status} /> <AiBadge c={c} />
         </dd>
       </dl>
     </div>
@@ -44,20 +49,32 @@ function SourceCard({ c, d }: { c: Claim; d: ConflictDetail }) {
 }
 
 /** Every finding answers the seven questions of DIRECTIVE §12; no section is ever silently omitted. */
-export function FindingDetail({ d, onReview, canReview }: { d: ConflictDetail; onReview: (decision: string, comment: string) => void; canReview: boolean }) {
+export function FindingDetail({
+  d,
+  onReview,
+  canReview,
+}: {
+  d: ConflictDetail;
+  onReview: (decision: string, comment: string, faultyClaims: string[]) => void;
+  canReview: boolean;
+}) {
   const { t, tv, fmtDate } = useI18n();
   const [comment, setComment] = useState("");
   const [needComment, setNeedComment] = useState(false);
+  // Rejecting (confirming the conflict) must name which evidence is wrong; those claims are rejected server-side.
+  const [faulty, setFaulty] = useState<string[]>([]);
+  const [needFaulty, setNeedFaulty] = useState(false);
   const c = d.conflict;
   const extra = Object.entries(c.explanation).filter(([k]) => k !== "why");
   const affected = d.potentially_affected_decisions ?? [];
+  const involved = [d.claim_a, ...(d.claim_b ? [d.claim_b] : [])];
   function submit(decision: string) {
-    if (decision !== "request_evidence" && !comment.trim()) {
-      setNeedComment(true);
-      return;
-    }
-    setNeedComment(false);
-    onReview(decision, comment.trim());
+    const noComment = decision !== "request_evidence" && !comment.trim();
+    const noFaulty = decision === "reject" && faulty.length === 0;
+    setNeedComment(noComment);
+    setNeedFaulty(noFaulty);
+    if (noComment || noFaulty) return;
+    onReview(decision, comment.trim(), decision === "reject" ? faulty : []);
   }
   return (
     <article className="finding" aria-labelledby="finding-h">
@@ -149,6 +166,23 @@ export function FindingDetail({ d, onReview, canReview }: { d: ConflictDetail; o
           <p id="f-comment-hint" className={needComment ? "notice crit" : "muted"} role={needComment ? "alert" : undefined}>
             {t("finding.commentHint")}
           </p>
+          <fieldset className="faulty" aria-describedby="f-faulty-hint">
+            <legend>{t("finding.faultyLegend")}</legend>
+            {involved.map((c, i) => (
+              <label key={c.id} className="check">
+                <input
+                  type="checkbox"
+                  checked={faulty.includes(c.id)}
+                  onChange={(e) => setFaulty((f) => (e.target.checked ? [...f, c.id] : f.filter((x) => x !== c.id)))}
+                />
+                {t(i === 0 ? "finding.supporting" : "finding.contradicting")}: <span className="mono">{c.predicate}</span> = <b className="mono">{claimValue(c)}</b>{" "}
+                <code title={c.id}>{c.id.slice(0, 8)}</code>
+              </label>
+            ))}
+            <p id="f-faulty-hint" className={needFaulty ? "notice crit" : "muted"} role={needFaulty ? "alert" : undefined}>
+              {t("finding.faultyHint")}
+            </p>
+          </fieldset>
           <div className="actions">
             <button onClick={() => submit("approve")}>{t("finding.approve")}</button>
             <button className="danger" onClick={() => submit("reject")}>
@@ -188,10 +222,14 @@ export function FindingsView() {
       setMsg(t("findings.ran", { n: r.findings_new, obsolete: r.marked_obsolete }));
       list.reload();
     });
-  const review = (decision: string, comment: string) =>
+  const review = (decision: string, comment: string, faulty: string[]) =>
     guard(async () => {
       if (!detail) return;
-      await api.request("POST", `/conflicts/${detail.conflict.id}/review`, { decision, comment: comment || null });
+      await api.request("POST", `/conflicts/${detail.conflict.id}/review`, {
+        decision,
+        comment: comment || null,
+        ...(decision === "reject" ? { faulty_claims: faulty } : {}),
+      });
       setMsg(t("findings.reviewed"));
       await fetchDetail(detail.conflict.id);
       list.reload();
@@ -251,7 +289,7 @@ export function FindingsView() {
             />
           )}
         </Panel>
-        <div>{detail ? <FindingDetail d={detail} onReview={review} canReview={can("review_decide")} /> : <Empty text={t("findings.select")} />}</div>
+        <div>{detail ? <FindingDetail key={detail.conflict.id} d={detail} onReview={review} canReview={can("review_decide")} /> : <Empty text={t("findings.select")} />}</div>
       </div>
     </div>
   );

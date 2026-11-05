@@ -24,6 +24,11 @@ Status: accepted (2026-11-05)
   clears the user's keys and gives a non-MFA session (re-enrol, then log in again); a peer tenant admin can reset MFA
   (never their own); the operator CLI `reset-mfa` works when no admin can sign in. Recovery is audited and raises
   `auth.mfa_reset`.
+- Self-service (2026-11-05, web gaps): `GET /auth/mfa/status` lists the caller's factors (labels and dates, never key
+  material) and unused recovery codes; `POST /auth/mfa/webauthn/credentials/{id}/remove` and
+  `POST /auth/mfa/recovery-codes` (new set, shown once, old set void) need the password **and** a session signed in
+  with a key. Removing the last key turns key sign-in off, deletes the recovery codes, ends the user's other sessions
+  and raises `auth.mfa_reset`. The web sign-in screen runs the TOTP, security-key and recovery-code paths.
 - All expiry decisions read an injected clock (`clock.rs`, `AppState::clock`) passed to SQL as a parameter.
 - Audit chain: per-tenant sequence; `hash = SHA-256(canonical encoding incl. prev_hash)` with RustCrypto `sha2`,
   computed in Rust (`audit-engine`), verified in Rust. Canonical encoding is length-prefixed; JSON details are

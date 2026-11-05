@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ClaimId, ClaimPicker } from "./claims";
 import { DataTable } from "./DataTable";
 import { snapValue } from "./format";
 import { GraphScene, type Graph } from "./graph";
@@ -70,6 +71,7 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
               <th scope="col">{tr("trace.atDecision")}</th>
               <th scope="col">{tr("trace.now")}</th>
               <th scope="col">{tr("trace.changed")}</th>
+              <th scope="col">{tr("claim.id")}</th>
             </tr>
           </thead>
           <tbody>
@@ -79,6 +81,7 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
                 <td className="mono">{snapValue(e.snapshot_at_decision)}</td>
                 <td className="mono">{e.current_value ? snapValue(e.current_value) : e.current_status && tv("decision.status", e.current_status)}</td>
                 <td>{e.changed ? <span className="badge crit">{tr("common.yes")}</span> : tr("common.no")}</td>
+                <td>{e.claim_id ? <ClaimId id={e.claim_id} /> : "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -205,18 +208,17 @@ const KINDS = ["supplier_part_release", "first_article_approval", "deviation_acc
 function RecordDecision({ onDone }: { onDone: () => void }) {
   const { api } = useSession();
   const { t, tv } = useI18n();
-  const [f, setF] = useState({ title: "", kind: KINDS[0], subject_key: "", outcome: "approved", rationale: "", claims: "" });
+  const [f, setF] = useState({ title: "", kind: KINDS[0], subject_key: "", outcome: "approved", rationale: "" });
+  const [claims, setClaims] = useState<string[]>([]);
   const [err, setErr] = useState<unknown>(null);
   const [msg, setMsg] = useState("");
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     try {
-      const evidence = f.claims.split(/[\s,]+/).filter(Boolean).map((claim_id) => ({ claim_id }));
-      const { claims: _ignored, ...rest } = f;
-      void _ignored;
-      await api.request("POST", "/decisions", { ...rest, subject_type: "part", evidence });
+      await api.request("POST", "/decisions", { ...f, subject_type: "part", evidence: claims.map((claim_id) => ({ claim_id })) });
       setMsg(t("decisions.recorded"));
+      setClaims([]);
       onDone();
     } catch (x) {
       setErr(x);
@@ -225,7 +227,16 @@ function RecordDecision({ onDone }: { onDone: () => void }) {
   const input = (k: keyof typeof f, label: string, hint?: string) => (
     <label>
       {label}
-      <input required={k !== "claims"} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} aria-describedby={hint ? `${k}-hint` : undefined} />
+      <input
+        required
+        value={f[k]}
+        onChange={(e) => {
+          setF({ ...f, [k]: e.target.value });
+          // Evidence belongs to one record: changing the record clears the picked claims.
+          if (k === "subject_key") setClaims([]);
+        }}
+        aria-describedby={hint ? `${k}-hint` : undefined}
+      />
       {hint && (
         <span id={`${k}-hint`} className="hint">
           {hint}
@@ -260,7 +271,10 @@ function RecordDecision({ onDone }: { onDone: () => void }) {
           </select>
         </label>
         {input("rationale", t("decisions.rationale"))}
-        {input("claims", t("decisions.evidenceIds"), t("decisions.evidenceHint"))}
+        <div className="span-all">
+          <ClaimPicker subjectType="part" subjectKey={f.subject_key} selected={claims} onChange={setClaims} />
+          <p className="hint">{t("decisions.evidenceHint")}</p>
+        </div>
         <div>
           <button className="primary">{t("decisions.recordBtn")}</button>
         </div>

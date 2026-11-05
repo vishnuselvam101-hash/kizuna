@@ -7,7 +7,21 @@ export interface Artifact {
   status: string;
   display_name: string;
   created_at: string;
-  scan_result: { findings?: string[] };
+  created_by?: string;
+  scan_result: { findings?: string[]; released_by?: string; released_at?: string; quarantined_by_incident?: unknown };
+}
+
+export interface ArtifactDetail {
+  artifact: Artifact;
+  captures: { uploaded_by: string; uploaded_at: string; original_filename: string; declared_type: string | null }[];
+  claim_count: number;
+}
+
+export interface MfaStatus {
+  totp_enabled: boolean;
+  webauthn_enabled: boolean;
+  credentials: { id: string; label: string; created_at: string; last_used_at: string | null }[];
+  recovery_codes_remaining: number;
 }
 
 export interface Claim {
@@ -27,6 +41,8 @@ export interface Claim {
   review_status: string;
   recorded_at: string;
   superseded_at: string | null;
+  recorded_by?: string | null;
+  provenance?: Record<string, unknown>;
 }
 
 export interface PredicateEvidence {

@@ -257,9 +257,13 @@ async fn integrity_failure_quarantines_and_reupload_recovers() {
         true
     );
     assert_eq!(
-        c.post(&format!("/api/v1/artifacts/{id}/release"), Some(&admin), json!({}))
-            .await
-            .body["status"],
+        c.post(
+            &format!("/api/v1/artifacts/{id}/release"),
+            Some(&admin),
+            json!({ "reason": "reviewed the scan findings" })
+        )
+        .await
+        .body["status"],
         "accepted"
     );
 }

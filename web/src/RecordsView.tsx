@@ -2,10 +2,11 @@ import { useMemo, useState } from "react";
 import { claimValue, confidenceShort, sourceLocation } from "./format";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
-import type { EntityCandidate, PredicateEvidence, Subject } from "./types";
+import { AiBadge, ClaimId, ClaimReview } from "./claims";
+import type { Claim, EntityCandidate, PredicateEvidence, Subject } from "./types";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, short, useLoad } from "./ui";
 
-export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
+export function EvidenceTable({ groups, onReview, reviewing }: { groups: PredicateEvidence[]; onReview?: (c: Claim) => void; reviewing?: string }) {
   const { t, tv } = useI18n();
   if (!groups.length) return <Empty text={t("evidence.none")} />;
   return (
@@ -20,12 +21,18 @@ export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
             <th scope="col">{t("evidence.source")}</th>
             <th scope="col">{t("evidence.method")}</th>
             <th scope="col">{t("evidence.review")}</th>
+            <th scope="col">{t("claim.id")}</th>
+            {onReview && (
+              <th scope="col">
+                <span className="sr-only">{t("common.actions")}</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
           {groups.flatMap((g) =>
             g.current.map((c, i) => (
-              <tr key={c.id} className={g.disagreement ? "row-crit" : undefined}>
+              <tr key={c.id} className={g.disagreement ? "row-crit" : undefined} aria-current={reviewing === c.id ? "true" : undefined}>
                 <td>
                   {i === 0 && <span className="mono">{g.predicate}</span>}
                   {i === 0 && g.disagreement && <span className="badge crit">{t("evidence.disagree")}</span>}
@@ -40,8 +47,18 @@ export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
                   {tv("method", c.extraction_method)} · <span className="num">{confidenceShort(t, c.confidence_bps)}</span>
                 </td>
                 <td>
-                  <Badge group="review" value={c.review_status} />
+                  <Badge group="review" value={c.review_status} /> <AiBadge c={c} />
                 </td>
+                <td>
+                  <ClaimId id={c.id} />
+                </td>
+                {onReview && (
+                  <td className="col-actions">
+                    <button onClick={() => onReview(c)} aria-label={t("claim.reviewFor", { predicate: c.predicate, value: claimValue(c) })}>
+                      {t(c.review_status === "ai_suggested" ? "claim.reviewAi" : "claim.review")}
+                    </button>
+                  </td>
+                )}
               </tr>
             )),
           )}
@@ -62,6 +79,7 @@ export function RecordsView() {
   const [type, setType] = useState<RecordType>("part");
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<Claim | null>(null);
   // Server-side distinct records with counts, paged by subject_key (keyset).
   const [rows, setRows] = useState<Subject[]>([]);
   const [moreErr, setMoreErr] = useState<unknown>(null);
@@ -144,7 +162,17 @@ export function RecordsView() {
         <Panel title={selected ? t("records.evidenceFor", { key: selected }) : t("records.selectPrompt")} id="rec-ev">
           <Loading on={!!selected && evidence.loading} />
           <Notice error={evidence.error} />
-          {evidence.data && <EvidenceTable groups={evidence.data} />}
+          {evidence.data && <EvidenceTable groups={evidence.data} onReview={setReviewing} reviewing={reviewing?.id} />}
+          {reviewing && reviewing.subject_key === selected && (
+            <ClaimReview
+              claim={reviewing}
+              onReviewed={(c) => {
+                setReviewing(c);
+                evidence.reload();
+              }}
+              onClose={() => setReviewing(null)}
+            />
+          )}
         </Panel>
       </div>
       <DuplicateCandidates key={type} type={type} />
