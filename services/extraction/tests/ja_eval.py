@@ -25,6 +25,11 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from ja_corpus import Doc, build  # noqa: E402
 
+# The original corpus's "holdout" was used for tuning since 2026-11-05 v2, so it is the dev split now; the
+# independent holdout (tests/ja_holdout.py) is only ever evaluated, never tuned on.
+DEV_NAMES = {"holdout": "dev", "scan": "dev_scan"}
+PROVENANCE = ("ocr_conf_bps", "label_basis", "subject_basis", "p_correct_bps", "review")
+
 from kizuna_extraction.worker import handle  # noqa: E402
 
 RUST_SKIP = {"part_number", "po_number", "po_line", "lot", "heat_number"}  # subject/scope in Rust, not claims
@@ -65,7 +70,9 @@ def canon_claim(c: dict) -> tuple:
     return ("text", norm_text(c.get("value", "")))
 
 
-def match(truth: list[dict], claims: list[dict], lenient: bool) -> tuple[dict, dict, dict]:
+def match(
+    truth: list[dict], claims: list[dict], lenient: bool, used_out: list | None = None
+) -> tuple[dict, dict, dict]:
     tp: dict[str, int] = defaultdict(int)
     fn: dict[str, int] = defaultdict(int)
     fp: dict[str, int] = defaultdict(int)
@@ -103,6 +110,8 @@ def match(truth: list[dict], claims: list[dict], lenient: bool) -> tuple[dict, d
     for i, c in enumerate(claims):
         if not used[i]:
             fp[c["field"]] += 1
+    if used_out is not None:
+        used_out.extend(used)
     return tp, fp, fn
 
 
@@ -120,7 +129,7 @@ def rust_fields(mapped: dict) -> list[dict]:
         parts = p.split(".")
         if p.startswith("mfg.tolerance."):
             key = (json.dumps(c.get("source_location"), sort_keys=True), parts[2])
-            tols.setdefault(key, {})[parts[3]] = c.get("value_num")
+            tols.setdefault(key, {**_conf(c), "subject": c.get("subject_key")})[parts[3]] = c.get("value_num")
             continue
         rest = ".".join(parts[1:])
         f = {
@@ -140,15 +149,43 @@ def rust_fields(mapped: dict) -> list[dict]:
             f = "property.chem_" + f.removeprefix("chem.")
         if f.startswith("approval.mark."):
             f = "stamp." + f.removeprefix("approval.mark.")
-        d: dict = {"field": f, "value": c.get("value_text") or c.get("value_num") or ""}
+        d: dict = {"field": f, "value": c.get("value_text") or c.get("value_num") or "", **_conf(c)}
+        d["subject"] = c.get("subject_key")
         if c.get("value_num") is not None:
             d["number"], d["unit"] = c["value_num"], c.get("value_unit")
         elif f.endswith(("date", "expiry", "sent_at")):
             d["date"] = c.get("value_text")
         out.append(d)
     for pm in tols.values():
-        out.append({"field": "tolerance", "plus": pm.get("plus"), "minus": pm.get("minus"), "value": ""})
+        out.append({**pm, "field": "tolerance", "value": ""})
     return out
+
+
+def _conf(c: dict) -> dict:
+    """Provenance a review gate can use: OCR confidence, how the label was mapped, calibrated correctness."""
+    loc = c.get("source_location") or {}
+    return {
+        "ocr_conf_bps": loc.get("ocr_conf_bps"),
+        "label_basis": loc.get("label_basis", "rule"),
+        "subject_basis": loc.get("subject_basis", "rule"),
+        "p_correct_bps": loc.get("p_correct_bps"),
+        "review": loc.get("review"),
+    }
+
+
+def subject_checked(doc: Doc, claims: list[dict]) -> list[dict]:
+    """A claim about the wrong subject is wrong: its field is renamed so it counts as a false positive."""
+    ok = {
+        norm_text(t["text"]).upper()
+        for t in doc.truth
+        if t["field"] in ("part_number", "heat_number", "drawing_number") and "text" in t
+    }
+    if not ok:
+        return claims
+    return [
+        c if norm_text(c.get("subject") or "").upper() in ok else {**c, "field": c["field"] + "!subject"}
+        for c in claims
+    ]
 
 
 def worker_fields(claims: list[dict]) -> list[dict]:
@@ -182,6 +219,7 @@ def evaluate(docs: list[Doc], rust_bin: str | None = None) -> dict:
     res: dict = {}
     rows: dict[str, list] = defaultdict(list)
     rust_in = []
+    claim_rows: list[dict] = []
     t0 = time.monotonic()
     failures = []
     for d in docs:
@@ -200,16 +238,45 @@ def evaluate(docs: list[Doc], rust_bin: str | None = None) -> dict:
         inp = "\n".join(json.dumps(x, ensure_ascii=False) for x in rust_in).encode()
         out = subprocess.run([rust_bin], input=inp, capture_output=True, check=True, timeout=600).stdout  # noqa: S603
         for d, line in zip(docs, out.decode().splitlines(), strict=True):
-            claims = rust_fields(json.loads(line))
+            claims = subject_checked(d, rust_fields(json.loads(line)))
             truth = [t for t in d.truth if t["field"] not in RUST_SKIP]
             for level in ("strict", "detect"):
-                tp, fp, fn = match(truth, claims, level == "detect")
+                used: list[bool] = []
+                tp, fp, fn = match(truth, claims, level == "detect", used)
                 rows[f"rust/{level}/{d.split}"].append((d.split, tp, fp, fn))
+                if level == "strict":
+                    claim_rows += [
+                        {"split": d.split, "doc": d.name, "field": c["field"], "ok": u}
+                        | {k: c.get(k) for k in PROVENANCE}
+                        for c, u in zip(claims, used, strict=True)
+                    ]
                 rows[f"rust/{level}/all"].append((d.split, tp, fp, fn))
     res["failures"] = failures
+    res["claims"] = claim_rows
     res["docs"] = {s: sum(1 for d in docs if d.split == s) for s in sorted({d.split for d in docs})}
     res["results"] = {k: summarise(v) for k, v in sorted(rows.items())}
     return res
+
+
+def corpus(scans: bool = True, holdout: bool = False) -> list[Doc]:
+    docs = build(scans=scans)
+    for d in docs:
+        d.split = DEV_NAMES.get(d.split, d.split)
+    if holdout:
+        from ja_holdout import build_holdout
+
+        for d in build_holdout(scans=scans):
+            d.truth = [holdout_convention(t) for t in d.truth]
+            docs.append(d)
+    return docs
+
+
+def holdout_convention(t: dict) -> dict:
+    """The holdout author wrote tolerance minus signed ("0/-0.02" → minus "-0.02"); this corpus uses the
+    magnitude. Mapped once, before any holdout result was looked at."""
+    if t["field"] == "tolerance" and str(t.get("minus", "")).startswith("-"):
+        return {**t, "minus": str(t["minus"])[1:]}
+    return t
 
 
 def main() -> None:
@@ -217,8 +284,12 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--rust")
     ap.add_argument("--no-scans", action="store_true")
+    ap.add_argument("--holdout", action="store_true", help="also score the independent holdout (report only)")
+    ap.add_argument("--only", help="comma-separated splits to keep")
     a = ap.parse_args()
-    docs = build(scans=not a.no_scans)
+    docs = corpus(scans=not a.no_scans, holdout=a.holdout)
+    if a.only:
+        docs = [d for d in docs if d.split in a.only.split(",")]
     res = evaluate(docs, a.rust)
     Path(a.out).write_text(json.dumps(res, ensure_ascii=False, indent=1))
     for k, v in res["results"].items():

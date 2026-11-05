@@ -13,7 +13,7 @@ import zlib
 from posixpath import normpath
 from xml.parsers import expat
 
-from .claims import lookup, normalize_label
+from .claims import label_like
 from .errors import ExtractionError
 from .records import Sink, _rec
 
@@ -71,14 +71,14 @@ PREAMBLE_ROWS = 20
 
 def _header_like(cells: list[str]) -> bool:
     filled = [c for c in cells if c]
-    known = sum(lookup(normalize_label(c)[0]) is not None for c in filled)
+    known = sum(label_like(c) for c in filled)
     return len(filled) >= 3 and known * 2 > len(filled)
 
 
 def _preamble(rows: list[tuple[int, list[str]]], sink: Sink, method: str) -> None:
     for rno, cells in rows:
         filled = [(i, c) for i, c in enumerate(cells, start=1) if c]
-        if len(filled) == 2 and lookup(normalize_label(filled[0][1])[0]) is not None:
+        if len(filled) == 2 and label_like(filled[0][1]):
             loc = {"row": rno, "col": filled[1][0]}
             sink.add(_rec(filled[0][1], filled[1][1], loc, "doc", method, 0.95))
 

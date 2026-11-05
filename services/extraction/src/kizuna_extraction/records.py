@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 
 from . import ja
-from .claims import lookup, normalize_label
+from .claims import label_like, lookup, normalize_label
 from .layout import Line, adjacent
 
 LABEL_VALUE = re.compile(
@@ -113,11 +113,15 @@ def _known(text: str) -> bool:
 
 
 def _kv_grid(ln: Line) -> bool:
-    """Title-block rows like `図番 | DW-1 | 品名 | ブラケット`: known label, value, known label, value..."""
+    """Title-block rows like `図番 | DW-1 | 品名 | ブラケット`: label, value, label, value...
+    Labels are in the vocabulary or have a label ending; values are neither."""
     cs = ln.cells
     if len(cs) < 2 or len(cs) % 2:
         return False
-    return all(_known(cs[i].text) and not _known(cs[i + 1].text) for i in range(0, len(cs), 2))
+    labs, vals = cs[0::2], cs[1::2]
+    return all(label_like(c.text) for c in labs) and not any(
+        _known(c.text) or label_like(c.text) for c in vals
+    )
 
 
 @dataclass

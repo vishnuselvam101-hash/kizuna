@@ -3,11 +3,16 @@
 
 pub mod ai;
 pub mod ai_guard;
+pub mod calibration;
+pub mod infer;
 mod ja;
 pub mod mapping;
 pub mod resupply;
 pub mod rules;
 pub mod three_way;
 
-pub use mapping::{ColumnMapping, MAPPING_VERSION, Mapped, Record, apply_column_mapping, map_records};
+pub use infer::{LabelSynonyms, SYNONYM_TARGETS};
+pub use mapping::{
+    ColumnMapping, MAPPING_VERSION, Mapped, Record, apply_column_mapping, map_records, map_records_with,
+};
 pub use rules::{RULE_VERSION, all_rules, compare_revisions};

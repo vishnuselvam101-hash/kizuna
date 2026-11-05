@@ -10,9 +10,11 @@ use evidence_core::claim::{ClaimInput, parse_decimal};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::calibration;
+use crate::infer::{self, LabelSynonyms};
 use crate::ja;
 
-pub const MAPPING_VERSION: &str = "mfg-map@3";
+pub const MAPPING_VERSION: &str = "mfg-map@4";
 
 /// One label/value pair produced by the extraction worker. `group` ties values of one row/document together.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -350,7 +352,7 @@ pub fn apply_column_mapping(records: &[Record], m: &ColumnMapping) -> Vec<Record
 
 /// "120.5 mm", "120.5㎜", "HRC55", "Ra 1.6", "φ25", "1,200 個", "￥1,250", "440 N/mm²" → (decimal, unit).
 /// Comma decimals and exponents are not accepted (kept as text instead); a comma is only a thousands separator.
-fn parse_quantity(v: &str, label_unit: Option<&str>) -> Option<(String, Option<String>)> {
+pub(crate) fn parse_quantity(v: &str, label_unit: Option<&str>) -> Option<(String, Option<String>)> {
     if v.chars().count() > 200 {
         return None;
     }
@@ -450,7 +452,7 @@ fn parse_tolerance(v: &str, label_unit: Option<&str>) -> Option<(String, String,
     Some((n.clone(), n, u))
 }
 
-fn parse_date(v: &str) -> Option<String> {
+pub(crate) fn parse_date(v: &str) -> Option<String> {
     if let Some(d) = ja::parse_ja_date(v) {
         return Some(d);
     }
@@ -501,17 +503,111 @@ fn inspection_result(v: &str) -> String {
 
 /// The subject a group's claims are about: its part number (drawing number for document-like kinds), else its
 /// heat number (mill sheets).
-fn own_subject(items: &[(&Record, Option<Field>, Option<String>)], doc_like: bool) -> Option<(&'static str, String)> {
+fn own_subject(items: &[Item], doc_like: bool, allow_fallback: bool) -> Option<Subject> {
     let first = |want: &Field| {
         items
             .iter()
-            .find(|(r, f, _)| f.as_ref() == Some(want) && !r.value.trim().is_empty())
-            .map(|(r, _, _)| safe_normalize(r.value.trim()))
+            .find(|(r, f, _, b)| {
+                f.as_ref() == Some(want) && !r.value.trim().is_empty() && (allow_fallback || !b.is_fallback())
+            })
+            .map(|(r, _, _, b)| (safe_normalize(r.value.trim()), b.clone()))
     };
     first(&Field::Part)
         .or_else(|| if doc_like { first(&Field::Drawing) } else { None })
-        .map(|p| ("part", p))
-        .or_else(|| first(&Field::Text("heat_number")).map(|h| ("heat", h)))
+        .map(|(p, b)| ("part", p, b))
+        .or_else(|| first(&Field::Text("heat_number")).map(|(h, b)| ("heat", h, b)))
+}
+
+/// How a record's label was mapped (provenance kept in the claim's source location).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Basis {
+    Rule,
+    /// A tenant synonym learnt from an accepted review: (printed label key, canonical label).
+    Synonym(String, String),
+    /// Guessed from label cues / value shape / position: (label part to learn, canonical target).
+    Fallback(String, &'static str),
+}
+
+impl Basis {
+    fn is_fallback(&self) -> bool {
+        matches!(self, Basis::Fallback(..))
+    }
+    fn name(&self) -> &'static str {
+        match self {
+            Basis::Rule => "rule",
+            Basis::Synonym(..) => "tenant_synonym",
+            Basis::Fallback(..) => "fallback",
+        }
+    }
+}
+
+type Item<'r> = (&'r Record, Option<Field>, Option<String>, Basis);
+/// (subject type, subject key, how the record naming it was mapped).
+type Subject = (&'static str, String, Basis);
+
+/// Rule vocabulary, then the tenant's synonyms, then the fallback cues.
+fn resolve(label: &str, unit: Option<&str>, value: &str, syn: &LabelSynonyms) -> (Option<Field>, Basis) {
+    if let Some(f) = field(label).or_else(|| chemistry(label, unit)) {
+        return (Some(f), Basis::Rule);
+    }
+    if let Some(t) = syn.get(label)
+        && let Some(f) = field(t).or_else(|| chemistry(t, unit))
+    {
+        return (Some(f), Basis::Synonym(label.to_string(), t.to_string()));
+    }
+    if let Some((head, suffix)) = label.rsplit_once(' ')
+        && infer::ROLE_SUFFIXES.contains(&suffix)
+        && let Some(t) = syn.get(head)
+        && let Some(f) = field(&format!("{t} {suffix}"))
+    {
+        return (Some(f), Basis::Synonym(head.to_string(), t.to_string()));
+    }
+    if let Some(g) = infer::fallback(label, value)
+        && let Some(f) = field(&g.canonical)
+    {
+        return (Some(f), Basis::Fallback(g.learnt_label, g.learnt_target));
+    }
+    (None, Basis::Rule)
+}
+
+/// Adds the calibrated probability of being correct (`p_correct_bps`, [`calibration`]) and flags the value for
+/// confirmation when it is below the review gate. Returns the probability.
+fn calibrate(loc: &mut Value, basis: &Basis, guessed: bool) -> u32 {
+    let Value::Object(o) = loc else { return 0 };
+    let conf = o
+        .get("ocr_conf_bps")
+        .and_then(Value::as_u64)
+        .map(|c| c.min(10_000) as u32);
+    let g = calibration::group(conf.is_some(), basis.name(), guessed);
+    let p = calibration::p_correct_bps(&g, conf);
+    o.insert("p_correct_bps".into(), json!(p));
+    if calibration::needs_review(p) {
+        o.insert("review".into(), json!("needs_confirmation"));
+    }
+    p
+}
+
+/// Fallback-mapped values are capped at this confidence and always need a person's confirmation.
+pub const FALLBACK_CONFIDENCE_BPS: i32 = 6000;
+
+/// Adds mapping provenance to a claim location: `label_basis` (+ `label`/`mapped_as` so an accepted review can
+/// teach the tenant a synonym) and, for a guessed subject, `subject_basis`/`subject_label`/`subject_as`.
+fn add_provenance(loc: &mut Value, basis: &Basis, subject: &Basis) {
+    let Value::Object(o) = loc else { return };
+    let cut = |s: &str| s.chars().take(40).collect::<String>();
+    o.insert("label_basis".into(), json!(basis.name()));
+    if let Basis::Fallback(l, t) = basis {
+        o.insert("label".into(), json!(cut(l)));
+        o.insert("mapped_as".into(), json!(t));
+    }
+    if let Basis::Fallback(l, t) = subject {
+        o.insert("subject_basis".into(), json!("fallback"));
+        o.insert("subject_label".into(), json!(cut(l)));
+        o.insert("subject_as".into(), json!(t));
+    }
+    if basis.is_fallback() || subject.is_fallback() {
+        o.insert("review".into(), json!("needs_confirmation"));
+    }
 }
 
 /// Source location of a claim, in the shape `evidence_core::claim::validate` accepts: the record's location with
@@ -536,8 +632,10 @@ fn claim_location(r: &Record, normalised: Option<&str>) -> Value {
                 }
                 continue;
             }
-            if !evidence_core::claim::LOCATION_KEYS.contains(&k.as_str()) || k == "review" || k == "original" {
-                continue; // a document cannot pre-set review flags or originals
+            if !evidence_core::claim::LOCATION_KEYS.contains(&k.as_str())
+                || evidence_core::claim::DERIVED_LOCATION_KEYS.contains(&k.as_str())
+            {
+                continue; // a document cannot pre-set review flags, originals or mapping provenance
             }
             let v = match v {
                 Value::Array(a) if a.len() <= 8 => match a.iter().map(whole).collect::<Option<Vec<_>>>() {
@@ -564,16 +662,20 @@ fn claim_location(r: &Record, normalised: Option<&str>) -> Value {
 
 /// Maps records of one artifact. `kind` is the artifact kind; `confidence_bps` comes from the extractor type.
 pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mapped {
+    map_records_with(kind, records, confidence_bps, &LabelSynonyms::default())
+}
+
+/// [`map_records`] with the tenant's learnt label synonyms.
+pub fn map_records_with(kind: &str, records: &[Record], confidence_bps: i32, syn: &LabelSynonyms) -> Mapped {
     let mut out = Mapped::default();
-    type Item<'r> = (&'r Record, Option<Field>, Option<String>);
     let mut groups: BTreeMap<&str, Vec<Item>> = BTreeMap::new();
     for r in records {
         let (label, unit) = normalize_label(&r.label);
-        let f = field(&label).or_else(|| chemistry(&label, unit.as_deref()));
+        let (f, basis) = resolve(&label, unit.as_deref(), &r.value, syn);
         if f.is_none() && !out.unmapped_labels.contains(&r.label) && out.unmapped_labels.len() < 200 {
             out.unmapped_labels.push(r.label.chars().take(80).collect());
         }
-        groups.entry(r.group.as_str()).or_default().push((r, f, unit));
+        groups.entry(r.group.as_str()).or_default().push((r, f, unit, basis));
     }
     let doc_like = !matches!(kind, "purchase_order" | "inspection_report");
     let pfx = match kind {
@@ -583,27 +685,70 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
     };
     // Groups without their own subject (header fields, table rows, title block, stamps, FAX header) are about
     // the document's subject when the document names exactly one.
-    let mut subjects: Vec<(&'static str, String)> = groups.values().filter_map(|i| own_subject(i, doc_like)).collect();
-    subjects.sort();
-    subjects.dedup();
-    let doc_subject = (subjects.len() == 1).then(|| subjects[0].clone());
+    // Subjects named by rule/synonym labels win; fallback-mapped ones count only when there are none, and an
+    // identifier inferred from shape and position only when there is no subject at all.
+    let any_trusted = groups.values().any(|i| own_subject(i, doc_like, false).is_some());
+    let mut subjects: Vec<Subject> = groups
+        .values()
+        .filter_map(|i| own_subject(i, doc_like, !any_trusted))
+        .collect();
+    subjects.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+    subjects.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
+    let mut doc_subject = (subjects.len() == 1).then(|| subjects[0].clone());
+    if subjects.is_empty() {
+        let known: Vec<i64> = groups
+            .values()
+            .flatten()
+            .filter(|(_, f, _, _)| {
+                matches!(
+                    f,
+                    Some(Field::Text("part_name") | Field::Drawing | Field::Revision | Field::Material)
+                )
+            })
+            .filter_map(|(r, _, _, _)| r.location.get("line").and_then(Value::as_i64))
+            .collect();
+        let cands: Vec<infer::Candidate> = groups
+            .values()
+            .flatten()
+            .filter(|(_, f, _, _)| f.is_none())
+            .map(|(r, _, _, _)| infer::Candidate {
+                label: &r.label,
+                value: &r.value,
+                group: &r.group,
+                location: &r.location,
+            })
+            .collect();
+        if let Some(v) = infer::infer_subject(&cands, &known)
+            && let Some((r, ..)) = groups.values().flatten().find(|(r, f, ..)| f.is_none() && r.value == v)
+        {
+            let label = normalize_label(&r.label).0;
+            doc_subject = Some(("part", safe_normalize(v.trim()), Basis::Fallback(label, "part number")));
+        }
+    }
     let doc_first = |want: &Field| {
         groups
             .values()
             .flatten()
-            .find(|(r, f, _)| f.as_ref() == Some(want) && !r.value.trim().is_empty())
-            .map(|(r, _, _)| r.value.trim().to_string())
+            .find(|(r, f, _, _)| f.as_ref() == Some(want) && !r.value.trim().is_empty())
+            .map(|(r, _, _, _)| r.value.trim().to_string())
     };
     let doc_revision = doc_subject.as_ref().and_then(|_| doc_first(&Field::Revision));
     for (g, items) in &groups {
         let first = |want: &Field| {
             items
                 .iter()
-                .find(|(r, f, _)| f.as_ref() == Some(want) && !r.value.trim().is_empty())
-                .map(|(r, _, _)| r.value.trim().to_string())
+                .find(|(r, f, _, _)| f.as_ref() == Some(want) && !r.value.trim().is_empty())
+                .map(|(r, _, _, _)| r.value.trim().to_string())
         };
-        let Some((subject_type, subject)) = own_subject(items, doc_like).or_else(|| doc_subject.clone()) else {
-            if items.iter().any(|(_, f, _)| f.is_some()) {
+        let own = own_subject(items, doc_like, false).or_else(|| {
+            if any_trusted {
+                None
+            } else {
+                own_subject(items, doc_like, true)
+            }
+        });
+        let Some((subject_type, subject, subject_basis)) = own.or_else(|| doc_subject.clone()) else {
+            if items.iter().any(|(_, f, _, _)| f.is_some()) {
                 out.warnings
                     .push(format!("group '{g}': no part number; values not mapped"));
             }
@@ -628,18 +773,18 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
         }
         let single_dim: Vec<&'static str> = items
             .iter()
-            .filter_map(|(_, f, _)| match f {
+            .filter_map(|(_, f, _, _)| match f {
                 Some(Field::Dimension(d)) | Some(Field::Nominal(d)) => Some(*d),
                 _ => None,
             })
             .collect();
         let elements = items
             .iter()
-            .filter(|(_, f, _)| matches!(f, Some(Field::Element(_))))
+            .filter(|(_, f, _, _)| matches!(f, Some(Field::Element(_))))
             .count();
         let row_unit = first(&Field::UnitColumn)
             .filter(|u| ja::ja_unit(u).is_some() || parse_quantity(&format!("1 {u}"), None).is_some());
-        for (r, f, label_unit) in items {
+        for (r, f, label_unit, basis) in items {
             let Some(f) = f else { continue };
             let v = r.value.trim();
             if v.is_empty() {
@@ -650,7 +795,10 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                     Some((n, u)) => (Some(n), u),
                     None => (None, None),
                 };
-                let loc = claim_location(r, text.as_deref());
+                let mut loc = claim_location(r, text.as_deref());
+                add_provenance(&mut loc, basis, &subject_basis);
+                let guessed = basis.is_fallback() || subject_basis.is_fallback();
+                let p_bps = calibrate(&mut loc, basis, guessed);
                 out.claims.push(ClaimInput {
                     subject_type: subject_type.into(),
                     subject_key: subject.clone(),
@@ -664,7 +812,14 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                         _ => revision.clone(),
                     },
                     source_location: Some(loc),
-                    confidence_bps: Some(confidence_bps),
+                    confidence_bps: Some(
+                        if guessed {
+                            confidence_bps.min(FALLBACK_CONFIDENCE_BPS)
+                        } else {
+                            confidence_bps
+                        }
+                        .min(p_bps as i32),
+                    ),
                 });
             };
             let lu = label_unit.as_deref();

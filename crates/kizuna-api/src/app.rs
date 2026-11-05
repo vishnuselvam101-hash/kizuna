@@ -133,6 +133,8 @@ pub fn router(st: AppState) -> Router {
         .route("/decisions/{id}/report", get(decisions::report))
         .route("/decisions/{id}/reconfirm", post(decisions::reconfirm))
         .route("/decisions/{id}/revoke", post(decisions::revoke))
+        .route("/label-synonyms", get(crate::label_synonyms::list))
+        .route("/label-synonyms/{id}/revoke", post(crate::label_synonyms::revoke))
         .route("/review-batches", get(crate::review_batches::list))
         .route("/review-batches/{id}", get(crate::review_batches::get))
         .route("/match/lines", get(crate::matching::list))
