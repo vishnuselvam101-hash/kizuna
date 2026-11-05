@@ -212,6 +212,10 @@ pub fn router(st: AppState) -> Router {
             "/capa/cases/{id}/supplier-responses",
             post(crate::capa::attach_supplier_response),
         )
+        .route(
+            "/capa/supplier-requests/{id}/portal",
+            post(crate::capa::publish_to_portal),
+        )
         .route("/capa/notifications", get(crate::capa::notifications))
         .route("/capa/notifications/{id}/read", post(crate::capa::mark_read))
         .route("/capa/overdue/run", post(crate::capa::overdue_now))

@@ -358,6 +358,8 @@ pub(crate) async fn ingest(
             "quarantined"
         };
         set_portal_status(&mut tx, pu, shown, None, Some(id)).await?;
+        // An 8D response for a CAPA case: linked as supplier evidence once accepted (now or on release).
+        crate::capa::link_portal_upload(&mut tx, up.tenant, id).await?;
     }
     audit::append(
         &mut tx,
@@ -682,6 +684,8 @@ pub async fn release(
         ),
     )
     .await?;
+    // A released supplier-portal 8D response joins its CAPA case as supplier evidence.
+    crate::capa::link_portal_upload(&mut tx, p.tenant_id, id).await?;
     let out = fetch(&mut tx, id).await?;
     tx.commit().await?;
     sec::record(

@@ -32,3 +32,16 @@ drift, SPC out-of-control) need a structured, evidence-bound path to a closed co
 ## Not done
 No supplier login/portal on main: responses are uploaded by staff and linked. No e-mail for overdue notifications
 (in-app only; the alert channel is reserved for operator alerts).
+
+## Amendment (integration with the supplier portal, ADR 0025)
+- `POST /capa/supplier-requests/{id}/portal {supplier_id}` publishes an **approved** (four-eyes) 8D request to one
+  portal supplier as an approved evidence request (engine `capa-8d@1`, the approved letter, due date). Link table
+  `capa_portal_links` (migration 0029, append-only, RLS).
+- Documents that supplier uploads against it go through the normal scan/quarantine pipeline and are linked to the
+  case as `capa_supplier_responses` once accepted (at upload, or when released from quarantine), with a
+  `capa.supplier_response_received` event. Evidence only: no step is completed and nothing is approved by them.
+- Migration 0029 extends the portal deny-by-default policy to every RLS table created after the portal migration
+  (CAPA tables included): a supplier session sees no CAPA data.
+- Overdue notifications are judged on the tenant's calendar day (IANA time zone) and new ones are also sent through
+  the operator alert channel (`capa.action_overdue`, identifiers and counts only).
+Tests: `crates/kizuna-api/tests/capa_portal.rs`.

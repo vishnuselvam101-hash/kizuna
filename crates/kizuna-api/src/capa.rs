@@ -721,7 +721,8 @@ pub async fn open(State(st): State<AppState>, p: Principal, ApiJson(r): ApiJson<
     log(&mut tx, p.tenant_id, id, Some(p.user_id), "capa.opened", None,
         json!({ "reference": reference, "source_kind": r.source_kind, "source_ref": o.source_ref, "links": o.links.len(),
                 "engine": CAPA_VERSION })).await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -770,10 +771,11 @@ pub async fn list(
 ) -> ApiResult<Json<Vec<CaseOut>>> {
     p.require(&st, Permission::DecisionRead).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
     let rows = sqlx::query_as::<_, CaseOut>(&format!(
         "SELECT {CASE_COLS} FROM capa_cases c WHERE ($2::text IS NULL OR c.status = $2) ORDER BY c.updated_at DESC LIMIT 500"
     ))
-    .bind(st.clock.now().date())
+    .bind(today)
     .bind(q.status)
     .fetch_all(&mut *tx)
     .await?;
@@ -967,7 +969,8 @@ async fn detail_at(tx: &mut Tx, id: Uuid, today: Date) -> ApiResult<Value> {
 pub async fn get(State(st): State<AppState>, p: Principal, Path(id): Path<Uuid>) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::DecisionRead).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1032,7 +1035,8 @@ pub async fn save_step(
         json!({ "citations": content.citations().count() }),
     )
     .await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1065,7 +1069,8 @@ pub async fn complete_step(
         json!({}),
     )
     .await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1100,7 +1105,8 @@ pub async fn reopen_step(
         json!({ "comment": comment }),
     )
     .await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1182,7 +1188,8 @@ pub async fn add_action(
         json!({ "action": aid, "owner": r.owner, "due_date": r.due_date, "causes": idx }),
     )
     .await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1257,7 +1264,8 @@ pub async fn action_done(
         json!({ "action": aid, "citations": r.evidence.len() }),
     )
     .await?;
-    let out = detail_at(&mut tx, case_id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, case_id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1286,7 +1294,8 @@ pub async fn request_closure(State(st): State<AppState>, p: Principal, Path(id):
         json!({}),
     )
     .await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1333,7 +1342,8 @@ async fn decide_closure(
         json!({ "comment": comment, "requested_by": c.closure_requested_by }),
     )
     .await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1481,7 +1491,8 @@ pub async fn create_supplier_request(
         json!({ "request": rid, "reference": reference, "disciplines": ds, "content_sha256": hex::encode(sha) }),
     )
     .await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1538,7 +1549,8 @@ async fn review_supplier_request(
         json!({ "request": rid, "comment": comment }),
     )
     .await?;
-    let out = detail_at(&mut tx, case_id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, case_id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1627,6 +1639,159 @@ pub async fn supplier_request_document(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct PortalReq {
+    pub supplier_id: Uuid,
+}
+
+/// POST /capa/supplier-requests/{id}/portal: publishes an approved 8D request to one supplier of the portal. It
+/// becomes an approved evidence request that supplier sees under /portal (the letter is the one approved by four
+/// eyes); documents uploaded against it are linked to the case as supplier responses. Audited.
+pub async fn publish_to_portal(
+    State(st): State<AppState>,
+    p: Principal,
+    Path(rid): Path<Uuid>,
+    ApiJson(r): ApiJson<PortalReq>,
+) -> ApiResult<Json<Value>> {
+    p.require(&st, Permission::DecisionWrite).await?;
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    type Row = (
+        Uuid,
+        String,
+        String,
+        String,
+        String,
+        Vec<u8>,
+        Vec<i16>,
+        Date,
+        Option<Uuid>,
+        Option<OffsetDateTime>,
+    );
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT case_id, reference, status, body_ja, body_en, content_sha256, disciplines, due_date, reviewed_by, reviewed_at \
+         FROM capa_supplier_requests WHERE id = $1 FOR UPDATE",
+    )
+    .bind(rid)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let (case_id, reference, status, ja, en, sha, ds, due, by, at) = row.ok_or(ApiError::NotFound)?;
+    if status != "approved" {
+        return Err(ApiError::Conflict("request_not_approved"));
+    }
+    let (_, c) = load(&mut tx, case_id, false).await?;
+    if c.status == CaseStatus::Closed {
+        return Err(ApiError::Conflict("case_closed"));
+    }
+    let supplier: Option<String> = sqlx::query_scalar("SELECT name FROM suppliers WHERE id = $1")
+        .bind(r.supplier_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let supplier = supplier.ok_or(ApiError::BadRequest("unknown_supplier"))?;
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM capa_portal_links WHERE capa_request_id = $1)")
+        .bind(rid)
+        .fetch_one(&mut *tx)
+        .await?;
+    if exists {
+        return Err(ApiError::Conflict("already_published"));
+    }
+    let er = Uuid::now_v7();
+    let docs = json!(
+        ds.iter()
+            .map(|d| json!({ "kind": "8d_response", "discipline": format!("D{d}") }))
+            .collect::<Vec<_>>()
+    );
+    sqlx::query(
+        "INSERT INTO evidence_requests (id, tenant_id, reference, supplier, engine, decision_ids, documents, requested_count, \
+         baseline_count, exact, body_ja, body_en, content_sha256, status, created_by, reviewed_by, reviewed_at, supplier_id, due_on) \
+         VALUES ($1,$2,$3,$4,'capa-8d@1','{}',$5,$6,$6,true,$7,$8,$9,'approved',$10,$11,$12,$13,$14)",
+    )
+    .bind(er)
+    .bind(p.tenant_id)
+    .bind(reference.chars().take(40).collect::<String>())
+    .bind(&supplier)
+    .bind(&docs)
+    .bind(i32::try_from(ds.len().max(1)).unwrap_or(1))
+    .bind(&ja)
+    .bind(&en)
+    .bind(&sha)
+    .bind(p.user_id)
+    .bind(by.unwrap_or(p.user_id))
+    .bind(at.unwrap_or_else(OffsetDateTime::now_utc))
+    .bind(r.supplier_id)
+    .bind(due)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO capa_portal_links (tenant_id, capa_request_id, evidence_request_id, supplier_id, created_by) \
+         VALUES ($1,$2,$3,$4,$5)",
+    )
+    .bind(p.tenant_id)
+    .bind(rid)
+    .bind(er)
+    .bind(r.supplier_id)
+    .bind(p.user_id)
+    .execute(&mut *tx)
+    .await?;
+    log(
+        &mut tx,
+        p.tenant_id,
+        case_id,
+        Some(p.user_id),
+        "capa.supplier_request_published",
+        None,
+        json!({ "request": rid, "evidence_request": er, "supplier_id": r.supplier_id }),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({ "evidence_request": er, "supplier_id": r.supplier_id })))
+}
+
+/// Links a released supplier-portal upload to the CAPA case its request belongs to (no-op for other requests or while
+/// the document is not accepted). Evidence only: nothing is completed or approved by it.
+pub(crate) async fn link_portal_upload(tx: &mut Tx, tenant: Uuid, artifact: Uuid) -> ApiResult<usize> {
+    let rows: Vec<(Uuid, Uuid, Uuid)> = sqlx::query_as(
+        "SELECT r.case_id, l.capa_request_id, u.supplier_user_id FROM portal_uploads u \
+         JOIN capa_portal_links l ON l.evidence_request_id = u.request_id \
+         JOIN capa_supplier_requests r ON r.id = l.capa_request_id \
+         JOIN capa_cases c ON c.id = r.case_id \
+         JOIN artifacts a ON a.id = u.artifact_id \
+         WHERE u.artifact_id = $1 AND a.status = 'accepted' AND c.status <> 'closed'",
+    )
+    .bind(artifact)
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut n = 0;
+    for (case_id, request, supplier_user) in rows {
+        let added = sqlx::query(
+            "INSERT INTO capa_supplier_responses (tenant_id, case_id, request_id, artifact_id, added_by) \
+             VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+        )
+        .bind(tenant)
+        .bind(case_id)
+        .bind(request)
+        .bind(artifact)
+        .bind(supplier_user)
+        .execute(&mut **tx)
+        .await?
+        .rows_affected();
+        if added > 0 {
+            log(
+                tx,
+                tenant,
+                case_id,
+                None,
+                "capa.supplier_response_received",
+                None,
+                json!({ "request": request, "artifact": artifact, "origin": "supplier_portal", "supplier_user": supplier_user }),
+            )
+            .await?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResponseReq {
     pub request: Uuid,
     pub artifact: Uuid,
@@ -1689,7 +1854,8 @@ pub async fn attach_supplier_response(
         json!({ "request": r.request, "artifact": r.artifact, "origin": "supplier" }),
     )
     .await?;
-    let out = detail_at(&mut tx, id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let out = detail_at(&mut tx, id, today).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -1743,26 +1909,56 @@ pub async fn sweep_overdue(tx: &mut Tx, tenant: Uuid, today: Date) -> ApiResult<
     Ok(new)
 }
 
-pub async fn run_overdue(pool: &PgPool, today: Date) -> ApiResult<usize> {
-    let tenants: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM tenants WHERE status = 'active'")
+/// Overdue sweep for every active tenant. "Overdue" is judged on each tenant's own calendar day (IANA timezone,
+/// `/settings/timezone`) at `now`; new notifications are also pushed through the operator alert channel (identifiers
+/// and counts only).
+pub async fn run_overdue(
+    pool: &PgPool,
+    now: OffsetDateTime,
+    alerts: Option<&crate::alerts::Alerter>,
+) -> ApiResult<usize> {
+    let tenants: Vec<(Uuid, String)> = sqlx::query_as("SELECT id, slug FROM tenants WHERE status = 'active'")
         .fetch_all(pool)
         .await?;
     let mut n = 0;
-    for t in tenants {
+    for (t, slug) in tenants {
         let mut tx = db::tenant_tx(pool, t).await?;
-        n += sweep_overdue(&mut tx, t, today).await?;
+        let today = db::tenant_today(&mut tx, t, now).await?;
+        let new = sweep_overdue(&mut tx, t, today).await?;
         tx.commit().await?;
+        if new > 0
+            && let Some(a) = alerts
+        {
+            a.send(&overdue_alert(a.label(), &slug, today, new));
+        }
+        n += new;
     }
     Ok(n)
 }
 
-/// Server background task: overdue sweep every `every`.
-pub fn spawn_overdue_worker(pool: PgPool, every: std::time::Duration) {
+/// Operator alert for new overdue CAPA notifications of one tenant (one per tenant and calendar day).
+pub fn overdue_alert(label: &str, tenant_slug: &str, today: Date, new: usize) -> crate::alerts::Alert {
+    crate::alerts::Alert {
+        kind: "capa.action_overdue".into(),
+        severity: "medium".into(),
+        key: format!("capa-overdue:{tenant_slug}:{today}"),
+        text: format!("[{label}] tenant {tenant_slug}: {new} new overdue corrective-action notification(s) on {today}"),
+    }
+}
+
+/// Server background task: overdue sweep every `every`, alerts through the operator channel.
+pub fn spawn_overdue_worker(pool: PgPool, alerts: std::sync::Arc<crate::alerts::Alerter>, every: std::time::Duration) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(every);
         loop {
             tick.tick().await;
-            if let Err(e) = run_overdue(&pool, OffsetDateTime::now_utc().date()).await {
+            let (p, a) = (pool.clone(), alerts.clone());
+            // Alert delivery is blocking I/O (SMTP/HTTP): keep it off the async workers.
+            let r = tokio::task::spawn_blocking(move || {
+                tokio::runtime::Handle::current().block_on(run_overdue(&p, OffsetDateTime::now_utc(), Some(&a)))
+            })
+            .await;
+            if let Ok(Err(e)) = r {
                 tracing::error!(error = ?e, "capa overdue sweep failed");
             }
         }
@@ -1773,7 +1969,8 @@ pub fn spawn_overdue_worker(pool: PgPool, every: std::time::Duration) {
 pub async fn overdue_now(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::DecisionWrite).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let n = sweep_overdue(&mut tx, p.tenant_id, st.clock.now().date()).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let n = sweep_overdue(&mut tx, p.tenant_id, today).await?;
     tx.commit().await?;
     Ok(Json(json!({ "notifications_new": n })))
 }
