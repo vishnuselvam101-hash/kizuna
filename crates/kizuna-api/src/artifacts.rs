@@ -225,12 +225,16 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         tenant: p.tenant_id,
         sha256: sha,
     };
+    // Stage now, promote after the commit (orphan objects, PERF_VERIFY_2026-11-05): until then the object is only a
+    // staging copy, dropped when this request fails before committing and resolved by the staging sweep if the
+    // commit outcome is unknown (connection lost during COMMIT).
     let store = Arc::clone(&st.store);
     let bytes = data.clone();
-    tokio::task::spawn_blocking(move || store.put(&key, &bytes))
+    let staged = tokio::task::spawn_blocking(move || store.stage(&key, &bytes))
         .await
         .map_err(ApiError::internal)?
         .map_err(ApiError::storage)?;
+    let mut staged = StagedGuard(Arc::clone(&st.store), Some(staged));
     let (id, duplicate) = match existing {
         Some(id) => (id, true),
         None => {
@@ -285,7 +289,19 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
     )
     .await?;
     let artifact = fetch(&mut tx, id).await?;
+    // From here the commit outcome may be unknown: never discard; the sweep promotes or deletes by the row.
+    let staged = staged.1.take();
     tx.commit().await?;
+    if let Some(staged) = staged {
+        let store = Arc::clone(&st.store);
+        // Committed: a failed promotion is not the client's failure. `get` serves the staged copy and the staging
+        // sweep promotes it.
+        match tokio::task::spawn_blocking(move || store.promote(&staged)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::error!(error = %e, "promotion after commit failed; left for the staging sweep"),
+            Err(e) => tracing::error!(error = %e, "promotion task failed; left for the staging sweep"),
+        }
+    }
     if !duplicate && status == "quarantined" {
         sec::record(
             &st.pool,
@@ -568,6 +584,17 @@ pub async fn release(
     )
     .await;
     Ok(Json(out))
+}
+
+/// Discards a staged upload when the request ends before its transaction commits (the rollback is certain then).
+struct StagedGuard(Arc<dyn crate::storage::ObjectStore>, Option<crate::storage::Staged>);
+
+impl Drop for StagedGuard {
+    fn drop(&mut self) {
+        if let Some(s) = self.1.take() {
+            self.0.discard(s);
+        }
+    }
 }
 
 #[cfg(test)]

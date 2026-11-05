@@ -694,33 +694,61 @@ pub async fn load_facts(tx: &mut Tx, only_subject: Option<&str>) -> ApiResult<Ve
 }
 
 pub async fn load_facts_of(tx: &mut Tx, subject_type: &str, only_subject: Option<&str>) -> ApiResult<Vec<Fact>> {
-    let aliases: HashMap<String, String> = sqlx::query_as::<_, (String, String)>(
+    let aliases = load_aliases(tx, subject_type).await?;
+    let want = only_subject.map(|k| canon_with(&aliases, k));
+    let facts = load_fact_rows(tx, subject_type, None, &aliases).await?;
+    Ok(facts
+        .into_iter()
+        .filter(|f| want.as_ref().is_none_or(|w| &f.subject == w))
+        .collect())
+}
+
+async fn load_aliases(tx: &mut Tx, subject_type: &str) -> ApiResult<HashMap<String, String>> {
+    Ok(sqlx::query_as::<_, (String, String)>(
         "SELECT alias_key, canonical_key FROM entity_aliases WHERE subject_type = $1",
     )
     .bind(subject_type)
     .fetch_all(&mut **tx)
     .await?
     .into_iter()
-    .collect();
-    let canon = |k: &str| {
-        let n = safe_normalize(k);
-        aliases.get(&n).cloned().unwrap_or(n)
-    };
-    let rows: Vec<FactRow> = sqlx::query_as(
-        "SELECT c.id, c.subject_key, c.predicate, c.value_text, c.value_num::text, c.value_unit, c.revision, c.scope, \
-                CASE WHEN c.extraction_method = 'manual' THEN 'manual' ELSE coalesce(a.kind, 'manual') END FROM claims c LEFT JOIN artifacts a ON a.id = c.artifact_id \
+    .collect())
+}
+
+fn canon_with(aliases: &HashMap<String, String>, k: &str) -> String {
+    let n = safe_normalize(k);
+    aliases.get(&n).cloned().unwrap_or(n)
+}
+
+/// Current facts of `subject_type`, optionally only those whose raw subject key is in `raw_keys`.
+async fn load_fact_rows(
+    tx: &mut Tx,
+    subject_type: &str,
+    raw_keys: Option<&[String]>,
+    aliases: &HashMap<String, String>,
+) -> ApiResult<Vec<Fact>> {
+    // Two fixed statements, not `$2 IS NULL OR ...`: that generic predicate made the planner estimate one row on
+    // freshly loaded tables and pick a nested loop that rescanned the tenant's artifacts per claim (120 s at 66 k
+    // claims, PERF_VERIFY_2026-11-05). The join stays on the artifact primary key (worst case: one probe per claim).
+    const SQL: &str = "SELECT c.id, c.subject_key, c.predicate, c.value_text, c.value_num::text, c.value_unit, c.revision, c.scope, \
+                CASE WHEN c.extraction_method = 'manual' THEN 'manual' ELSE coalesce(a.kind, 'manual') END \
+         FROM claims c LEFT JOIN artifacts a ON a.id = c.artifact_id \
          WHERE c.subject_type = $1 AND c.superseded_at IS NULL AND c.review_status <> 'rejected' \
-         AND (c.extraction_method NOT LIKE 'ai:%' OR c.review_status = 'accepted')",
-    )
-    .bind(subject_type)
+         AND (c.extraction_method NOT LIKE 'ai:%' OR c.review_status = 'accepted')";
+    let keyed;
+    let rows: Vec<FactRow> = match raw_keys {
+        None => sqlx::query_as(SQL).bind(subject_type),
+        Some(k) => {
+            keyed = format!("{SQL} AND c.subject_key = ANY($2)");
+            sqlx::query_as(&keyed).bind(subject_type).bind(k)
+        }
+    }
     .fetch_all(&mut **tx)
     .await?;
-    let want = only_subject.map(canon);
     Ok(rows
         .into_iter()
         .map(|r| Fact {
             id: r.0.to_string(),
-            subject: canon(&r.1),
+            subject: canon_with(aliases, &r.1),
             predicate: r.2,
             text: r.3,
             num: r.4.as_deref().and_then(|n| Decimal::from_str(n).ok()),
@@ -737,113 +765,287 @@ pub async fn load_facts_of(tx: &mut Tx, subject_type: &str, only_subject: Option
                 .unwrap_or_default(),
             source_kind: r.8,
         })
-        .filter(|f| want.as_ref().is_none_or(|w| &f.subject == w))
         .collect())
 }
 
 #[derive(Serialize)]
 pub struct RunResp {
     pub rule_version: &'static str,
+    /// `full` (every subject) or `incremental` (only subjects changed since the last run).
+    pub mode: &'static str,
+    /// Findings that fire for the evaluated subjects (all subjects in a full run).
     pub findings_total: usize,
     pub findings_new: usize,
     pub marked_obsolete: u64,
+    pub subjects_evaluated: usize,
+    pub changes_consumed: usize,
+    /// Highest change-log id consumed so far (the incremental watermark).
+    pub watermark: i64,
 }
 
-pub async fn run_detection(State(st): State<AppState>, p: Principal) -> ApiResult<Json<RunResp>> {
+/// `full` forces a whole-tenant run; the default (`auto`) is incremental unless a full run is due.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RunMode {
+    #[default]
+    Auto,
+    Full,
+}
+
+#[derive(Deserialize, Default)]
+pub struct RunQuery {
+    #[serde(default)]
+    pub mode: RunMode,
+}
+
+/// An `auto` run is full every this many runs (periodic consistency pass) or when the last full run is older
+/// than [`FULL_MAX_AGE`]; also when there is no state yet, the tenant's calendar day changed (expiry rules) or an
+/// alias / entity decision changed canonical subjects.
+pub const FULL_EVERY_RUNS: i32 = 100;
+pub const FULL_MAX_AGE: time::Duration = time::Duration::hours(24);
+
+/// Worker threads for rule evaluation (bounded: the server shares the host with the extraction workers).
+fn eval_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| n.get()).clamp(1, 4)
+}
+
+pub async fn run_detection(
+    State(st): State<AppState>,
+    p: Principal,
+    ApiQuery(q): ApiQuery<RunQuery>,
+) -> ApiResult<Json<RunResp>> {
     p.require(&st, Permission::ClaimWrite).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let resp = detect_in_tx(&mut tx, p.tenant_id, st.clock.now()).await?;
+    let resp = detect(&mut tx, p.tenant_id, st.clock.now(), q.mode).await?;
     audit::append(&mut tx, p.tenant_id, Record::user(p.user_id, "verification.run", "tenant", p.tenant_id,
-        json!({ "rule_version": RULE_VERSION, "new": resp.findings_new, "total": resp.findings_total, "obsolete": resp.marked_obsolete }))).await?;
+        json!({ "rule_version": RULE_VERSION, "mode": resp.mode, "new": resp.findings_new, "total": resp.findings_total,
+                "obsolete": resp.marked_obsolete, "subjects": resp.subjects_evaluated, "watermark": resp.watermark }))).await?;
     tx.commit().await?;
     Ok(Json(resp))
 }
 
-/// Detects conflicts for the tenant in `tx`. New findings are inserted; findings whose claims are no longer current
-/// become `obsolete` (kept, never deleted).
+/// Full (whole-tenant) detection; see [`detect`].
 pub async fn detect_in_tx(tx: &mut Tx, tenant: Uuid, now: OffsetDateTime) -> ApiResult<RunResp> {
+    detect(tx, tenant, now, RunMode::Full).await
+}
+
+/// An open finding: (id, kind, claim_a, claim_b).
+type OpenRow = (Uuid, String, Uuid, Option<Uuid>);
+type StateRow = (i64, Option<time::Date>, Option<OffsetDateTime>, i32);
+
+/// Detects conflicts for the tenant in `tx`. New findings are inserted; findings whose claims are no longer current
+/// become `obsolete` (kept, never deleted). An incremental run re-evaluates only the subjects named in the change
+/// log and leaves the database exactly as a full run would (property-tested: `incremental_matches_full`).
+pub async fn detect(tx: &mut Tx, tenant: Uuid, now: OffsetDateTime, mode: RunMode) -> ApiResult<RunResp> {
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 13))")
         .bind(tenant.to_string())
         .execute(&mut **tx)
         .await?;
-    let facts = load_facts(tx, None).await?;
-    let rules = all_rules();
-    let refs: Vec<&dyn Rule> = rules.iter().map(|r| r.as_ref()).collect();
     // Expiry is judged on the tenant's calendar day at the injected clock's "now", not the server's UTC date.
-    let today = db::tenant_today(tx, tenant, now).await?.to_string();
-    let findings = conflict_engine::run(&refs, &facts, &Ctx { today });
-    let mut new = 0;
-    for f in &findings {
-        let a = Uuid::parse_str(&f.claim_a).map_err(ApiError::internal)?;
-        let b = f
-            .claim_b
-            .as_deref()
-            .map(Uuid::parse_str)
-            .transpose()
-            .map_err(ApiError::internal)?;
-        let r: Option<(Uuid, bool)> = sqlx::query_as(
-            "INSERT INTO conflicts (id, tenant_id, kind, subject_type, subject_key, claim_a, claim_b, explanation, rule_version) \
-             VALUES ($1,$2,$3,'part',$4,$5,$6,$7,$8) ON CONFLICT (tenant_id, kind, claim_a, coalesce(claim_b, claim_a)) \
-             DO UPDATE SET status = 'open', explanation = EXCLUDED.explanation WHERE conflicts.status = 'obsolete' \
-             RETURNING id, (xmax = 0) AS inserted",
-        )
-        .bind(Uuid::now_v7())
-        .bind(tenant)
-        .bind(f.kind)
-        .bind(&f.subject)
-        .bind(a)
-        .bind(b)
-        .bind(&f.explanation)
-        .bind(RULE_VERSION)
-        .fetch_optional(&mut **tx)
-        .await?;
-        match r {
-            Some((_, true)) => new += 1,
-            Some((cid, false)) => {
-                // A finding that had become obsolete fires again: reopen it (review finding H2).
-                audit::append(
-                    tx,
-                    tenant,
-                    Record {
-                        actor_user_id: None,
-                        actor_kind: "system",
-                        action: "conflict.reopened",
-                        target_type: "conflict",
-                        target_id: Some(cid.to_string()),
-                        details: json!({ "kind": f.kind }),
-                    },
-                )
-                .await?;
-                new += 1;
-            }
-            None => {}
-        }
-    }
-    // Findings that no longer fire under current evidence become obsolete (kept for history, never deleted).
-    let current: std::collections::HashSet<(String, String, Option<String>)> = findings
-        .iter()
-        .map(|f| (f.kind.to_string(), f.claim_a.clone(), f.claim_b.clone()))
-        .collect();
-    let open: Vec<(Uuid, String, Uuid, Option<Uuid>)> =
-        sqlx::query_as("SELECT id, kind, claim_a, claim_b FROM conflicts WHERE status IN ('open', 'needs_evidence')")
+    let today = db::tenant_today(tx, tenant, now).await?;
+    let state: Option<StateRow> = sqlx::query_as(
+        "SELECT watermark, last_day, last_full_at, runs_since_full FROM verification_state WHERE tenant_id = $1 FOR UPDATE",
+    )
+    .bind(tenant)
+    .fetch_optional(&mut **tx)
+    .await?;
+    // Consume the change log first: a change committed after this statement keeps its row for the next run.
+    let changes: Vec<(i64, String, Option<String>, Option<Uuid>)> =
+        sqlx::query_as("DELETE FROM verification_changes RETURNING id, subject_type, subject_key, claim_id")
             .fetch_all(&mut **tx)
             .await?;
+    let part_changes: Vec<&(i64, String, Option<String>, Option<Uuid>)> =
+        changes.iter().filter(|c| c.1 == "part").collect();
+    let full = match (mode, &state) {
+        (RunMode::Full, _) | (_, None) => true,
+        (RunMode::Auto, Some((_, day, last_full, runs))) => {
+            *day != Some(today)
+                || last_full.is_none_or(|t| now - t > FULL_MAX_AGE)
+                || *runs + 1 >= FULL_EVERY_RUNS
+                || part_changes.iter().any(|c| c.2.is_none())
+        }
+    };
+    let aliases = load_aliases(tx, "part").await?;
+    let ctx = Ctx {
+        today: today.to_string(),
+    };
+    let rules = all_rules();
+    let refs: Vec<&dyn Rule> = rules.iter().map(|r| r.as_ref()).collect();
+    // Facts to evaluate and the open findings that may have stopped firing (by claim, never by stored subject key:
+    // a finding's subject key is the one of its first detection).
+    let (facts, subjects, open): (Vec<Fact>, usize, Vec<OpenRow>) = if full {
+        let facts = load_fact_rows(tx, "part", None, &aliases).await?;
+        let open = sqlx::query_as(
+            "SELECT id, kind, claim_a, claim_b FROM conflicts WHERE status IN ('open', 'needs_evidence')",
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+        let n = facts
+            .iter()
+            .map(|f| f.subject.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        (facts, n, open)
+    } else if part_changes.is_empty() {
+        (Vec::new(), 0, Vec::new())
+    } else {
+        let dirty: std::collections::HashSet<String> = part_changes
+            .iter()
+            .filter_map(|c| c.2.as_deref())
+            .map(|k| canon_with(&aliases, k))
+            .collect();
+        // Raw keys of the dirty subjects (all spellings that normalise / alias to them): index-only scan.
+        let keys: Vec<String> =
+            sqlx::query_scalar("SELECT DISTINCT subject_key FROM claims WHERE subject_type = 'part'")
+                .fetch_all(&mut **tx)
+                .await?;
+        let raw: Vec<String> = keys
+            .into_iter()
+            .filter(|k| dirty.contains(&canon_with(&aliases, k)))
+            .collect();
+        let facts = load_fact_rows(tx, "part", Some(&raw), &aliases).await?;
+        let mut ids: Vec<Uuid> = facts.iter().filter_map(|f| Uuid::parse_str(&f.id).ok()).collect();
+        ids.extend(part_changes.iter().filter_map(|c| c.3));
+        let open = sqlx::query_as(
+            "SELECT id, kind, claim_a, claim_b FROM conflicts WHERE status IN ('open', 'needs_evidence') \
+             AND (claim_a = ANY($1) OR claim_b = ANY($1))",
+        )
+        .bind(&ids)
+        .fetch_all(&mut **tx)
+        .await?;
+        (facts, dirty.len(), open)
+    };
+    let findings = if facts.is_empty() {
+        Vec::new()
+    } else {
+        let threads = eval_threads();
+        let eval = || conflict_engine::run_parallel(&refs, &facts, &ctx, threads);
+        // Rule evaluation is CPU work: keep it off the async worker when the runtime allows it.
+        if tokio::runtime::Handle::current().runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
+            tokio::task::block_in_place(eval)
+        } else {
+            eval()
+        }
+    };
+    let new = upsert_findings(tx, tenant, &findings).await?;
+    // Findings that no longer fire under current evidence become obsolete (kept for history, never deleted).
+    let current: std::collections::HashSet<(&str, &str, Option<&str>)> = findings
+        .iter()
+        .map(|f| (f.kind, f.claim_a.as_str(), f.claim_b.as_deref()))
+        .collect();
     let stale: Vec<Uuid> = open
         .into_iter()
-        .filter(|(_, k, a, b)| !current.contains(&(k.clone(), a.to_string(), b.map(|x| x.to_string()))))
+        .filter(|(_, k, a, b)| {
+            let (a, b) = (a.to_string(), b.map(|x| x.to_string()));
+            !current.contains(&(k.as_str(), a.as_str(), b.as_deref()))
+        })
         .map(|(id, ..)| id)
         .collect();
-    let obsolete = sqlx::query("UPDATE conflicts SET status = 'obsolete' WHERE id = ANY($1)")
-        .bind(&stale)
-        .execute(&mut **tx)
-        .await?
-        .rows_affected();
+    let obsolete = if stale.is_empty() {
+        0
+    } else {
+        sqlx::query("UPDATE conflicts SET status = 'obsolete' WHERE id = ANY($1)")
+            .bind(&stale)
+            .execute(&mut **tx)
+            .await?
+            .rows_affected()
+    };
+    let consumed = changes.iter().map(|c| c.0).max().unwrap_or(0);
+    let watermark: i64 = sqlx::query_scalar(
+        "INSERT INTO verification_state AS s (tenant_id, watermark, last_day, last_run_at, last_full_at, runs_since_full) \
+         VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN $4 END, 0) \
+         ON CONFLICT (tenant_id) DO UPDATE SET watermark = greatest(s.watermark, EXCLUDED.watermark), \
+             last_day = EXCLUDED.last_day, last_run_at = EXCLUDED.last_run_at, \
+             last_full_at = CASE WHEN $5 THEN EXCLUDED.last_run_at ELSE s.last_full_at END, \
+             runs_since_full = CASE WHEN $5 THEN 0 ELSE s.runs_since_full + 1 END \
+         RETURNING watermark",
+    )
+    .bind(tenant)
+    .bind(consumed)
+    .bind(today)
+    .bind(now)
+    .bind(full)
+    .fetch_one(&mut **tx)
+    .await?;
     Ok(RunResp {
         rule_version: RULE_VERSION,
+        mode: if full { "full" } else { "incremental" },
         findings_total: findings.len(),
         findings_new: new,
         marked_obsolete: obsolete,
+        subjects_evaluated: subjects,
+        changes_consumed: changes.len(),
+        watermark,
     })
+}
+
+/// Inserts findings in one statement (was one round trip per finding); reopens obsolete ones with an audit event.
+async fn upsert_findings(tx: &mut Tx, tenant: Uuid, findings: &[conflict_engine::Finding]) -> ApiResult<usize> {
+    if findings.is_empty() {
+        return Ok(0);
+    }
+    let mut ids = Vec::with_capacity(findings.len());
+    let (mut kinds, mut subjects, mut a, mut b, mut expl) = (vec![], vec![], vec![], vec![], vec![]);
+    for f in findings {
+        ids.push(Uuid::now_v7());
+        kinds.push(f.kind.to_string());
+        subjects.push(f.subject.clone());
+        a.push(Uuid::parse_str(&f.claim_a).map_err(ApiError::internal)?);
+        b.push(
+            f.claim_b
+                .as_deref()
+                .map(Uuid::parse_str)
+                .transpose()
+                .map_err(ApiError::internal)?,
+        );
+        expl.push(f.explanation.clone());
+    }
+    let rows: Vec<(Uuid, bool, String, Uuid, Option<Uuid>)> = sqlx::query_as(
+        "INSERT INTO conflicts (id, tenant_id, kind, subject_type, subject_key, claim_a, claim_b, explanation, rule_version) \
+         SELECT u.id, $1, u.kind, 'part', u.subject, u.a, u.b, u.expl, $8 \
+         FROM unnest($2::uuid[], $3::text[], $4::text[], $5::uuid[], $6::uuid[], $7::jsonb[]) AS u(id, kind, subject, a, b, expl) \
+         ON CONFLICT (tenant_id, kind, claim_a, coalesce(claim_b, claim_a)) \
+         DO UPDATE SET status = 'open', explanation = EXCLUDED.explanation WHERE conflicts.status = 'obsolete' \
+         RETURNING id, (xmax = 0) AS inserted, kind, claim_a, claim_b",
+    )
+    .bind(tenant)
+    .bind(&ids)
+    .bind(&kinds)
+    .bind(&subjects)
+    .bind(&a)
+    .bind(&b)
+    .bind(&expl)
+    .bind(RULE_VERSION)
+    .fetch_all(&mut **tx)
+    .await?;
+    let new = rows.len();
+    let order: HashMap<(&str, Uuid, Option<Uuid>), usize> = (0..findings.len())
+        .map(|i| ((kinds[i].as_str(), a[i], b[i]), i))
+        .collect();
+    // Audit reopened findings in finding order (as the former per-finding loop did).
+    let mut reopened: Vec<(usize, Uuid, String)> = rows
+        .into_iter()
+        .filter(|r| !r.1)
+        .map(|(id, _, k, ca, cb)| (order.get(&(k.as_str(), ca, cb)).copied().unwrap_or(usize::MAX), id, k))
+        .collect();
+    reopened.sort();
+    for (_, cid, kind) in reopened {
+        // A finding that had become obsolete fires again: reopen it (review finding H2).
+        audit::append(
+            tx,
+            tenant,
+            Record {
+                actor_user_id: None,
+                actor_kind: "system",
+                action: "conflict.reopened",
+                target_type: "conflict",
+                target_id: Some(cid.to_string()),
+                details: json!({ "kind": kind }),
+            },
+        )
+        .await?;
+    }
+    Ok(new)
 }
 
 #[derive(Serialize, sqlx::FromRow)]

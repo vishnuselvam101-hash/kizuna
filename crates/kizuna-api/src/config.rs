@@ -61,6 +61,9 @@ pub struct Config {
     pub invalidation_inline_limit: usize,
     /// Impacts a review-batch job applies per transaction.
     pub review_batch_chunk: usize,
+    /// Staging copies without a database row older than this are deleted by the staging sweep (upload never
+    /// committed). Must exceed the longest possible upload request.
+    pub staging_max_age_secs: u64,
     /// Number of trusted reverse proxies in front of the server (0 = ignore X-Forwarded-For).
     pub trusted_proxy_hops: usize,
     pub lockout_threshold: i32,
@@ -178,6 +181,7 @@ impl Config {
             max_upload_bytes: num("KIZUNA_MAX_UPLOAD_BYTES", 25 * 1024 * 1024, 1024, 200 * 1024 * 1024)? as usize,
             invalidation_inline_limit: num("KIZUNA_INVALIDATION_INLINE_LIMIT", 10_000, 1, 1_000_000)? as usize,
             review_batch_chunk: num("KIZUNA_REVIEW_BATCH_CHUNK", 500, 1, 100_000)? as usize,
+            staging_max_age_secs: num("KIZUNA_STAGING_MAX_AGE_HOURS", 6, 1, 24 * 30)? as u64 * 3600,
             trusted_proxy_hops: num("KIZUNA_TRUSTED_PROXY_HOPS", 0, 0, 5)? as usize,
             lockout_threshold: num("KIZUNA_LOCKOUT_THRESHOLD", 5, 3, 20)? as i32,
             lockout_secs: num("KIZUNA_LOCKOUT_SECS", 900, 60, 86400)?,
