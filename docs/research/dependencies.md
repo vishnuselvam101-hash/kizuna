@@ -19,7 +19,7 @@ review is manual (this table).
 | base64, hex | 0.22, 0.4 | MIT/Apache-2.0 | encodings | |
 | uuid, time, serde, serde_json, thiserror, tracing(-subscriber) | current | MIT/Apache-2.0 | basics | |
 | ed25519-dalek | 2 | BSD-3-Clause | signed audit checkpoints | RUSTSEC-2022-0093 fixed in 2.0 |
-| rust_decimal | 1 | MIT | exact decimal unit conversion / tolerance checks | no floats in rules |
+| rust_decimal | 1 (1.43.0 locked) | MIT | exact decimal unit conversion / tolerance checks; `quality-stats` parses measured values exactly (keeps written scale for digit tests) | no floats in rules; `cargo audit` 2026-11-05: no advisory for `rust_decimal` (RUSTSEC-2022-0042 is the malicious typosquat `rustdecimal` — check the underscore). Chosen over hand-rolled i128 fixed-point: already in the tree, preserves scale, 28-digit range |
 | webauthn-rs | 0.6.2 | MPL-2.0 | WebAuthn ceremonies (ADR 0006) | kanidm project, SUSE-audited lineage; pure RustCrypto backend (`crypto-glue`), no OpenSSL; feature `danger-allow-state-serialisation` only so ceremony state can be sealed server-side (never sent to clients). MPL-2.0 is file-level copyleft: we link unmodified; modifying its files would require publishing those files. `cargo audit` 2026-11-05: 0 advisories (425 crates) |
 | proptest (dev) | 1 | MIT/Apache-2.0 | property tests | |
 | webauthn-authenticator-rs (dev, `softpasskey`) | 0.6.2 | MPL-2.0 | software authenticator for WebAuthn integration tests | test-only, not in the server binary |
@@ -27,6 +27,8 @@ review is manual (this table).
 
 Not adopted: `governor` (own 60-line limiter, ADR 0008), `jsonwebtoken` (opaque tokens, ADR 0005), `totp-rs`
 (TOTP from RustCrypto HMAC, RFC vectors), MinIO (AGPL-3.0, ADR 0009).
+
+Not adopted for `quality-stats`: `statrs` / `rand` (special functions and the SplitMix64 generator are ~200 lines, tested against published values; avoids float-behaviour drift across dependency updates), `criterion` (a plain `Instant` bench example is enough for 100k-value timings and keeps the target dir small).
 
 ## Bundled data
 | File | Source | Licence | Use |
