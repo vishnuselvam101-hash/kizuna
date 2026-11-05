@@ -28,3 +28,18 @@ claimed. Result column = last local run (see BUILD_STATUS.md).
 | V13 least privilege DB | runtime role not owner/superuser/BYPASSRLS, refuses to start otherwise | `db::assert_runtime_role` | `runtime_role_check` | pass | |
 | V11 crypto at rest | AES-256-GCM with AAD | `crypto::seal/open` | `seal_open_binds_aad` | pass | |
 | V11 key rotation | versioned keys, header in AAD, old keys readable until per-tenant re-encrypt | `keyring.rs`, `kizuna-admin rotate-data-key` | `keyring::tests::*`, `data_key_rotation_reencrypts_per_tenant` (isolation, idempotence, legacy blob, in-flight challenge, unreadable blobs) | pass | keys still from env, no KMS/HSM |
+
+## Additions M2–M6 (re-run 2026-11-05, `scripts/check.sh` all green on the integrated main)
+
+| Area (ASVS 5.0) | Control | Implementation | Test | Result | Limitation |
+|---|---|---|---|---|---|
+| V6 phishing-resistant MFA | WebAuthn for privileged accounts; once enrolled, key mandatory for admin; recovery never locks out admins | `webauthn.rs`, `auth.rs` | `auth_hardening::webauthn_*`, `lost_key_recovery_never_locks_out_admins`, `adding_a_key_to_a_protected_account_needs_a_key_session` | pass | WebAuthn enrolment for admins is optional (founder decision) |
+| V6 breached/common passwords | offline common + context password screening | lane-auth | `common_and_context_passwords_are_refused` | pass | offline list only |
+| V7 session expiry | injected clock tests of access/session/refresh expiry and lockout expiry | `clock` | `session_and_refresh_expiry_follow_the_clock`, `lockout_expires_with_the_clock` | pass | — (closes M1 gap) |
+| V11 key management | versioned data keys, rotation CLI; Ed25519 signing key outside DB | `keyring.rs`, `audit.rs` | `data_key_rotation_reencrypts_per_tenant`, `signed_checkpoints_detect_full_rechain_by_db_owner` | pass | no HSM/KMS |
+| V8 four-eyes / privileged review | review = MFA; no self-review of own uploads, claims, findings, decisions | `verification.rs`, `decisions.rs`, policy-engine | `review_m2_m4_regressions::h1_*`, `l6_*` | pass | |
+| V8 tenant isolation (new tables) | RLS FORCE on artifacts…incidents, import_settings | migrations 0002–0008 | `artifacts_and_claims_are_tenant_isolated`, `conflicts_are_tenant_isolated`, `decision_rbac_validation_and_isolation`, `incidents_rbac_and_isolation` | pass | |
+| V5 file handling | content typing, static scan (escaped names, ObjStm), quarantine, size limits, sandboxed parsing | `evidence-core`, `extraction.rs`, worker | `rejects_disallowed_types_and_oversize`, `regression_review_m5_*`, Python isolation tests | pass | static scan is not antivirus; no seccomp |
+| V16 security monitoring & response | detection rules, containment with approval policy, guards | `incidents.rs`, `security-detection` | `m5_defense::*` (8) | pass | static thresholds |
+| V16 log integrity | signed checkpoints, report signatures, derivation cross-check | `audit.rs`, `decisions.rs` | `signed_checkpoints_*`, `l6_l7_l8_l9_*` | pass | checkpoints must be exported to be useful |
+| V14 data protection in reports | E2E reports redact credentials; gitleaks fingerprint allowlist documented | `scripts/e2e/driver.py`, `.gitleaksignore` | gitleaks in check.sh | pass | |

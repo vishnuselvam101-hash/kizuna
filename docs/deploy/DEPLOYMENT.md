@@ -55,7 +55,19 @@ KIZUNA_EXTRACTION_PYTHON=/opt/kizuna/extraction/.venv/bin/python
 KIZUNA_EXTRACTION_DIR=/opt/kizuna/extraction/src
 KIZUNA_EXTRACTION_SANDBOX=bwrap  # never `none` in production
 KIZUNA_LOG=info
+# M5: Ed25519 seed for signed audit checkpoints and signed reports (openssl rand -base64 32).
+# Keep a copy OUTSIDE this host; export checkpoints regularly (POST /api/v1/audit/checkpoints) to a separate
+# system so a database owner cannot silently re-chain the audit log.
+KIZUNA_AUDIT_SIGNING_KEY=...
+# Data-key rotation (lane-auth): KIZUNA_DATA_KEY_ID=<n>, KIZUNA_DATA_KEYS_PREVIOUS=<id:base64,...>, then
+#   kizuna-admin rotate-data-key   (re-encrypts TOTP/WebAuthn secrets under the current key)
 ```
+Run the server as the dedicated non-root `kizuna` user: the extraction sandbox then also applies a process limit
+(`--nproc`), which is skipped when running as root. No seccomp filter is applied yet (residual risk, see SECURITY.md).
+
+Incident response (M5) runs inside the server (60 s sweep + inline triggers); thresholds are static defaults.
+Emergency recovery if containment ever blocks administrators: `kizuna-admin emergency-unlock <tenant-slug>`
+(re-enables admins, lifts address blocks and restrictions; audited). Keep `admin.env` on the server only.
 `/etc/kizuna/admin.env` (root only, 0600): `KIZUNA_OWNER_DATABASE_URL=postgres://kizuna:...@127.0.0.1:5432/kizuna_prod`.
 Remaining limits (`KIZUNA_ACCESS_TTL_SECS`, upload size, lockout, rate limits) keep the defaults in `.env.example`
 unless the pilot needs otherwise.

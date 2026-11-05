@@ -79,6 +79,16 @@ are flagged, unrelated ones are untouched. A +0.04 mm correction would be record
 `GET /audit/verify` (auditor) → `intact: true` over the hash chain. `outsider@` (other tenant) requesting one of
 our artifacts or conflicts → 404 (no existence leak). Viewer → read-only (upload / run / audit verify → 403).
 
+## 7b. Defensive response (4 min)
+1. From a second browser profile, sign in 9 times with wrong passwords across 3 synthetic accounts (one address).
+2. Admin → Security monitoring: incident `password_spraying` (high), action `block_ip` executed automatically for
+   60 min; the address now gets `blocked` even with the right password. Revert the block from the dashboard.
+3. Replay an old refresh token (scripted, `scripts/e2e/driver.py` does it): incident `token_theft` (critical),
+   sessions revoked automatically, `lock_account` waits for an MFA-verified admin approval.
+4. Show the guards: the last active admin can never be disabled; an address an admin used is never auto-blocked.
+5. Audit → create a signed checkpoint; explain that an exported checkpoint detects a re-chained audit log.
+Say clearly: responses only act on KIZUNA's own sessions, accounts, uploads and documents.
+
 ## 8. Scores from the real run (2 min)
 From `reports/e2e/e2e-seed7.json` (real run, debug build, this dev host): 52 documents ingested and extracted,
 12 open findings; rule-level precision 1.00 and fault recall 1.00 (10/10 rule-detectable faults); duplicate ids
