@@ -1,0 +1,73 @@
+// API client. Tokens live only in memory (never localStorage) to limit XSS token theft.
+
+export class ApiError extends Error {
+  constructor(public status: number, public code: string) {
+    super(`${status} ${code}`);
+  }
+}
+
+export interface Tokens {
+  access_token: string;
+  refresh_token: string;
+}
+
+export class Api {
+  private tokens: Tokens | null = null;
+  constructor(private base = "/api/v1", private fetchFn: typeof fetch = (...a) => fetch(...a)) {}
+
+  get authenticated(): boolean {
+    return this.tokens !== null;
+  }
+
+  setTokens(t: Tokens | null) {
+    this.tokens = t;
+  }
+
+  async request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
+    const headers: Record<string, string> = {};
+    if (body !== undefined && !(body instanceof FormData)) headers["content-type"] = "application/json";
+    if (this.tokens) headers.authorization = `Bearer ${this.tokens.access_token}`;
+    const res = await this.fetchFn(this.base + path, {
+      method,
+      headers,
+      body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
+    });
+    if (res.status === 401 && retry && this.tokens && path !== "/auth/refresh") {
+      if (await this.refresh()) return this.request<T>(method, path, body, false);
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? "unknown");
+    return data as T;
+  }
+
+  private async refresh(): Promise<boolean> {
+    const rt = this.tokens?.refresh_token;
+    this.tokens = null;
+    if (!rt) return false;
+    try {
+      this.tokens = await this.request<Tokens>("POST", "/auth/refresh", { refresh_token: rt }, false);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async login(tenant: string, email: string, password: string, totp_code?: string) {
+    const t = await this.request<Tokens & { mfa_verified: boolean }>("POST", "/auth/login", {
+      tenant,
+      email,
+      password,
+      totp_code: totp_code || null,
+    });
+    this.tokens = t;
+    return t;
+  }
+
+  async logout() {
+    try {
+      await this.request("POST", "/auth/logout", {});
+    } finally {
+      this.tokens = null;
+    }
+  }
+}

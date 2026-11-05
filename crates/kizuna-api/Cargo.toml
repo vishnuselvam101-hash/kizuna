@@ -1,0 +1,40 @@
+[package]
+name = "kizuna-api"
+version = "0.1.0"
+description = "KIZUNA Verify API server and admin CLI"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+audit-engine = { path = "../audit-engine" }
+policy-engine = { path = "../policy-engine" }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "macros", "multipart"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "fs", "io-util", "process", "sync"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.6", features = ["limit", "timeout", "set-header"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "json", "migrate", "macros"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+time.workspace = true
+argon2 = { version = "0.5", features = ["std"] }
+aes-gcm = "0.10"
+hmac = "0.12"
+sha1 = "0.10"
+rand = "0.9"
+base64 = "0.22"
+subtle = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+proptest.workspace = true
+http-body-util = "0.1"
+
+[lints]
+workspace = true

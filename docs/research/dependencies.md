@@ -1,0 +1,43 @@
+# Dependency register
+
+Checked 2026-11-05: licence from crates.io/npm metadata, maintenance = release within the last year and active repo,
+advisories via `cargo audit` (RustSec DB) and `pnpm audit` (GitHub advisories). cargo-deny is not installed; licence
+review is manual (this table).
+
+## Rust (direct)
+| Crate | Version line | Licence | Why | Notes |
+|---|---|---|---|---|
+| axum / tower / tower-http | 0.8 / 0.5 / 0.6 | MIT | HTTP server, limits, headers | tokio-rs project |
+| tokio | 1 | MIT | async runtime | |
+| sqlx | 0.8 (0.9 exists) | MIT/Apache-2.0 | PostgreSQL, migrations | RUSTSEC-2024-0363 fixed in 0.8.1; lockfile lists `rsa` via unused sqlx-mysql (RUSTSEC-2023-0071, not compiled; ignored with reason in `.cargo/audit.toml`) |
+| argon2 | 0.5 | MIT/Apache-2.0 | password hashing | RustCrypto |
+| aes-gcm | 0.10 | MIT/Apache-2.0 | secret encryption at rest | RustCrypto; NCC audit 2020 |
+| sha2, sha1, hmac | 0.10/0.10/0.12 | MIT/Apache-2.0 | SHA-256, TOTP HMAC-SHA1 | RustCrypto |
+| rand | 0.9 | MIT/Apache-2.0 | token/nonce generation (ThreadRng, CSPRNG) | |
+| subtle | 2 | BSD-3-Clause | constant-time compare | |
+| base64, hex | 0.22, 0.4 | MIT/Apache-2.0 | encodings | |
+| uuid, time, serde, serde_json, thiserror, tracing(-subscriber) | current | MIT/Apache-2.0 | basics | |
+| proptest (dev) | 1 | MIT/Apache-2.0 | property tests | |
+| http-body-util (dev) | 0.1 | MIT | test body reads | |
+
+Not adopted: `governor` (own 60-line limiter, ADR 0008), `jsonwebtoken` (opaque tokens, ADR 0005), `totp-rs`
+(TOTP from RustCrypto HMAC, RFC vectors), `webauthn-rs` (MPL-2.0, deferred), MinIO (AGPL-3.0, ADR 0009).
+
+## Python (services/extraction, via uv)
+| Package | Licence | Use |
+|---|---|---|
+| pytest (dev) | MIT | tests |
+| ruff (dev) | MIT | lint/format |
+
+## Web (pnpm)
+| Package | Licence | Use |
+|---|---|---|
+| react, react-dom 18.3.1 | MIT | UI |
+| vite 8, @vitejs/plugin-react | MIT | build/dev server |
+| vitest 5, jsdom, @testing-library/* | MIT | tests |
+| typescript 5.6 | Apache-2.0 | typecheck |
+
+Initial pins (vite 5.4.11, vitest 2.1.8) had 25 `pnpm audit` findings incl. critical; upgraded to latest, now 0.
+
+## Upgrade backlog
+sqlx 0.9, rand 0.10, sha2 0.11, argon2 0.6, aes-gcm 0.11 (new majors; API changes; schedule after M6).

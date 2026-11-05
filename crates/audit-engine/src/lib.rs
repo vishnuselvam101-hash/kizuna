@@ -1,0 +1,221 @@
+//! Tamper-evident, per-tenant hash-chained audit log (pure logic, no I/O).
+//!
+//! `hash_n = SHA-256(encode(event_n) || prev_hash)` where `prev_hash` of the first event is 32 zero bytes.
+//! The encoding is length-prefixed and versioned so no two different events share an encoding.
+//! A valid chain proves the stored events are unchanged since they were written (and that none were removed
+//! from the middle); it does **not** prove that what they describe is true.
+
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
+
+pub const GENESIS: [u8; 32] = [0u8; 32];
+const MAGIC: &[u8; 4] = b"KZA1";
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum AuditError {
+    #[error("floating-point numbers are not allowed in audit details")]
+    FloatNotAllowed,
+    #[error("NUL characters are not allowed in audit data")]
+    NulNotAllowed,
+}
+
+/// One audit event as recorded. `details` must be canonicalisable (no floats).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Event {
+    pub tenant_id: Uuid,
+    pub seq: i64,
+    /// Microseconds since the Unix epoch (PostgreSQL `timestamptz` precision).
+    pub occurred_at_us: i64,
+    pub actor_user_id: Option<Uuid>,
+    pub actor_kind: String,
+    pub action: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub details: Value,
+}
+
+/// An event together with its stored chain links.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredEvent {
+    pub event: Event,
+    pub prev_hash: Vec<u8>,
+    pub hash: Vec<u8>,
+}
+
+/// Canonical JSON: object keys sorted by UTF-8 bytes, no whitespace, integers only.
+pub fn canonical_json(v: &Value) -> Result<String, AuditError> {
+    let mut out = String::new();
+    write_canonical(v, &mut out)?;
+    Ok(out)
+}
+
+fn write_str(s: &str, out: &mut String) -> Result<(), AuditError> {
+    if s.contains('\0') {
+        return Err(AuditError::NulNotAllowed);
+    }
+    // serde_json string escaping is deterministic.
+    out.push_str(&serde_json::to_string(s).unwrap_or_default());
+    Ok(())
+}
+
+fn write_canonical(v: &Value, out: &mut String) -> Result<(), AuditError> {
+    match v {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                out.push_str(&i.to_string());
+            } else if let Some(u) = n.as_u64() {
+                out.push_str(&u.to_string());
+            } else {
+                return Err(AuditError::FloatNotAllowed);
+            }
+        }
+        Value::String(s) => write_str(s, out)?,
+        Value::Array(a) => {
+            out.push('[');
+            for (i, x) in a.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_canonical(x, out)?;
+            }
+            out.push(']');
+        }
+        Value::Object(m) => {
+            let mut keys: Vec<&String> = m.keys().collect();
+            keys.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+            out.push('{');
+            for (i, k) in keys.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_str(k, out)?;
+                out.push(':');
+                write_canonical(&m[k.as_str()], out)?;
+            }
+            out.push('}');
+        }
+    }
+    Ok(())
+}
+
+fn put(buf: &mut Vec<u8>, bytes: &[u8]) {
+    buf.extend_from_slice(&(bytes.len() as u64).to_be_bytes());
+    buf.extend_from_slice(bytes);
+}
+
+fn put_opt(buf: &mut Vec<u8>, bytes: Option<&[u8]>) {
+    match bytes {
+        None => buf.push(0),
+        Some(b) => {
+            buf.push(1);
+            put(buf, b);
+        }
+    }
+}
+
+/// Deterministic, injective byte encoding of an event (without chain links).
+pub fn encode(e: &Event) -> Result<Vec<u8>, AuditError> {
+    for s in [&e.actor_kind, &e.action, &e.target_type] {
+        if s.contains('\0') {
+            return Err(AuditError::NulNotAllowed);
+        }
+    }
+    if e.target_id.as_deref().is_some_and(|s| s.contains('\0')) {
+        return Err(AuditError::NulNotAllowed);
+    }
+    let details = canonical_json(&e.details)?;
+    let mut b = Vec::with_capacity(128 + details.len());
+    b.extend_from_slice(MAGIC);
+    b.extend_from_slice(e.tenant_id.as_bytes());
+    b.extend_from_slice(&e.seq.to_be_bytes());
+    b.extend_from_slice(&e.occurred_at_us.to_be_bytes());
+    put_opt(
+        &mut b,
+        e.actor_user_id.as_ref().map(|u| u.as_bytes().as_slice()),
+    );
+    put(&mut b, e.actor_kind.as_bytes());
+    put(&mut b, e.action.as_bytes());
+    put(&mut b, e.target_type.as_bytes());
+    put_opt(&mut b, e.target_id.as_deref().map(str::as_bytes));
+    put(&mut b, details.as_bytes());
+    Ok(b)
+}
+
+/// Chain hash of an event given the previous event's hash.
+pub fn chain_hash(e: &Event, prev_hash: &[u8]) -> Result<[u8; 32], AuditError> {
+    let mut h = Sha256::new();
+    h.update(encode(e)?);
+    h.update(prev_hash);
+    Ok(h.finalize().into())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Break {
+    /// Sequence numbers are not 1, 2, 3, ... (an event was removed or inserted).
+    SequenceGap { expected: i64, found: i64 },
+    /// `prev_hash` does not equal the previous event's hash.
+    BrokenLink { seq: i64 },
+    /// Recomputed hash differs from the stored hash (event content changed).
+    HashMismatch { seq: i64 },
+    /// Event cannot be encoded (e.g. a float was written into details).
+    Unencodable { seq: i64 },
+    /// Event belongs to a different tenant than the chain.
+    WrongTenant { seq: i64 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifyReport {
+    pub events_checked: usize,
+    pub first_break: Option<Break>,
+    pub head_hash: [u8; 32],
+}
+
+impl VerifyReport {
+    pub fn is_intact(&self) -> bool {
+        self.first_break.is_none()
+    }
+}
+
+/// Verifies a full chain for one tenant, ordered by `seq`, starting at seq 1.
+/// Truncation of the tail is only detectable against an externally kept head (checkpoint).
+pub fn verify_chain(tenant_id: Uuid, events: &[StoredEvent]) -> VerifyReport {
+    let mut prev = GENESIS;
+    for (i, se) in events.iter().enumerate() {
+        let expected = i as i64 + 1;
+        let fail = |b| VerifyReport {
+            events_checked: i,
+            first_break: Some(b),
+            head_hash: prev,
+        };
+        if se.event.tenant_id != tenant_id {
+            return fail(Break::WrongTenant { seq: se.event.seq });
+        }
+        if se.event.seq != expected {
+            return fail(Break::SequenceGap {
+                expected,
+                found: se.event.seq,
+            });
+        }
+        if se.prev_hash.as_slice() != prev.as_slice() {
+            return fail(Break::BrokenLink { seq: se.event.seq });
+        }
+        let Ok(h) = chain_hash(&se.event, &prev) else {
+            return fail(Break::Unencodable { seq: se.event.seq });
+        };
+        if se.hash.as_slice() != h.as_slice() {
+            return fail(Break::HashMismatch { seq: se.event.seq });
+        }
+        prev = h;
+    }
+    VerifyReport {
+        events_checked: events.len(),
+        first_break: None,
+        head_hash: prev,
+    }
+}
+
+#[cfg(test)]
+mod tests;

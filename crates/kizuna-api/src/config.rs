@@ -1,0 +1,176 @@
+//! Configuration from environment variables. Secrets are wrapped so they never appear in Debug output or logs.
+
+use std::fmt;
+use std::net::SocketAddr;
+
+use base64::Engine;
+
+/// A secret value whose Debug/Display output is redacted.
+#[derive(Clone)]
+pub struct Secret<T>(T);
+
+impl<T> Secret<T> {
+    pub fn new(v: T) -> Self {
+        Self(v)
+    }
+    pub fn expose(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> fmt::Debug for Secret<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Secret([REDACTED])")
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    #[error("missing required environment variable {0}")]
+    Missing(&'static str),
+    #[error("invalid value for {0}")]
+    Invalid(&'static str),
+}
+
+#[derive(Debug, Clone)]
+pub struct RateLimits {
+    pub login_per_ip_per_min: u32,
+    pub login_per_account_per_min: u32,
+    pub refresh_per_ip_per_min: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub database_url: Secret<String>,
+    pub bind: SocketAddr,
+    /// 32-byte key for encrypting secrets at rest (TOTP seeds).
+    pub data_key: Secret<[u8; 32]>,
+    pub access_ttl_secs: i64,
+    pub session_ttl_secs: i64,
+    pub max_body_bytes: usize,
+    pub max_upload_bytes: usize,
+    pub trust_proxy: bool,
+    pub lockout_threshold: i32,
+    pub lockout_secs: i64,
+    pub rate: RateLimits,
+    pub storage_dir: std::path::PathBuf,
+    pub extraction_python: String,
+    pub extraction_dir: std::path::PathBuf,
+}
+
+pub fn parse_data_key(b64: &str) -> Result<[u8; 32], ConfigError> {
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .map_err(|_| ConfigError::Invalid("KIZUNA_DATA_KEY"))?;
+    raw.try_into()
+        .map_err(|_| ConfigError::Invalid("KIZUNA_DATA_KEY"))
+}
+
+impl Config {
+    pub fn from_env() -> Result<Self, ConfigError> {
+        Self::from_lookup(|k| std::env::var(k).ok())
+    }
+
+    pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
+        let req = |k: &'static str| {
+            get(k)
+                .filter(|v| !v.is_empty())
+                .ok_or(ConfigError::Missing(k))
+        };
+        let num = |k: &'static str, d: i64, lo: i64, hi: i64| -> Result<i64, ConfigError> {
+            match get(k) {
+                None => Ok(d),
+                Some(v) => v
+                    .parse::<i64>()
+                    .ok()
+                    .filter(|n| (lo..=hi).contains(n))
+                    .ok_or(ConfigError::Invalid(k)),
+            }
+        };
+        let bind = get("KIZUNA_BIND")
+            .unwrap_or_else(|| "127.0.0.1:8080".into())
+            .parse()
+            .map_err(|_| ConfigError::Invalid("KIZUNA_BIND"))?;
+        let access_ttl_secs = num("KIZUNA_ACCESS_TTL_SECS", 900, 60, 3600)?;
+        let session_ttl_secs = num("KIZUNA_SESSION_TTL_SECS", 12 * 3600, 900, 7 * 24 * 3600)?;
+        if session_ttl_secs < access_ttl_secs {
+            return Err(ConfigError::Invalid("KIZUNA_SESSION_TTL_SECS"));
+        }
+        let here = std::env::current_dir().unwrap_or_default();
+        Ok(Config {
+            database_url: Secret::new(req("KIZUNA_DATABASE_URL")?),
+            bind,
+            data_key: Secret::new(parse_data_key(&req("KIZUNA_DATA_KEY")?)?),
+            access_ttl_secs,
+            session_ttl_secs,
+            max_body_bytes: num("KIZUNA_MAX_BODY_BYTES", 64 * 1024, 1024, 1024 * 1024)? as usize,
+            max_upload_bytes: num(
+                "KIZUNA_MAX_UPLOAD_BYTES",
+                25 * 1024 * 1024,
+                1024,
+                200 * 1024 * 1024,
+            )? as usize,
+            trust_proxy: get("KIZUNA_TRUST_PROXY").as_deref() == Some("1"),
+            lockout_threshold: num("KIZUNA_LOCKOUT_THRESHOLD", 5, 3, 20)? as i32,
+            lockout_secs: num("KIZUNA_LOCKOUT_SECS", 900, 60, 86400)?,
+            rate: RateLimits {
+                login_per_ip_per_min: num("KIZUNA_LOGIN_PER_IP_PER_MIN", 20, 1, 10_000)? as u32,
+                login_per_account_per_min: num("KIZUNA_LOGIN_PER_ACCOUNT_PER_MIN", 10, 1, 10_000)?
+                    as u32,
+                refresh_per_ip_per_min: num("KIZUNA_REFRESH_PER_IP_PER_MIN", 60, 1, 10_000)? as u32,
+            },
+            storage_dir: get("KIZUNA_STORAGE_DIR")
+                .map(Into::into)
+                .unwrap_or_else(|| here.join("var/objects")),
+            extraction_python: get("KIZUNA_EXTRACTION_PYTHON").unwrap_or_else(|| "python3".into()),
+            extraction_dir: get("KIZUNA_EXTRACTION_DIR")
+                .map(Into::into)
+                .unwrap_or_else(|| here.join("services/extraction/src")),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn base() -> HashMap<&'static str, String> {
+        HashMap::from([
+            (
+                "KIZUNA_DATABASE_URL",
+                "postgres://u:supersecretpw@h/db".to_string(),
+            ),
+            (
+                "KIZUNA_DATA_KEY",
+                base64::engine::general_purpose::STANDARD.encode([7u8; 32]),
+            ),
+        ])
+    }
+
+    #[test]
+    fn debug_output_redacts_secrets() {
+        let m = base();
+        let c = Config::from_lookup(|k| m.get(k).cloned()).unwrap();
+        let dbg = format!("{c:?}");
+        assert!(!dbg.contains("supersecretpw"));
+        assert!(dbg.contains("REDACTED"));
+        assert_eq!(c.bind.to_string(), "127.0.0.1:8080");
+    }
+
+    #[test]
+    fn rejects_missing_and_invalid() {
+        let mut m = base();
+        m.remove("KIZUNA_DATA_KEY");
+        assert!(matches!(
+            Config::from_lookup(|k| m.get(k).cloned()),
+            Err(ConfigError::Missing("KIZUNA_DATA_KEY"))
+        ));
+        let mut m = base();
+        m.insert("KIZUNA_DATA_KEY", "c2hvcnQ=".into());
+        assert!(Config::from_lookup(|k| m.get(k).cloned()).is_err());
+        let mut m = base();
+        m.insert("KIZUNA_ACCESS_TTL_SECS", "999999".into());
+        assert!(Config::from_lookup(|k| m.get(k).cloned()).is_err());
+    }
+}
