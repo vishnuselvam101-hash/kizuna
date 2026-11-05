@@ -3,8 +3,8 @@
  "documents": 52,
  "malicious_files": 3,
  "timings_s": {
-  "ingest_and_extract": 14.17,
-  "verification_run": 0.045
+  "ingest_and_extract": 20.516,
+  "verification_run": 0.038
  },
  "verification_run": {
   "rule_version": "mfg-rules@1",
@@ -270,7 +270,7 @@
    "check": "reviewer records a decision on clean evidence",
    "ok": true,
    "detail": {
-    "id": "01a1ac3a-908c-76f9-a8ea-cd9029208227",
+    "id": "01a1ac59-7e03-7071-93d5-243fefc7c927",
     "kind": "supplier_part_release",
     "title": "Release SHF-6991 rev E",
     "subject_type": "part",
@@ -278,14 +278,14 @@
     "outcome": "approved",
     "rationale": "Synthetic E2E: spec, drawing, PO and inspection agree",
     "effective_from": null,
-    "decided_by": "01a1ac3a-5344-7238-ad50-d8efdfe3ce20",
-    "decided_at": "2026-11-05T15:01:21.676164Z",
+    "decided_by": "01a1ac59-253c-7254-8d22-cd1bba7e534f",
+    "decided_at": "2026-11-05T15:35:08.54745Z",
     "status": "valid",
-    "derivation_sha256": "2e5ca28e7572aec60594e73f3732cda5c35652dcdaca4fb9b7eb184d65f717f0",
+    "derivation_sha256": "a4b6ac372e92e3bfff882e35ae6d122910889e2aeb5cf162a4938209c7df663a",
     "supersedes": null,
     "evidence_claim_ids": [
-     "01a1ac3a-6041-74a4-b2f6-41df0ecd8f07",
-     "01a1ac3a-6048-758f-94b1-108644fb1d04"
+     "01a1ac59-393d-76f5-918d-1ba3a0f63e6f",
+     "01a1ac59-3951-7623-9e55-00bdfab6ecb9"
     ]
    }
   },
@@ -315,15 +315,15 @@
     "events_checked": 122,
     "problem": null,
     "head_seq": 122,
-    "head_hash": "582d457f027c6adb23de02349912957a971eecffdf5826c9e80bdbd7678f02d5"
+    "head_hash": "fe528c99732d1075e29d7d49fdbee74953f1bafb40899e19c0a329dec2c6b40a"
    }
   }
  ],
  "provenance": {
   "command": "scripts/e2e.sh --seed 7 --parts 24",
-  "commit": "0432a7c",
+  "commit": "55313fa",
   "dirty": false,
-  "utc": "2026-11-05T15:01:21+00:00",
+  "utc": "2026-11-05T15:35:08+00:00",
   "host": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
   "build": "debug"
  }
