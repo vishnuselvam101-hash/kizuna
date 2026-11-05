@@ -33,7 +33,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
-    let app = router(AppState::new(pool, cfg));
+    let mut state = AppState::new(pool.clone(), cfg);
+    state.av = kizuna_api::antivirus::from_lookup(|k| std::env::var(k).ok())?;
+    if state.av.configured() {
+        match state.av.probe() {
+            Ok(v) => tracing::info!(version = %v, "antivirus reachable"),
+            Err(e) => tracing::warn!(error = %e, "antivirus configured but unreachable: uploads will be quarantined"),
+        }
+    } else {
+        tracing::warn!("no antivirus configured (KIZUNA_CLAMD_SOCKET unset): static upload scan only");
+    }
+    state.alerts = std::sync::Arc::new(kizuna_api::alerts::Alerter::new(
+        kizuna_api::alerts::AlertConfig::from_env()?,
+        None,
+    ));
+    kizuna_api::alerts::spawn_incident_poller(
+        pool,
+        std::sync::Arc::clone(&state.alerts),
+        std::time::Duration::from_secs(60),
+    );
+    let app = router(state);
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(%bind, "kizuna-server listening");
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())

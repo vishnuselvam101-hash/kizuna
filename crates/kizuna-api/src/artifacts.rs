@@ -135,8 +135,22 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         }
     }
     let (data, name, declared, kind) = read_upload(mp, st.cfg.max_upload_bytes).await?;
-    let report = scan::scan(&data, &Limits::default());
+    let mut report = scan::scan(&data, &Limits::default());
     let sha = crypto::sha256(&data);
+    // Antivirus after the static scan (ADR 0017): any non-clean engine outcome quarantines (fail closed).
+    let av = if report.verdict == Verdict::Reject {
+        None
+    } else {
+        let (scanner, bytes) = (Arc::clone(&st.av), data.clone());
+        let outcome = tokio::task::spawn_blocking(move || scanner.scan(&bytes))
+            .await
+            .map_err(ApiError::internal)?;
+        if let Some(f) = outcome.finding() {
+            report.findings.push(f);
+            report.verdict = Verdict::Quarantine;
+        }
+        Some(outcome.to_json(st.av.engine()))
+    };
     if report.verdict == Verdict::Reject {
         sec::record(
             &st.pool,
@@ -155,7 +169,10 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
     } else {
         "quarantined"
     };
-    let scan_json = serde_json::to_value(&report).map_err(ApiError::internal)?;
+    let mut scan_json = serde_json::to_value(&report).map_err(ApiError::internal)?;
+    if let (Some(av), Some(o)) = (av, scan_json.as_object_mut()) {
+        o.insert("antivirus".into(), av);
+    }
 
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     // Serialise uploads of identical content in this tenant.
