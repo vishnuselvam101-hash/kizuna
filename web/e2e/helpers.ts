@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { createHmac } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,8 +29,11 @@ export function ctx(info: TestInfo) {
 export type Ctx = ReturnType<typeof ctx>;
 
 // ---- TOTP (RFC 6238, SHA-1, 30 s, 6 digits) — what an authenticator app computes from the shown secret.
-const secrets = new Map<string, string>(); // tenant/email -> base32 secret
-const lastStep = new Map<string, number>();
+// Enrolled secrets survive worker restarts (a failed test restarts the worker): kept in the run's work dir.
+const SECRETS = join(process.env.E2E_WORK ?? ".", "totp-secrets.json");
+const secrets = new Map<string, string>(existsSync(SECRETS) ? Object.entries(JSON.parse(readFileSync(SECRETS, "utf8"))) : []);
+const STEPS = join(process.env.E2E_WORK ?? ".", "totp-steps.json");
+const lastStep = new Map<string, number>(existsSync(STEPS) ? Object.entries(JSON.parse(readFileSync(STEPS, "utf8"))) : []);
 function b32(s: string): Buffer {
   const a = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   let bits = "";
@@ -46,6 +49,7 @@ export function totpAt(secret: string, step: number): string {
 }
 export function rememberSecret(c: Ctx, u: User, secret: string) {
   secrets.set(`${c.tenant}/${u}`, secret);
+  writeFileSync(SECRETS, JSON.stringify(Object.fromEntries(secrets)), { mode: 0o600 });
 }
 export const hasTotp = (c: Ctx, u: User) => secrets.has(`${c.tenant}/${u}`);
 /** A fresh code; waits for the next 30 s step if this user's last code was used in the current one (replay guard). */
@@ -58,6 +62,7 @@ export async function totp(c: Ctx, u: User): Promise<string> {
     step = Math.floor(Date.now() / 30_000);
   }
   lastStep.set(key, step);
+  writeFileSync(STEPS, JSON.stringify(Object.fromEntries(lastStep)));
   return totpAt(secret, step);
 }
 
