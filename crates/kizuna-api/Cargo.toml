@@ -50,6 +50,7 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 [dev-dependencies]
 proptest.workspace = true
 http-body-util = "0.1"
+http-body = "1"
 webauthn-authenticator-rs = { version = "0.6", features = ["softpasskey"] }
 
 [lints]

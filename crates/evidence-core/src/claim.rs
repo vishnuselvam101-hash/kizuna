@@ -191,7 +191,7 @@ pub fn validate(c: &ClaimInput) -> Result<ValidClaim, ClaimError> {
             .revision
             .as_deref()
             .map(str::trim)
-            .filter(|s| !s.is_empty() && s.len() <= 40)
+            .filter(|s| !s.is_empty() && s.chars().count() <= 40)
             .map(str::to_owned),
         source_location: loc,
         confidence_bps,
@@ -203,6 +203,22 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use serde_json::json;
+
+    #[test]
+    fn revision_limit_counts_characters_like_the_database() {
+        // DB: CHECK (length(revision) <= 40) counts characters; a 14-char Japanese revision is 42 bytes.
+        let rev = "改訂第十四版設計変更通知対応";
+        assert!(rev.chars().count() <= 40 && rev.len() > 40);
+        let c = ClaimInput {
+            subject_type: "part".into(),
+            subject_key: "BRK-100".into(),
+            predicate: "mfg.material".into(),
+            value_text: Some("SUS304".into()),
+            revision: Some(rev.into()),
+            ..Default::default()
+        };
+        assert_eq!(validate(&c).unwrap().revision.as_deref(), Some(rev));
+    }
 
     #[test]
     fn decimals_are_exact_and_canonical() {
