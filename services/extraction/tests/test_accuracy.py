@@ -76,7 +76,7 @@ def test_pdf_drawing_claims_exact():
         "row": 1,
         "col": 2,
     }
-    assert length["method"] == "pdf-table+rules@1" and 0 < length["confidence"] < 1
+    assert length["method"] == "pdf-table+rules@2" and 0 < length["confidence"] < 1
     tol = by[("tolerance", "±0.05")]
     assert tol["number"] == "0.05" and tol["unit"] == "mm" and tol["symmetric"] is True
     assert by[("drawing_number", "D-1001")]["location"]["line"] == 7
@@ -108,7 +108,7 @@ def test_xlsx_sheet_cell_and_cached_formula():
     assert claims_of(r) == {("lot", "L-9"), ("measured.length", "99.8"), ("result", "OK")}
     m = next(c for c in r["claims"] if c["field"] == "measured.length")
     assert m["location"] == {"row": 3, "col": 2, "sheet": "Spec", "cell": "B3"}
-    assert m["method"] == "xlsx-cell-cached-formula+rules@1" and m["unit"] == "mm"
+    assert m["method"] == "xlsx-cell-cached-formula+rules@2" and m["unit"] == "mm"
 
 
 def test_csv_japanese_cp932():
@@ -155,4 +155,5 @@ def test_ocr_tsv_lines_keep_pixel_boxes_and_confidence():
     records_from_lines(lines, "ocr", sink)
     (rec,) = sink.items
     assert (rec["label"], rec["value"], rec["method"]) == ("Part Number", "BRK-1", "ocr-text")
-    assert rec["confidence"] == 0.9 and rec["location"]["bbox_px"] == [10, 20, 250, 38]
+    # a value cell carries its own lowest word confidence (84), not the line average
+    assert rec["confidence"] == 0.84 and rec["location"]["bbox_px"] == [10, 20, 250, 38]

@@ -539,6 +539,13 @@ pub async fn create(
         if c.extraction_method.starts_with("ai:") && c.review_status != "accepted" {
             return Err(ApiError::Conflict("claim_ai_suggested_unreviewed"));
         }
+        // A low-confidence OCR value (e.g. a faxed certificate) backs a decision only after a person confirmed it.
+        // Migration 0017 enforces the same rule in the database.
+        if c.source_location.get("review").and_then(|v| v.as_str()) == Some("needs_confirmation")
+            && c.review_status != "accepted"
+        {
+            return Err(ApiError::Conflict("claim_needs_confirmation"));
+        }
         let artifact_sha256 = artifact_sha(&mut tx, &c).await?;
         evidence.push(Prepared {
             role: role(&e.role)?,

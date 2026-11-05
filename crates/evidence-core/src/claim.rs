@@ -119,8 +119,32 @@ pub struct ValidClaim {
     pub confidence_bps: i32,
 }
 
-const LOCATION_KEYS: [&str; 13] = [
-    "page", "table", "row", "col", "sheet", "cell", "record", "region", "line", "section", "handle", "bbox", "bbox_px",
+/// Keys a claim's source location may carry. Values: small unsigned integers, short strings or short integer
+/// arrays (boxes). `original` keeps printed text a value was normalised from (全角, 和暦), `review` =
+/// "needs_confirmation" marks a low-confidence OCR value, `ocr_conf_bps` its confidence.
+pub const LOCATION_KEYS: [&str; 22] = [
+    "page",
+    "table",
+    "row",
+    "col",
+    "sheet",
+    "cell",
+    "record",
+    "region",
+    "line",
+    "section",
+    "handle",
+    "bbox",
+    "bbox_px",
+    "variable",
+    "metadata",
+    "header",
+    "item",
+    "original",
+    "review",
+    "ocr_conf_bps",
+    "detector",
+    "red_px",
 ];
 
 pub fn validate(c: &ClaimInput) -> Result<ValidClaim, ClaimError> {

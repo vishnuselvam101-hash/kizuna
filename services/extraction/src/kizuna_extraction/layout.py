@@ -5,6 +5,8 @@ fragments is wider than about one character. Lines are numbered top-to-bottom pe
 import re
 from dataclasses import dataclass, field
 
+from .ja import is_cjk, join_cjk
+
 SPLIT_CELLS = re.compile(r"\t+| {2,}")
 
 
@@ -13,6 +15,7 @@ class Cell:
     text: str
     x0: float
     x1: float
+    conf: float | None = None  # OCR: lowest word confidence in the cell (0..1)
 
 
 @dataclass
@@ -49,9 +52,14 @@ def lines_from_fragments(page: int, frags: list[tuple[float, float, float, str]]
         row.sort(key=lambda f: f[0])
         cells: list[Cell] = []
         for x, _y, size, text in row:
-            width = len(text) * size * 0.5
-            if cells and x - cells[-1].x1 <= size * 1.0:
-                cells[-1].text += " " + text
+            # Full-width (CJK) glyphs advance about one em, Latin about half an em.
+            width = sum(size if is_cjk(ch) else size * 0.5 for ch in text)
+            gap = x - cells[-1].x1 if cells else 0.0
+            if cells and gap <= size * 0.3:  # glyphs of one word (per-glyph exports): no space
+                cells[-1].text += text
+                cells[-1].x1 = max(cells[-1].x1, x + width)
+            elif cells and gap <= size * 1.0:
+                cells[-1].text = join_cjk(cells[-1].text, text)
                 cells[-1].x1 = max(cells[-1].x1, x + width)
             else:
                 cells.append(Cell(text, x, x + width))
@@ -63,6 +71,9 @@ def adjacent(a: Line, b: Line) -> bool:
     """b directly follows a: next line number and, when positioned, no more than ~2 line heights below."""
     if b.page != a.page or b.no != a.no + 1:
         return False
+    pa, pb = a.extra.get("px_bbox"), b.extra.get("px_bbox")
+    if pa is not None and pb is not None:  # OCR lines: vertical gap at most ~one line height
+        return pb[1] - pa[3] <= max(pa[3] - pa[1], pb[3] - pb[1], 1)
     if a.y is None or b.y is None:
         return True
     return abs(a.y - b.y) <= 2.0 * max(a.size, b.size, 1.0)

@@ -7,6 +7,7 @@ import struct
 import subprocess  # noqa: S404  (fixed argv, no shell, OCR engine only)
 
 from .errors import ExtractionError
+from .ja import join_cjk
 from .layout import Cell, Line
 
 
@@ -88,12 +89,15 @@ def parse_tsv(tsv: str, page: int) -> list[Line]:
     for key in sorted(groups, key=lambda k: min(w[1] for w in groups[k])):
         words = sorted(groups[key])
         cells: list[Cell] = []
-        for left, _top, width, height, _c, text in words:
+        for left, _top, width, height, wc, text in words:
             if cells and left - cells[-1].x1 <= 1.5 * height:
-                cells[-1].text += " " + text
+                # tesseract jpn emits one "word" per kanji/kana: rejoin without spaces at CJK boundaries
+                cells[-1].text = join_cjk(cells[-1].text, text)
                 cells[-1].x1 = float(left + width)
+                prev = 1.0 if cells[-1].conf is None else cells[-1].conf
+                cells[-1].conf = min(prev, max(wc, 0.0) / 100.0)
             else:
-                cells.append(Cell(text, float(left), float(left + width)))
+                cells.append(Cell(text, float(left), float(left + width), max(wc, 0.0) / 100.0))
         conf = sum(max(w[4], 0.0) for w in words) / len(words) / 100.0
         top = min(w[1] for w in words)
         bottom = max(w[1] + w[3] for w in words)
