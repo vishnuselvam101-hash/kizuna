@@ -129,6 +129,10 @@ pub fn set_inline_limit(n: usize) {
     INLINE_LIMIT.store(n.max(1), Ordering::Relaxed);
 }
 
+pub(crate) fn inline_limit() -> usize {
+    INLINE_LIMIT.load(Ordering::Relaxed)
+}
+
 /// What an invalidation is about. Stored with a review batch so the job can recompute the impacts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

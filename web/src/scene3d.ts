@@ -121,7 +121,7 @@ const SWING = 0.5;
 const LAYER_X: Record<string, number> = { document: -8, claim: -3, subject: 2.5, finding: 7.5, decision: 7.5 };
 
 /** Evidence graph as an orbiting faceted structure; click a node to pick it. */
-export function mountGraph(canvas: HTMLCanvasElement, g: Graph, onPick: (id: string) => void): Dispose {
+export function mountGraph(canvas: HTMLCanvasElement, g: Graph, onPick: (id: string) => void, highlight: ReadonlySet<string> = new Set()): Dispose {
   const s = setup(canvas);
   s.camera.position.set(0, 2, 15);
   s.camera.lookAt(0, 0, 0);
@@ -148,9 +148,25 @@ export function mountGraph(canvas: HTMLCanvasElement, g: Graph, onPick: (id: str
     const r = Math.min(6, 0.6 + Math.sqrt(c) * 0.9);
     const p = new THREE.Vector3(LAYER_X[n.kind] ?? 0, Math.cos(a) * r, Math.sin(a) * r);
     pos.set(n.id, p);
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: tones[n.tone] ?? tones.base, flatShading: true, roughness: 0.4, metalness: 0.3 }));
+    const col = tones[n.tone] ?? tones.base;
+    const hit = highlight.has(n.id);
+    const dim = highlight.size > 0 && !hit;
+    const m = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({
+        color: col,
+        flatShading: true,
+        roughness: 0.4,
+        metalness: 0.3,
+        // What-if highlight: affected nodes glow, the rest of the structure recedes.
+        emissive: hit ? col : new THREE.Color(0, 0, 0),
+        emissiveIntensity: hit ? 0.65 : 0,
+        transparent: dim,
+        opacity: dim ? 0.28 : 1,
+      }),
+    );
     m.position.copy(p);
-    m.scale.setScalar(n.kind === "decision" || n.kind === "finding" ? 1.4 : n.kind === "subject" ? 1.1 : 0.8);
+    m.scale.setScalar((n.kind === "decision" || n.kind === "finding" ? 1.4 : n.kind === "subject" ? 1.1 : 0.8) * (hit ? 1.3 : 1));
     m.userData.id = n.id;
     meshes.push(m);
     root.add(m);
@@ -180,13 +196,19 @@ export function mountGraph(canvas: HTMLCanvasElement, g: Graph, onPick: (id: str
   };
   frameCamera();
   const pts: number[] = [];
+  const hot: number[] = [];
   for (const [a, b] of g.edges) {
     const pa = pos.get(a), pb = pos.get(b);
-    if (pa && pb) pts.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
+    if (pa && pb) (highlight.has(a) && highlight.has(b) ? hot : pts).push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
   }
   const lg = new THREE.BufferGeometry();
   lg.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-  root.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: tones.info, transparent: true, opacity: 0.28 })));
+  root.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: tones.info, transparent: true, opacity: highlight.size ? 0.12 : 0.28 })));
+  if (hot.length) {
+    const hg = new THREE.BufferGeometry();
+    hg.setAttribute("position", new THREE.Float32BufferAttribute(hot, 3));
+    root.add(new THREE.LineSegments(hg, new THREE.LineBasicMaterial({ color: tones.crit, transparent: true, opacity: 0.9 })));
+  }
 
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();

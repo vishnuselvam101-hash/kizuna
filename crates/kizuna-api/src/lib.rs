@@ -27,6 +27,7 @@ pub mod review_batches;
 pub mod seccomp;
 pub mod security_events;
 pub mod serve;
+pub mod simulations;
 pub mod storage;
 pub mod tenant_settings;
 pub mod users;

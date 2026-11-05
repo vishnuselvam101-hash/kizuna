@@ -22,6 +22,7 @@ use crate::audit::{self, Record};
 use crate::auth::Principal;
 use crate::db::{self, Tx};
 use crate::error::{ApiError, ApiJson, ApiQuery, ApiResult};
+use crate::simulations::Overlay;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SupplierPlan {
@@ -44,6 +45,19 @@ pub struct Plan {
 }
 
 type DepRow = (
+    String,
+    String,
+    Option<String>,
+    Value,
+    Option<Uuid>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// A [`DepRow`] with the decision it belongs to.
+type DepRowOf = (
+    Uuid,
     String,
     String,
     Option<String>,
@@ -88,6 +102,20 @@ pub async fn compute(tx: &mut Tx, only: &[Uuid]) -> ApiResult<Plan> {
     .bind(only)
     .fetch_all(&mut **tx)
     .await?;
+    compute_with(tx, &flagged, &BTreeMap::new(), &Overlay::default()).await
+}
+
+/// Most flagged decisions one plan considers.
+pub const PLAN_DECISIONS: usize = 500;
+
+/// The plan for `flagged` (sorted ids, at most [`PLAN_DECISIONS`]) with simulated material changes appended after
+/// the recorded ones (`extra`: decision → (cause kind, semantic change)) and a simulated evidence change `ov`.
+pub(crate) async fn compute_with(
+    tx: &mut Tx,
+    flagged: &[Uuid],
+    extra: &BTreeMap<Uuid, Vec<(String, Value)>>,
+    ov: &Overlay,
+) -> ApiResult<Plan> {
     // Per supplier: item → candidate docs; item → reasons; docs → metadata; baseline docs; decisions.
     #[derive(Default)]
     struct Acc {
@@ -100,23 +128,38 @@ pub async fn compute(tx: &mut Tx, only: &[Uuid]) -> ApiResult<Plan> {
     let mut acc: BTreeMap<String, Acc> = BTreeMap::new();
     let mut meta: BTreeMap<String, (String, String)> = BTreeMap::new();
     let mut no_action = Vec::new();
-    for d in &flagged {
-        let changes: Vec<(String, Value)> = sqlx::query_as(
-            "SELECT cause_kind, semantic_change FROM invalidation_events WHERE decision_id = $1 AND material \
-             ORDER BY recorded_at",
-        )
-        .bind(d)
-        .fetch_all(&mut **tx)
-        .await?;
-        let rows: Vec<DepRow> = sqlx::query_as(
-            "SELECT c.subject_key, c.predicate, c.value_text, c.scope, c.artifact_id, a.kind, a.display_name, \
+    // Recorded material changes and evidence rows of all flagged decisions, two queries in total.
+    let mut recorded: BTreeMap<Uuid, Vec<(String, Value)>> = BTreeMap::new();
+    let ev: Vec<(Uuid, String, Value)> = sqlx::query_as(
+        "SELECT decision_id, cause_kind, semantic_change FROM invalidation_events WHERE decision_id = ANY($1) AND material \
+         ORDER BY decision_id, recorded_at",
+    )
+    .bind(flagged)
+    .fetch_all(&mut **tx)
+    .await?;
+    for (d, k, v) in ev {
+        recorded.entry(d).or_default().push((k, v));
+    }
+    let mut dep_rows: BTreeMap<Uuid, Vec<DepRow>> = BTreeMap::new();
+    let all: Vec<DepRowOf> = sqlx::query_as(
+            "SELECT dd.decision_id, c.subject_key, c.predicate, c.value_text, c.scope, c.artifact_id, a.kind, a.display_name, \
                     encode(a.sha256, 'hex') \
              FROM decision_dependencies dd JOIN claims c ON c.id = dd.depends_on_claim LEFT JOIN artifacts a ON a.id = c.artifact_id \
-             WHERE dd.decision_id = $1 ORDER BY c.id",
+             WHERE dd.decision_id = ANY($1) ORDER BY dd.decision_id, c.id",
         )
-        .bind(d)
+        .bind(flagged)
         .fetch_all(&mut **tx)
         .await?;
+    for r in all {
+        dep_rows
+            .entry(r.0)
+            .or_default()
+            .push((r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8));
+    }
+    for d in flagged {
+        let mut changes = recorded.remove(d).unwrap_or_default();
+        changes.extend(extra.get(d).into_iter().flatten().cloned());
+        let rows = dep_rows.remove(d).unwrap_or_default();
         let deps: Vec<Dep> = rows
             .into_iter()
             .map(|r| Dep {
@@ -206,20 +249,39 @@ pub async fn compute(tx: &mut Tx, only: &[Uuid]) -> ApiResult<Plan> {
     // Other current supplier documents carrying the same item can also answer it: add them as candidates.
     for a in acc.values_mut() {
         for (id, item) in &a.items {
-            let alt: Vec<(Uuid, String, String)> = sqlx::query_as(
+            let mut alt: Vec<(Uuid, String, String)> = sqlx::query_as(
                 "SELECT DISTINCT c.artifact_id, a.display_name, encode(a.sha256, 'hex') FROM claims c JOIN artifacts a ON a.id = c.artifact_id \
                  WHERE c.subject_type = 'part' AND c.subject_key = $1 AND c.predicate = $2 AND c.superseded_at IS NULL \
                  AND c.review_status <> 'rejected' AND a.kind = 'inspection_report' \
                  AND coalesce(c.scope->>'lot', '') = coalesce($3, '') AND coalesce(c.scope->>'heat', '') = coalesce($4, '') \
-                 AND coalesce(c.scope->>'purchase_order', '') = coalesce($5, '') LIMIT 20",
+                 AND coalesce(c.scope->>'purchase_order', '') = coalesce($5, '') AND NOT (c.id = ANY($6)) LIMIT 20",
             )
             .bind(&item.part)
             .bind(&item.predicate)
             .bind(&item.lot)
             .bind(&item.heat)
             .bind(&item.purchase_order)
+            .bind(ov.removed.iter().copied().collect::<Vec<Uuid>>())
             .fetch_all(&mut **tx)
             .await?;
+            if let Some(s) = &ov.added
+                && let Some(art) = &s.artifact
+                && art.kind == "inspection_report"
+                && s.claim.subject_type == "part"
+                && s.claim.subject_key == item.part
+                && s.claim.predicate == item.predicate
+                && [
+                    ("lot", &item.lot),
+                    ("heat", &item.heat),
+                    ("purchase_order", &item.purchase_order),
+                ]
+                .iter()
+                .all(|(k, v)| s.claim.scope.get(*k).and_then(Value::as_str).unwrap_or("") == v.as_deref().unwrap_or(""))
+                && alt.len() < 20
+                && !alt.iter().any(|x| x.0 == art.id)
+            {
+                alt.push((art.id, art.display_name.clone(), art.sha256.clone()));
+            }
             for (doc, name, sha) in alt {
                 meta.entry(doc.to_string()).or_insert((name, sha));
                 if let Some(c) = a.needs.get_mut(id) {

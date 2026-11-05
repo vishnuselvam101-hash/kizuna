@@ -113,3 +113,26 @@ Peak RSS (MB):
 scripts/bench-invalidation.sh [max_edges=1000000] [old_timeout_s=300]
 cargo test -p dependency-engine
 ```
+
+## What-if simulation (`POST /api/v1/simulations`, `whatif@1`)
+
+Before a correction (`{"type":"supersede","claim_id",…,"correction":<body of POST /claims/{id}/supersede>}`) or an
+evidence withdrawal (`{"type":"withdraw","claim_ids":[…]}` or `"artifact_id"`: every current claim of a document,
+as rejecting them in review would) is committed, the API previews it with the same engines: affected decisions
+(materiality, reason, path, status before → after; bounded at 250 000 decisions, a sample of `sample` ≤ 500 with exact
+totals, and whether the real change would exceed the inline limit and become a review batch), three-way-match findings,
+integrity signals and revision drift that would appear / clear / change (engine before vs engine after, not the
+stored findings), and the minimal supplier re-request for the decisions left potentially affected. It runs in a
+READ ONLY, REPEATABLE READ transaction with the change applied as an in-memory overlay
+(`crates/kizuna-api/src/simulations.rs`); `"record": true` adds one audited `simulation.run` event with the
+result's SHA-256, the only write. Needs ClaimRead + DecisionRead.
+
+Tests (`crates/kizuna-api/tests/whatif.rs`): on generated tenants (24 seeds by default, `KIZUNA_WHATIF_CASES`;
+80 run clean) the simulation equals the outcome of then applying the change for real (every decision status, each
+recorded invalidation's materiality/cause/reason/path, match/signal/drift sets, the re-request plan); per-tenant row
+counts of every table are unchanged by a simulation; another tenant's claims are 404 and its decisions never appear;
+a 100k-edge graph (25 000 decisions) simulates in ≈ 4 s in a debug build on a loaded host. Migration 0022 indexes
+`decision_dependencies (tenant_id, decision_id)`; the re-request plan now loads the flagged decisions' events and
+evidence in two queries instead of two per decision (it took 10 s of that run before).
+UI: "What-if…" on a claim review (records view) and on each document; side-by-side now/after, decision table,
+impact graph, the active preview highlighted in the WebGL/SVG trace view (`web/src/WhatIfPanel.tsx`).

@@ -4,6 +4,7 @@ import { useI18n } from "./i18n";
 import { useSession } from "./session";
 import type { ArtifactDetail, Claim } from "./types";
 import { Badge, Notice, short } from "./ui";
+import { WhatIfPanel } from "./WhatIfPanel";
 
 export const isAi = (c: Claim) => c.extraction_method.startsWith("ai:");
 
@@ -65,12 +66,14 @@ export function ClaimReview({ claim, onReviewed, onClose }: { claim: Claim; onRe
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [whatif, setWhatif] = useState(false);
   const c = claim;
   const ai = isAi(c);
 
   useEffect(() => {
     let live = true;
     setOwners(null);
+    setWhatif(false);
     setComment("");
     setMsg("");
     setErr(null);
@@ -114,6 +117,11 @@ export function ClaimReview({ claim, onReviewed, onClose }: { claim: Claim; onRe
         </h3>
         <Badge group="review" value={c.review_status} />
         <AiBadge c={c} />
+        {!c.superseded_at && c.review_status !== "rejected" && (
+          <button type="button" aria-expanded={whatif} onClick={() => setWhatif((w) => !w)}>
+            {t("whatif.open")}
+          </button>
+        )}
         {onClose && (
           <button type="button" className="ghost" onClick={onClose}>
             {t("claim.close")}
@@ -143,6 +151,7 @@ export function ClaimReview({ claim, onReviewed, onClose }: { claim: Claim; onRe
         <dd className="num">{fmtDate(c.recorded_at)}</dd>
       </dl>
       {ai && <p className="callout warn">{t("claim.aiNote")}</p>}
+      {whatif && <WhatIfPanel key={c.id} claim={c} onClose={() => setWhatif(false)} />}
       <Notice msg={msg} error={err} />
       {blocked ? (
         <p className={blocked === "own" ? "callout crit" : "callout"} role="note">

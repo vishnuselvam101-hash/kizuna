@@ -63,7 +63,7 @@ pub struct CreateReq {
     pub valid_to: Option<String>,
 }
 
-fn parse_time(s: &Option<String>) -> ApiResult<Option<OffsetDateTime>> {
+pub(crate) fn parse_time(s: &Option<String>) -> ApiResult<Option<OffsetDateTime>> {
     s.as_deref()
         .map(|v| OffsetDateTime::parse(v, &Rfc3339).map_err(|_| ApiError::BadRequest("invalid_timestamp")))
         .transpose()
@@ -141,7 +141,7 @@ pub async fn fetch(tx: &mut Tx, id: Uuid) -> ApiResult<ClaimOut> {
 
 /// Validates a typed-in claim with the same key normalisation as extraction (full-width → ASCII, upper case,
 /// collapsed spaces), so a manual `ｂｒｋ－１００` and an extracted `BRK-100` are one subject (bughunt).
-fn validate_typed(c: &ClaimInput) -> ApiResult<claim::ValidClaim> {
+pub(crate) fn validate_typed(c: &ClaimInput) -> ApiResult<claim::ValidClaim> {
     let mut c = c.clone();
     c.subject_key = safe_normalize(&c.subject_key);
     claim::validate(&c).map_err(|e| ApiError::BadRequest(e.code()))

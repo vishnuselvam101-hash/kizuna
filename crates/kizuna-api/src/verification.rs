@@ -25,6 +25,7 @@ use crate::db::{self, Tx};
 use crate::error::{ApiError, ApiJson, ApiQuery, ApiResult};
 use crate::extraction;
 use crate::security_events::{self as sec, Kind};
+use crate::simulations::Overlay;
 
 /// ABAC: nobody reviews a claim they entered by hand (four-eyes principle).
 pub struct NoSelfReview;
@@ -694,6 +695,26 @@ pub async fn load_facts(tx: &mut Tx, only_subject: Option<&str>) -> ApiResult<Ve
 }
 
 pub async fn load_facts_of(tx: &mut Tx, subject_type: &str, only_subject: Option<&str>) -> ApiResult<Vec<Fact>> {
+    load_facts_with(tx, subject_type, only_subject, &Overlay::default()).await
+}
+
+fn fact_scope(v: &Value) -> BTreeMap<String, String> {
+    v.as_object()
+        .map(|o| {
+            o.iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// [`load_facts_of`] with a simulated change applied (`ov`: claims that leave the evidence, a claim that joins it).
+pub(crate) async fn load_facts_with(
+    tx: &mut Tx,
+    subject_type: &str,
+    only_subject: Option<&str>,
+    ov: &Overlay,
+) -> ApiResult<Vec<Fact>> {
     let aliases: HashMap<String, String> = sqlx::query_as::<_, (String, String)>(
         "SELECT alias_key, canonical_key FROM entity_aliases WHERE subject_type = $1",
     )
@@ -716,8 +737,9 @@ pub async fn load_facts_of(tx: &mut Tx, subject_type: &str, only_subject: Option
     .fetch_all(&mut **tx)
     .await?;
     let want = only_subject.map(canon);
-    Ok(rows
+    let mut facts: Vec<Fact> = rows
         .into_iter()
+        .filter(|r| ov.keeps(&r.0))
         .map(|r| Fact {
             id: r.0.to_string(),
             subject: canon(&r.1),
@@ -726,19 +748,29 @@ pub async fn load_facts_of(tx: &mut Tx, subject_type: &str, only_subject: Option
             num: r.4.as_deref().and_then(|n| Decimal::from_str(n).ok()),
             unit: r.5,
             revision: r.6,
-            scope: r
-                .7
-                .as_object()
-                .map(|o| {
-                    o.iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default(),
+            scope: fact_scope(&r.7),
             source_kind: r.8,
         })
-        .filter(|f| want.as_ref().is_none_or(|w| &f.subject == w))
-        .collect())
+        .collect();
+    // A simulated correction is a manual claim (supersession always records one), current and unreviewed.
+    if let Some(s) = &ov.added
+        && s.claim.subject_type == subject_type
+    {
+        let c = &s.claim;
+        facts.push(Fact {
+            id: c.id.to_string(),
+            subject: canon(&c.subject_key),
+            predicate: c.predicate.clone(),
+            text: c.value_text.clone(),
+            num: c.value_num.as_deref().and_then(|n| Decimal::from_str(n).ok()),
+            unit: c.value_unit.clone(),
+            revision: c.revision.clone(),
+            scope: fact_scope(&c.scope),
+            source_kind: "manual".into(),
+        });
+    }
+    facts.retain(|f| want.as_ref().is_none_or(|w| &f.subject == w));
+    Ok(facts)
 }
 
 #[derive(Serialize)]
