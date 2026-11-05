@@ -31,6 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    kizuna_api::capa::spawn_overdue_worker(pool.clone(), std::time::Duration::from_secs(300));
     kizuna_api::review_batches::spawn_worker(pool.clone(), cfg.review_batch_chunk, std::time::Duration::from_secs(2));
     let staging_max_age = std::time::Duration::from_secs(cfg.staging_max_age_secs);
     let mut state = AppState::new(pool.clone(), cfg);

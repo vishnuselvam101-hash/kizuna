@@ -6,7 +6,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderName, HeaderValue, header};
-use axum::routing::{get, patch, post};
+use axum::routing::{get, patch, post, put};
 use policy_engine::Policy;
 use sqlx::PgPool;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -182,6 +182,39 @@ pub fn router(st: AppState) -> Router {
         .route("/portal/requests", get(crate::portal::list_requests))
         .route("/portal/requests/{id}", get(crate::portal::get_request))
         .route("/portal/requests/{id}/uploads", get(crate::portal::list_uploads))
+        .route("/capa/cases", get(crate::capa::list).post(crate::capa::open))
+        .route("/capa/cases/{id}", get(crate::capa::get))
+        .route("/capa/cases/{id}/steps/{d}", put(crate::capa::save_step))
+        .route("/capa/cases/{id}/steps/{d}/complete", post(crate::capa::complete_step))
+        .route("/capa/cases/{id}/steps/{d}/reopen", post(crate::capa::reopen_step))
+        .route("/capa/cases/{id}/actions", post(crate::capa::add_action))
+        .route("/capa/actions/{id}/done", post(crate::capa::action_done))
+        .route("/capa/cases/{id}/closure/request", post(crate::capa::request_closure))
+        .route("/capa/cases/{id}/closure/approve", post(crate::capa::approve_closure))
+        .route("/capa/cases/{id}/closure/reject", post(crate::capa::reject_closure))
+        .route(
+            "/capa/cases/{id}/supplier-requests",
+            post(crate::capa::create_supplier_request),
+        )
+        .route(
+            "/capa/supplier-requests/{id}/approve",
+            post(crate::capa::approve_supplier_request),
+        )
+        .route(
+            "/capa/supplier-requests/{id}/cancel",
+            post(crate::capa::cancel_supplier_request),
+        )
+        .route(
+            "/capa/supplier-requests/{id}/document",
+            get(crate::capa::supplier_request_document),
+        )
+        .route(
+            "/capa/cases/{id}/supplier-responses",
+            post(crate::capa::attach_supplier_response),
+        )
+        .route("/capa/notifications", get(crate::capa::notifications))
+        .route("/capa/notifications/{id}/read", post(crate::capa::mark_read))
+        .route("/capa/overdue/run", post(crate::capa::overdue_now))
         .route("/security/summary", get(incidents::summary))
         .route("/security/status", get(crate::ops::status))
         .route("/dashboard/summary", get(insights::dashboard))

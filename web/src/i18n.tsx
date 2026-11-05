@@ -1,3 +1,4 @@
+import { capaEn, capaJa } from "./i18n-capa";
 import { integrityEn, integrityJa } from "./i18n-integrity";
 import { whatifEn, whatifJa } from "./i18n-whatif";
 import { portalEn, portalJa } from "./i18n-portal";
@@ -745,6 +746,7 @@ export const en = {
   ...integrityEn,
   ...whatifEn,
   ...portalEn,
+  ...capaEn,
   "nav.account": "Account security",
   "login.back": "Start again",
   "login.totpStep": "Enter the 6-digit code from your authenticator app.",
@@ -1669,6 +1671,7 @@ export const ja: Record<Key, string> = {
   ...integrityJa,
   ...whatifJa,
   ...portalJa,
+  ...capaJa,
   "nav.account": "アカウントのセキュリティ",
   "login.back": "最初からやり直す",
   "login.totpStep": "認証アプリに表示される6桁のコードを入力してください。",

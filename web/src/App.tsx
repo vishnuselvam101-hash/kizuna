@@ -10,6 +10,7 @@ import { DocumentsView } from "./DocumentsView";
 import { FindingsView } from "./FindingsView";
 import { I18nProvider, useI18n, type Lang } from "./i18n";
 import { IntegrationsView } from "./IntegrationsView";
+import { CapaView } from "./CapaView";
 import { DriftView, IntegrityView } from "./IntegrityView";
 import { LoginView } from "./LoginView";
 import { MatchView, ReRequestView } from "./MatchView";
@@ -152,6 +153,7 @@ function Shell({ api }: { api: Api }) {
             {view === "findings" && <FindingsView />}
             {view === "integrity" && <IntegrityView />}
             {view === "drift" && <DriftView />}
+            {view === "capa" && <CapaView />}
             {view === "decisions" && <DecisionsView />}
             {view === "affected" && <AffectedView />}
             {view === "match" && <MatchView />}

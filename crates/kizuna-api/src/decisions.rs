@@ -264,6 +264,8 @@ pub(crate) async fn apply_impacts(
 /// A correction or withdrawal also reaches decisions that depend on earlier versions of the same claim, and is
 /// assessed against the value those decisions actually used (cumulative drift is not hidden by small steps).
 pub async fn on_claim_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, change: Change) -> ApiResult<usize> {
+    // Corrective-action cases whose effectiveness check the change contradicts are reopened in the same transaction.
+    crate::capa::on_claim_change(tx, tenant, &change).await?;
     invalidate(tx, tenant, actor, Cause::Claim { change }).await
 }
 
