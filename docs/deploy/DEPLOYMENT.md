@@ -28,7 +28,9 @@ Copy `target/release/kizuna-{server,admin,restore-verify}` to `/opt/kizuna/bin/`
 Record the deployed commit SHA in `/opt/kizuna/VERSION`.
 
 ## 2. Database roles
-`scripts/db-setup.sh` is for development. In production create the same two roles by hand:
+`scripts/db-setup.sh` is for development. In production create two roles by hand. Names are configurable
+(`KIZUNA_DB_OWNER_ROLE` / `KIZUNA_DB_APP_ROLE` for `kizuna-admin migrate`, which maps them into the migrations);
+an installation sharing a cluster with dev must use its own (the pilot installer uses `kizuna_pilot_owner/_app`):
 
 | Role | Purpose | Rights |
 |---|---|---|

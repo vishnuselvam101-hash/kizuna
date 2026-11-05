@@ -37,11 +37,14 @@ Then the "next steps" it prints: first tenant + admin, alerts in `/etc/kizuna/al
 ## Not verified / residual risk
 - Installer not executed for real (by instruction); first real run may surface host specifics.
 - Real ClamAV, Google Drive, SMTP server and Telegram not exercised (fakes and a local rclone remote only).
-- Client IPs: `KIZUNA_TRUSTED_PROXY_HOPS=2` assumes tailscaled sets `X-Forwarded-For` to the tailnet peer. After
-  install, check that new security events show `100.x` addresses; if all show `127.0.0.1`, rate limits are shared
-  across pilot users (tailnet-only, low risk).
-- Pilot and dev share the roles `kizuna`/`kizuna_app` on one PostgreSQL cluster (role names are fixed in the
-  migrations); the installer reuses the dev passwords from `.env.local`. Anyone with the dev `.env.local` (root
-  only) can reach `kizuna_pilot`. A dedicated cluster (`pg_createcluster`, other port) would separate them.
+- Client IPs: `KIZUNA_TRUSTED_PROXY_HOPS=2` assumes tailscaled sets `X-Forwarded-For` to the tailnet peer. The
+  installer verifies it: a failed login (unknown tenant) through the tailnet URL must be recorded with this node's
+  `tailscale ip -4`; otherwise it prints a WARNING and the check command.
+- Database roles: the pilot has its own `kizuna_pilot_owner` / `kizuna_pilot_app` with freshly generated passwords
+  (in `/etc/kizuna/drill.env`); dev roles and `.env.local` are not used or changed. Migrations keep the names
+  `kizuna`/`kizuna_app` and `db::migrator` maps them at migrate time (`KIZUNA_DB_OWNER_ROLE`/`KIZUNA_DB_APP_ROLE`;
+  checksums unchanged). `tests/custom_roles.rs` (run by ci-local/CI) migrates under other names and checks grants,
+  ownership, FORCE RLS, tenant isolation, refused cross-tenant writes, the owner policy, and that the dev roles have
+  no rights there. Both roles and the database live on the same PostgreSQL cluster as dev (superuser shared).
 - Seccomp is a deny list (default allow); see ADR 0016.
 - Alerts are best-effort (no retry queue).

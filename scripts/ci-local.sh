@@ -24,11 +24,21 @@ fi
 step "throwaway database"
 kz_load_env
 DB=kizuna_ci_$(date +%s)_$$
+ALT=${DB}_alt
 kz_create_db "$DB"
+# Second database under different role names (custom-role migrations test, tests/custom_roles.rs).
+# shellcheck source=scripts/lib/db.sh
+source scripts/lib/db.sh
+ALT_OWNER=kizuna_cialt_owner ALT_APP=kizuna_cialt_app ALT_OPW=$(openssl rand -hex 16) ALT_APW=$(openssl rand -hex 16)
+kz_ensure_roles "$ALT_OPW" "$ALT_APW" "$ALT_OWNER" "$ALT_APP"
+kz_create_db "$ALT" "$ALT_OWNER" "$ALT_APP"
 ENVF=$(mktemp)
 cleanup() {
   rm -f "$ENVF"
-  if ((KEEP)); then echo "kept database $DB"; else kz_drop_db "$DB" >/dev/null 2>&1 || true; fi
+  if ((KEEP)); then echo "kept databases $DB $ALT"; else
+    kz_drop_db "$DB" >/dev/null 2>&1 || true
+    kz_drop_db "$ALT" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 chmod 600 "$ENVF"
@@ -37,8 +47,11 @@ KIZUNA_OWNER_PASSWORD=$KIZUNA_OWNER_PASSWORD
 KIZUNA_APP_PASSWORD=$KIZUNA_APP_PASSWORD
 KIZUNA_TEST_DATABASE_URL=$(kz_app_url "$DB")
 KIZUNA_TEST_OWNER_DATABASE_URL=$(kz_owner_url "$DB")
+KIZUNA_TEST_ALT_OWNER_DATABASE_URL=postgres://$ALT_OWNER:$ALT_OPW@$KZ_PGHOST:$KZ_PGPORT/$ALT
+KIZUNA_TEST_ALT_DATABASE_URL=postgres://$ALT_APP:$ALT_APW@$KZ_PGHOST:$KZ_PGPORT/$ALT
+KIZUNA_REQUIRE_ALT_ROLES=1
 ENV
-echo "$DB"
+echo "$DB, $ALT (roles $ALT_OWNER/$ALT_APP)"
 
 step "pnpm install --frozen-lockfile"
 (cd web && pnpm install --frozen-lockfile --silent)

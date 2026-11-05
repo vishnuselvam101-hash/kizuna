@@ -1,6 +1,6 @@
 //! Operator CLI (uses the owner role, KIZUNA_OWNER_DATABASE_URL). Every mutating action is audited.
 //!
-//! kizuna-admin migrate
+//! kizuna-admin migrate                              (role names: KIZUNA_DB_OWNER_ROLE / KIZUNA_DB_APP_ROLE)
 //! kizuna-admin create-tenant <slug> <name>
 //! kizuna-admin create-user <tenant-slug> <email> <role> <display-name>   (password from stdin)
 //! kizuna-admin reset-mfa <tenant-slug> <email>      (emergency recovery; revokes sessions)
@@ -60,8 +60,12 @@ async fn main() -> R<()> {
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
     match a.as_slice() {
         ["migrate"] => {
-            db::MIGRATOR.run(&pool).await?;
-            println!("migrations applied");
+            let roles = db::Roles::from_env()?;
+            db::migrator(&roles).run(&pool).await?;
+            println!(
+                "migrations applied (owner role {}, runtime role {})",
+                roles.owner, roles.app
+            );
         }
         ["create-tenant", slug, name] => {
             let id = Uuid::now_v7();
