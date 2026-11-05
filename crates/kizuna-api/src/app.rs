@@ -172,6 +172,10 @@ pub fn router(st: AppState) -> Router {
             get(crate::tenant_settings::get_timezone).put(crate::tenant_settings::put_timezone),
         )
         .route(
+            "/settings/entity-resolution",
+            get(crate::tenant_settings::get_entity_resolution).put(crate::tenant_settings::put_entity_resolution),
+        )
+        .route(
             "/security/detection-settings",
             get(crate::tenant_settings::get_detection).put(crate::tenant_settings::put_detection),
         )

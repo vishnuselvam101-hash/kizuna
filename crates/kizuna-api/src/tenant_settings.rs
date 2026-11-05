@@ -267,3 +267,60 @@ pub async fn put_timezone(
     alert_change(&st, &p, "timezone", v, false).await;
     Ok(Json(json!({ "version": v, "timezone": tz })))
 }
+
+// ---- Entity resolution: typo-review mode ----------------------------------------------------------------------
+
+/// Effective typo-review mode of the tenant (`strict` when unset or unreadable).
+pub async fn typo_review(tx: &mut Tx) -> ApiResult<entity_resolution::v2::TypoReview> {
+    let (_, s, _) = latest(tx, "entity_resolution").await?;
+    Ok(s["typo_review"]
+        .as_str()
+        .and_then(entity_resolution::v2::TypoReview::parse)
+        .unwrap_or_default())
+}
+
+pub async fn get_entity_resolution(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Value>> {
+    p.require(&st, Permission::UserRead).await?;
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let (v, s, by) = latest(&mut tx, "entity_resolution").await?;
+    let eff = typo_review(&mut tx).await?;
+    tx.commit().await?;
+    let mut out = meta(v, s, by);
+    out["typo_review"] = json!(eff);
+    out["default"] = json!(entity_resolution::v2::TypoReview::default());
+    out["modes"] = json!({
+        "off": "one-character part-number differences get the ordinary score (most are not listed)",
+        "strict": "listed for review when description/supplier/drawing/material agree, or when there is no comparable context",
+        "broad": "every one-character part-number difference is listed for review",
+    });
+    Ok(Json(out))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutEntityResolution {
+    pub expected_version: i32,
+    pub typo_review: String,
+}
+
+/// Sets the typo-review mode (admin + MFA; audited; alerts, flagged as weakening when it becomes less sensitive).
+/// No mode merges anything: possible matches always need a human decision.
+pub async fn put_entity_resolution(
+    State(st): State<AppState>,
+    p: Principal,
+    ApiJson(req): ApiJson<PutEntityResolution>,
+) -> ApiResult<Json<Value>> {
+    p.require(&st, Permission::UserManage).await?;
+    let mode = entity_resolution::v2::TypoReview::parse(&req.typo_review)
+        .ok_or(ApiError::BadRequest("invalid_typo_review"))?;
+    let settings = json!({ "typo_review": mode });
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let (v, prev) = save(&mut tx, &p, "entity_resolution", req.expected_version, &settings).await?;
+    tx.commit().await?;
+    let old = prev["typo_review"]
+        .as_str()
+        .and_then(entity_resolution::v2::TypoReview::parse)
+        .unwrap_or_default();
+    alert_change(&st, &p, "entity_resolution", v, mode.rank() < old.rank()).await;
+    Ok(Json(json!({ "version": v, "typo_review": mode })))
+}

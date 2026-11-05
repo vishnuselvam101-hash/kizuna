@@ -8,6 +8,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use conflict_engine::{Ctx, Fact, Rule};
 use domain_manufacturing::{MAPPING_VERSION, RULE_VERSION, all_rules, compare_revisions, map_records};
+use entity_resolution::v2::{PartContext, TypoReview};
 use entity_resolution::{ErVersion, Outcome, candidates, safe_normalize};
 use policy_engine::{AttributeRule, Permission, Resource, Subject};
 use rust_decimal::Decimal;
@@ -1214,11 +1215,17 @@ pub async fn entity_candidates(
             .bind(&stype)
             .fetch_all(&mut *tx)
             .await?;
-    tx.commit().await?;
     let version = match q.version.as_deref() {
         None => st.cfg.er_version,
         Some(v) => ErVersion::parse(v).ok_or(ApiError::BadRequest("invalid_version"))?,
     };
+    let typo_review = crate::tenant_settings::typo_review(&mut tx).await?;
+    let context = if version == ErVersion::V2 && stype == "part" && typo_review == TypoReview::Strict {
+        part_context(&mut tx).await?
+    } else {
+        HashMap::new()
+    };
+    tx.commit().await?;
     let undecided = |l: &str, r: &str| !decided.iter().any(|(a, b)| (a == l && b == r) || (a == r && b == l));
     let (pending, stats) = match version {
         // v1: rule outcomes; automatic `Match` pairs (safe normalisation) are not listed for review.
@@ -1232,10 +1239,14 @@ pub async fn entity_candidates(
         }
         // v2: every non-safe pair is listed, including FS `match` (strong evidence still needs a human decision).
         ErVersion::V2 => {
-            let res = entity_resolution::v2::resolve(
+            let res = entity_resolution::v2::resolve_with_context(
                 entity_resolution::v2::Kind::for_subject_type(&stype),
                 &keys,
-                &entity_resolution::v2::Config::default(),
+                &context,
+                &entity_resolution::v2::Config {
+                    typo_review,
+                    ..entity_resolution::v2::Config::default()
+                },
             );
             let c: Vec<Value> = res
                 .candidates
@@ -1246,7 +1257,8 @@ pub async fn entity_candidates(
             let s = &res.stats;
             (
                 c,
-                json!({ "pairs_compared": s.pairs_compared, "em": s.em, "t_match": s.t_match, "t_possible": s.t_possible }),
+                json!({ "pairs_compared": s.pairs_compared, "em": s.em, "t_match": s.t_match, "t_possible": s.t_possible,
+                        "typo_review": s.typo_review, "typo_reviews": s.typo_reviews, "typo_left_to_fs": s.typo_left_to_fs }),
             )
         }
     };
@@ -1257,6 +1269,41 @@ pub async fn entity_candidates(
         "stats": stats,
         "note": "Possible matches are never merged automatically.",
     })))
+}
+
+/// Context of part keys for the strict typo rule: part name, supplier (fact or scope), drawing number and material
+/// from current claims. Rejected and AI-suggested claims are left out (context can keep a pair out of review).
+async fn part_context(tx: &mut db::Tx) -> ApiResult<HashMap<String, PartContext>> {
+    let rows: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT subject_key, predicate, value_text, scope->>'supplier' FROM claims \
+         WHERE subject_type = 'part' AND superseded_at IS NULL AND review_status NOT IN ('rejected', 'ai_suggested') \
+           AND (predicate ~ '\\.(part_name|supplier|drawing_number|material)$' OR scope ? 'supplier') \
+         LIMIT 100000",
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut out: HashMap<String, PartContext> = HashMap::new();
+    for (key, predicate, value, scope_supplier) in rows {
+        let c = out.entry(key).or_default();
+        if let Some(v) = value.filter(|v| !v.trim().is_empty()) {
+            let field = match predicate.rsplit('.').next() {
+                Some("part_name") => Some(&mut c.descriptions),
+                Some("supplier") => Some(&mut c.suppliers),
+                Some("drawing_number") => Some(&mut c.drawings),
+                Some("material") => Some(&mut c.materials),
+                _ => None,
+            };
+            if let Some(f) = field.filter(|f| f.len() < 16 && !f.contains(&v)) {
+                f.push(v);
+            }
+        }
+        if let Some(s) =
+            scope_supplier.filter(|s| !s.trim().is_empty() && c.suppliers.len() < 16 && !c.suppliers.contains(s))
+        {
+            c.suppliers.push(s);
+        }
+    }
+    Ok(out)
 }
 
 #[derive(Deserialize)]
