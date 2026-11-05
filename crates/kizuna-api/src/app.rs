@@ -15,7 +15,8 @@ use tower_http::timeout::TimeoutLayer;
 
 use crate::config::Config;
 use crate::ratelimit::RateLimiter;
-use crate::{audit, auth, security_events, users};
+use crate::storage::{FsStore, ObjectStore};
+use crate::{artifacts, audit, auth, claims, security_events, users};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -25,11 +26,14 @@ pub struct AppState {
     pub policy: Arc<Policy>,
     /// Caps concurrent argon2 computations (CPU/RAM bound) so login floods cannot exhaust the host.
     pub hash_permits: Arc<tokio::sync::Semaphore>,
+    pub store: Arc<dyn ObjectStore>,
 }
 
 impl AppState {
     pub fn new(pool: PgPool, cfg: Config) -> Self {
+        let store: Arc<dyn ObjectStore> = Arc::new(FsStore::new(cfg.storage_dir.clone()));
         Self {
+            store,
             pool,
             cfg: Arc::new(cfg),
             limiter: Arc::new(RateLimiter::new(Duration::from_secs(60))),
@@ -53,7 +57,8 @@ const SECURITY_HEADERS: [(&str, &str); 7] = [
 
 pub fn router(st: AppState) -> Router {
     let body_limit = st.cfg.max_body_bytes;
-    let api = Router::new()
+    let upload_limit = st.cfg.max_upload_bytes + 64 * 1024;
+    let json_api = Router::new()
         .route("/auth/login", post(auth::login))
         .route("/auth/refresh", post(auth::refresh))
         .route("/auth/logout", post(auth::logout))
@@ -67,16 +72,29 @@ pub fn router(st: AppState) -> Router {
         .route("/users/{id}/reset-mfa", post(users::reset_mfa))
         .route("/audit/events", get(audit::list_events))
         .route("/audit/verify", get(audit::verify))
-        .route("/security-events", get(security_events::list));
+        .route("/security-events", get(security_events::list))
+        .route("/artifacts", get(artifacts::list))
+        .route("/artifacts/{id}", get(artifacts::get))
+        .route("/artifacts/{id}/content", get(artifacts::content))
+        .route("/artifacts/{id}/verify", post(artifacts::verify))
+        .route("/artifacts/{id}/release", post(artifacts::release))
+        .route("/claims", get(claims::list).post(claims::create))
+        .route("/claims/{id}", get(claims::get))
+        .route("/claims/{id}/supersede", post(claims::supersede))
+        .route("/evidence/{subject_type}/{subject_key}", get(claims::subject))
+        .layer(DefaultBodyLimit::max(body_limit))
+        .layer(RequestBodyLimitLayer::new(body_limit));
+    let upload_api = Router::new()
+        .route("/artifacts", post(artifacts::upload))
+        .layer(DefaultBodyLimit::max(upload_limit))
+        .layer(RequestBodyLimitLayer::new(upload_limit));
 
     let mut app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
-        .nest("/api/v1", api)
-        .layer(DefaultBodyLimit::max(body_limit))
-        .layer(RequestBodyLimitLayer::new(body_limit))
+        .nest("/api/v1", upload_api.merge(json_api))
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(30),
+            Duration::from_secs(60),
         ));
     for (k, v) in SECURITY_HEADERS {
         app = app.layer(SetResponseHeaderLayer::overriding(

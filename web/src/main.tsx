@@ -1,7 +1,5 @@
 import { createRoot } from "react-dom/client";
-
-function App() {
-  return <p>KIZUNA Verify (UI scaffold)</p>;
-}
+import { App } from "./App";
+import "./style.css";
 
 createRoot(document.getElementById("root")!).render(<App />);

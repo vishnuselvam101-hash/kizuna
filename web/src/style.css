@@ -1,0 +1,11 @@
+body { font-family: system-ui, sans-serif; margin: 0; color: #1d2329; }
+nav { display: flex; gap: 0.5rem; padding: 0.5rem 1rem; background: #f1f3f5; border-bottom: 1px solid #d0d5da; }
+nav button[aria-current="true"] { font-weight: 600; }
+main { padding: 1rem; }
+table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: 0.9rem; }
+th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e3e6e9; vertical-align: top; }
+.warn, .conflict td { background: #fff4e5; }
+.badge { font-size: 0.75rem; padding: 0 0.3rem; border-radius: 3px; background: #e9ecef; margin-left: 0.3rem; }
+.badge.warn { background: #ffd8a8; }
+.login { display: grid; gap: 0.6rem; max-width: 20rem; margin: 4rem auto; }
+.login label { display: grid; gap: 0.2rem; }

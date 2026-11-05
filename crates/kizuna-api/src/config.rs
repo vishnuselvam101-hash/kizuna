@@ -37,6 +37,7 @@ pub struct RateLimits {
     pub login_per_ip_per_min: u32,
     pub login_per_account_per_min: u32,
     pub refresh_per_ip_per_min: u32,
+    pub uploads_per_user_per_min: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +109,7 @@ impl Config {
                 login_per_ip_per_min: num("KIZUNA_LOGIN_PER_IP_PER_MIN", 20, 1, 10_000)? as u32,
                 login_per_account_per_min: num("KIZUNA_LOGIN_PER_ACCOUNT_PER_MIN", 10, 1, 10_000)? as u32,
                 refresh_per_ip_per_min: num("KIZUNA_REFRESH_PER_IP_PER_MIN", 60, 1, 10_000)? as u32,
+                uploads_per_user_per_min: num("KIZUNA_UPLOADS_PER_USER_PER_MIN", 30, 1, 10_000)? as u32,
             },
             storage_dir: get("KIZUNA_STORAGE_DIR")
                 .map(Into::into)

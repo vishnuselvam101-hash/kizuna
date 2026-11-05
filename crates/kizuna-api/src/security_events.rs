@@ -33,6 +33,8 @@ pub enum Kind {
     AuditChainBroken,
     ArtifactIntegrityFailure,
     UploadRejected,
+    ArtifactQuarantined,
+    QuarantineReleased,
     ExtractionFailed,
     ContainmentApplied,
 }
@@ -56,6 +58,8 @@ impl Kind {
             Kind::AuditChainBroken => "integrity.audit_chain_broken",
             Kind::ArtifactIntegrityFailure => "integrity.artifact_mismatch",
             Kind::UploadRejected => "ingest.upload_rejected",
+            Kind::ArtifactQuarantined => "ingest.artifact_quarantined",
+            Kind::QuarantineReleased => "response.quarantine_released",
             Kind::ExtractionFailed => "ingest.extraction_failed",
             Kind::ContainmentApplied => "response.containment_applied",
         }
@@ -72,6 +76,8 @@ impl Kind {
             | Kind::RoleChanged
             | Kind::UserDisabled
             | Kind::UploadRejected
+            | Kind::ArtifactQuarantined
+            | Kind::QuarantineReleased
             | Kind::ContainmentApplied => "medium",
             Kind::RefreshTokenReuse => "high",
             Kind::AuditChainBroken | Kind::ArtifactIntegrityFailure => "critical",

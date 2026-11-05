@@ -47,7 +47,9 @@ pub async fn runtime_pool() -> PgPool {
 pub fn test_config() -> Config {
     let key = base64::engine::general_purpose::STANDARD.encode(rand_bytes());
     let url = env("KIZUNA_TEST_DATABASE_URL");
-    let storage = std::env::temp_dir().join(format!("kizuna-test-{}", Uuid::now_v7()));
+    let storage = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("objects")
+        .join(Uuid::now_v7().to_string());
     Config::from_lookup(|k| match k {
         "KIZUNA_DATABASE_URL" => Some(url.clone()),
         "KIZUNA_DATA_KEY" => Some(key.clone()),
@@ -243,3 +245,32 @@ pub fn base32_decode(s: &str) -> Vec<u8> {
     }
     out
 }
+
+impl Ctx {
+    /// Multipart upload of `data` as field `file` with an optional `kind`.
+    pub async fn upload(&self, token: &str, name: &str, data: &[u8], kind: Option<&str>) -> Resp {
+        let boundary = "kizunatestboundary7d3f";
+        let mut body = Vec::new();
+        if let Some(k) = kind {
+            body.extend_from_slice(
+                format!("--{boundary}\r\nContent-Disposition: form-data; name=\"kind\"\r\n\r\n{k}\r\n").as_bytes(),
+            );
+        }
+        body.extend_from_slice(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n")
+                .as_bytes(),
+        );
+        body.extend_from_slice(data);
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v1/artifacts")
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+            .body(Body::from(body))
+            .unwrap();
+        self.raw(req).await
+    }
+}
+
+pub const CLEAN_PDF: &[u8] = b"%PDF-1.7\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n";
