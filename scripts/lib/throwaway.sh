@@ -24,10 +24,10 @@ kz_create_db() {
                           REVOKE CREATE ON SCHEMA public FROM PUBLIC; ALTER SCHEMA public OWNER TO kizuna;"
 }
 
-# kz_drop_db NAME — only ever drops throwaway databases (names kizuna_{e2e,bench,drill}_*).
+# kz_drop_db NAME — only ever drops throwaway databases (names kizuna_{e2e,bench,drill,ci}_*).
 kz_drop_db() {
   local db=$1
-  [[ $db =~ ^kizuna_(e2e|bench|drill)_[a-z0-9_]+$ ]] || { echo "refusing to drop $db" >&2; return 1; }
+  [[ $db =~ ^kizuna_(e2e|bench|drill|ci)_[a-z0-9_]+$ ]] || { echo "refusing to drop $db" >&2; return 1; }
   kz_psql_su -c "DROP DATABASE IF EXISTS $db WITH (FORCE)"
 }
 
