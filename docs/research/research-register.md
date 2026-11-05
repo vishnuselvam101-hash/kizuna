@@ -1,0 +1,12 @@
+# Research register
+
+Every capability is a hypothesis until measured (directive §16). Novelty is **not** claimed for any row.
+
+| ID | Hypothesis | Related work / prior art | Competing implementations | Experiment | Result | Limitations | Next decision |
+|---|---|---|---|---|---|---|---|
+| R1 | Bitemporal claims (valid + transaction time) let reviewers answer "what did we know when we decided" | Snodgrass bitemporal model; SQL:2011 system versioning; XTDB, Datomic | XTDB, Datomic, PG temporal extensions | M4: as-of query tests on synthetic supersession histories | not run yet | Synthetic data only | Keep plain PG tables with explicit columns (no extension) unless M4 shows a need |
+| R2 | Deterministic normalisation (case/width/separator folding, revision suffix parsing) resolves most part/supplier identities with zero auto-merges of ambiguous pairs | Record linkage (Fellegi–Sunter), MDM matching | SAP MDG, Informatica MDM | M3: labelled synthetic pairs, precision/recall | not run yet | Real naming variety unknown | Probabilistic scoring only as "possible match" suggestions |
+| R3 | Typed dependency graph + materiality rules flag only affected decisions (no blanket downstream invalidation) | Build systems (incremental recomputation), truth-maintenance systems (Doyle 1979), data lineage | dbt lineage, Foundry lineage | M4: generated DAGs with ground truth affected sets | not run yet | Materiality rules hand-written | Measure FP/FN on generated graphs; then pilot data |
+| R4 | Rule-based conflict detection (revision, unit, value, tolerance, approval, expiry, applicability) catches injected faults | Data validation, QMS non-conformance | QMS products | M3/M6: synthetic workflows with injected faults | not run yet | Extraction errors propagate | Report recall/precision per fault type |
+| R5 | Hash-chained audit + content hashes detect tampering of stored artifacts and logs | Certificate Transparency, Merkle logs, Crosby & Wallach 2009 | Procure audit chain, Trillian | M1 tamper test; M2 artifact verification | M1: tamper test passes (see BUILD_STATUS) | Detects change, not truthfulness; DB superuser can rewrite whole chain unless checkpoints are exported/signed | Signed checkpoints (M5/M6) |
+| R6 | Local deterministic extraction (pdf text + table heuristics + regex) is enough for MVP claims from supplier spec sheets | Document AI literature | Commercial IDP tools | M3 extraction accuracy on synthetic documents | not run yet | Scanned PDFs need OCR | OCR engine choice needs ADR |
