@@ -395,6 +395,34 @@ async fn signed_checkpoints_detect_full_rechain_by_db_owner() {
             .body["error"],
         "invalid_checkpoint_signature"
     );
+    // KZ-C1: a new checkpoint must not re-anchor on the re-chained log.
+    let n = |c: &Ctx| {
+        let owner = c.owner.clone();
+        async move {
+            let mut tx = db::tenant_tx(&owner, t).await.unwrap();
+            let n: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_checkpoints")
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+            n
+        }
+    };
+    let before = n(&c).await;
+    // (a fresh auditor: the admin has used up the per-user rate limit of heavy audit calls)
+    let (_, aud) = c.user(t, "auditor").await;
+    let slug: String = sqlx::query_scalar("SELECT slug FROM tenants WHERE id = $1")
+        .bind(t)
+        .fetch_one(&c.owner)
+        .await
+        .unwrap();
+    let at = c.token(&slug, &aud).await;
+    let r = c.post("/api/v1/audit/checkpoints", Some(&at), json!({})).await;
+    assert_eq!(
+        (r.status, r.body["error"].clone()),
+        (StatusCode::CONFLICT, json!("audit_chain_not_intact"))
+    );
+    assert_eq!(n(&c).await, before, "no checkpoint signed over the forged head");
 }
 
 #[tokio::test]

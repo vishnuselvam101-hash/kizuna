@@ -52,6 +52,7 @@ pub fn test_config() -> Config {
         .join(Uuid::now_v7().to_string());
     Config::from_lookup(|k| match k {
         "KIZUNA_DATABASE_URL" => Some(url.clone()),
+        "KIZUNA_DEV" => Some("1".into()),
         "KIZUNA_DATA_KEY" => Some(key.clone()),
         "KIZUNA_AUDIT_SIGNING_KEY" => Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into()),
         "KIZUNA_STORAGE_DIR" => Some(storage.to_string_lossy().into_owned()),

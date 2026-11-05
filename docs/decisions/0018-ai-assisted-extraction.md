@@ -1,4 +1,4 @@
-# ADR 0016: AI-assisted extraction with free external models (opt-in per tenant)
+# ADR 0018: AI-assisted extraction with free external models (opt-in per tenant)
 
 Status: accepted (2026-11-05). Founder decision: external AI = yes, free models only.
 

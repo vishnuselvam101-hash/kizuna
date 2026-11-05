@@ -53,8 +53,14 @@ pub async fn append(tx: &mut Tx, tenant: Uuid, r: Record<'_>) -> Result<i64, Api
         .bind(audit_engine::GENESIS.to_vec())
         .execute(&mut **tx)
         .await?;
+    // Serialise appends per tenant with a transaction lock (the runtime role cannot UPDATE audit_heads, so no row
+    // lock; the head advances in a database trigger that only accepts the next link — deep review KZ-I1).
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 41))")
+        .bind(tenant.to_string())
+        .execute(&mut **tx)
+        .await?;
     let (last_seq, last_hash): (i64, Vec<u8>) =
-        sqlx::query_as("SELECT last_seq, last_hash FROM audit_heads WHERE tenant_id = $1 FOR UPDATE")
+        sqlx::query_as("SELECT last_seq, last_hash FROM audit_heads WHERE tenant_id = $1")
             .bind(tenant)
             .fetch_one(&mut **tx)
             .await?;
@@ -88,12 +94,6 @@ pub async fn append(tx: &mut Tx, tenant: Uuid, r: Record<'_>) -> Result<i64, Api
     .bind(hash.to_vec())
     .execute(&mut **tx)
     .await?;
-    sqlx::query("UPDATE audit_heads SET last_seq = $2, last_hash = $3 WHERE tenant_id = $1")
-        .bind(tenant)
-        .bind(ev.seq)
-        .bind(hash.to_vec())
-        .execute(&mut **tx)
-        .await?;
     Ok(ev.seq)
 }
 
@@ -319,15 +319,17 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
     let seed = signing_key(&st)?;
     let keys = verification_keys(&st);
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
-    let last: Option<CpRow> = sqlx::query_as(
-        "SELECT seq, head_hash, signed_at, key_id, signature FROM audit_checkpoints ORDER BY seq DESC LIMIT 1",
-    )
-    .fetch_optional(&mut *tx)
-    .await?;
+    // Every checkpoint under a known key must still match the chain; otherwise refuse and alarm instead of
+    // signing a (possibly re-chained) head (deep review KZ-C1). The newest valid one is the anchor.
+    let rows: Vec<CpRow> =
+        sqlx::query_as("SELECT seq, head_hash, signed_at, key_id, signature FROM audit_checkpoints ORDER BY seq")
+            .fetch_all(&mut *tx)
+            .await?;
     let mut anchor = None;
-    if let Some((seq, head, at, kid, sig)) = last
-        && let Some((_, public, _)) = keys.iter().find(|k| k.0 == kid)
-    {
+    for (seq, head, at, kid, sig) in rows {
+        let Some((_, public, _)) = keys.iter().find(|k| k.0 == kid) else {
+            continue;
+        };
         let c = Checkpoint {
             tenant_id: p.tenant_id,
             seq,
@@ -338,10 +340,20 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
             signature: hex::encode(sig),
         };
         let r = check_one(&mut tx, &keys, &c).await?;
-        if r["signature_valid"] == true
-            && r["chain_matches"] == true
-            && let Ok(h) = <[u8; 32]>::try_from(head.as_slice())
-        {
+        if r["signature_valid"] != true || r["chain_matches"] != true {
+            tx.commit().await?;
+            crate::security_events::record(
+                &st.pool,
+                Some(p.tenant_id),
+                crate::security_events::Kind::AuditChainBroken,
+                Some(p.user_id),
+                None,
+                json!({ "via": "checkpoint_create", "seq": seq }),
+            )
+            .await;
+            return Err(ApiError::Conflict("audit_chain_not_intact"));
+        }
+        if let Ok(h) = <[u8; 32]>::try_from(head.as_slice()) {
             anchor = Some((seq, h));
         }
     }
@@ -381,7 +393,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
     )
     .await?;
     tx.commit().await?;
-    Ok(Json(Checkpoint {
+    let cp = Checkpoint {
         tenant_id: p.tenant_id,
         seq: status.head_seq,
         head_hash: status.head_hash,
@@ -389,7 +401,14 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
         key_id: kid,
         public_key: hex::encode(public),
         signature: hex::encode(sig),
-    }))
+    };
+    // Export off-host automatically (KZ-C3); delivery failures never fail the checkpoint.
+    if st.alerts.enabled() {
+        let alerts = st.alerts.clone();
+        let a = crate::alerts::checkpoint_alert(alerts.label(), &json!(cp));
+        let _ = tokio::task::spawn_blocking(move || alerts.send(&a)).await;
+    }
+    Ok(Json(cp))
 }
 
 /// Checks a checkpoint's signature against the key named by its key id (current or retired) and that the stored

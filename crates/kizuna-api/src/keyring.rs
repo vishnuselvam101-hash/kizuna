@@ -179,7 +179,7 @@ pub async fn reencrypt_tenant(
     for (uid, secret, pending) in users {
         let aad = crypto::totp_aad(tenant, uid);
         let secret = rewrap(keys, secret, &aad, &mut s);
-        let pending = rewrap(keys, pending, &aad, &mut s);
+        let pending = rewrap(keys, pending, &crypto::totp_pending_aad(tenant, uid), &mut s);
         if secret.is_some() || pending.is_some() {
             sqlx::query(
                 "UPDATE users SET totp_secret_enc = COALESCE($2, totp_secret_enc), \

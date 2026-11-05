@@ -269,7 +269,7 @@ pub fn verify_chain(tenant_id: Uuid, events: &[StoredEvent]) -> VerifyReport {
 /// Signed checkpoints: an Ed25519 signature over (tenant, seq, head hash, time). Exported outside the database they
 /// make a full re-chaining by a database owner detectable, as long as the signing key is not in the database.
 pub mod checkpoint {
-    use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+    use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
     use uuid::Uuid;
 
     pub fn message(tenant: Uuid, seq: i64, head: &[u8], signed_at_us: i64) -> Vec<u8> {
@@ -297,12 +297,38 @@ pub mod checkpoint {
         let Ok(sig) = <[u8; 64]>::try_from(sig) else {
             return false;
         };
-        vk.verify(msg, &Signature::from_bytes(&sig)).is_ok()
+        // Strict: rejects small-order keys and non-canonical signatures (deep review KZ-C2).
+        vk.verify_strict(msg, &Signature::from_bytes(&sig)).is_ok()
     }
 
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn small_order_key_and_non_canonical_signature_are_rejected() {
+            // Identity point (small order) as public key with an all-zero-ish signature: accepted by lax verify.
+            let mut identity = [0u8; 32];
+            identity[0] = 1;
+            let mut sig = [0u8; 64];
+            sig[0] = 1;
+            assert!(!verify(&identity, b"m", &sig));
+            // A valid signature with S + L (non-canonical scalar) is refused.
+            let seed = [7u8; 32];
+            let mut good = sign(&seed, b"m");
+            assert!(verify(&public_key(&seed), b"m", &good));
+            const L: [u8; 32] = [
+                0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+            ];
+            let mut carry = 0u16;
+            for i in 0..32 {
+                let v = u16::from(good[32 + i]) + u16::from(L[i]) + carry;
+                good[32 + i] = (v & 0xff) as u8;
+                carry = v >> 8;
+            }
+            assert!(!verify(&public_key(&seed), b"m", &good));
+        }
 
         #[test]
         fn sign_verify_and_tamper() {

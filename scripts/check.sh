@@ -14,10 +14,11 @@ step "rust clippy";  cargo clippy -q -j"$JOBS" --all-targets -- -D warnings
 step "rust tests";   cargo test -q -j"$JOBS" --workspace
 if [[ "${1:-}" != "--no-audit" ]]; then
   step "cargo audit"; cargo audit -q
+  step "cargo deny"; cargo deny --log-level error check
   step "pnpm audit"; (cd web && pnpm audit)
   step "pip-audit"
   req=$(mktemp); trap 'rm -f "$req"' EXIT
-  (cd services/extraction && uv export -q --frozen --all-groups -o "$req" && uvx -q pip-audit --strict --require-hashes -r "$req")
+  (cd services/extraction && uv export -q --frozen --all-groups -o "$req" && uvx -q pip-audit==2.10.1 --strict --require-hashes -r "$req")
 fi
 step "python lint+tests"
 (cd services/extraction && uv lock --check -q && uv run -q --locked ruff check . \
@@ -27,8 +28,11 @@ step "web typecheck+tests"
 step "shell lint";    shellcheck -x scripts/*.sh scripts/lib/*.sh scripts/tests/*.sh deploy/*.sh
 step "ops script tests"
 for t in scripts/tests/*.test.sh; do "$t"; done
+# The secret scan is mandatory in CI (deep review KZ-SC4); locally it runs when gitleaks is installed.
 if command -v gitleaks >/dev/null; then
   step "secret scan"; gitleaks git --no-banner --redact -l warn .
+elif [[ "${CI:-}" == "true" ]]; then
+  echo "gitleaks missing in CI" >&2; exit 1
 fi
 # Keep the dev target dir from eating the disk: delete target/debug when it exceeds 8 GB.
 sz=$(du -sm target/debug 2>/dev/null | cut -f1 || echo 0)

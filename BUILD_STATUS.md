@@ -14,7 +14,7 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | M3 | done | sandboxed Python extraction (CSV, XLSX, PDF text/tables, scanned-PDF OCR, images, DXF title blocks; bubblewrap + prlimit), `mfg-map@1`, blocked entity resolution with human-confirmed aliases, 9 conflict kinds (`mfg-rules@1`), review workflow with four-eyes |
 | M4 | done | decisions with derivation hashes, typed dependencies with materiality, selective invalidation incl. earlier claim versions and decision chains, traces, reconfirm/revoke, signed verification reports |
 | M5 | done | 10 detection rules, incidents, pre-authorised vs approval-gated containment, guards, revert/resolve, emergency unlock, Ed25519 audit checkpoints, security monitoring screen |
-| M7 | done | opt-in AI-assisted label mapping with free models (ADR 0016), saved import settings consumed by the worker, per-tenant + adaptive detection thresholds (ADR 0015), web API gaps 2–8 switched to real endpoints, WebAuthn-optional decision recorded (ADR 0006) |
+| M7 | done | opt-in AI-assisted label mapping with free models (ADR 0018), saved import settings consumed by the worker, per-tenant + adaptive detection thresholds (ADR 0015), web API gaps 2–8 switched to real endpoints, WebAuthn-optional decision recorded (ADR 0006) |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
 ## M7 results (2026-11-05, this host)
@@ -23,7 +23,7 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | `scripts/check.sh` | **pass**: fmt, clippy `-D warnings`, **176 Rust tests** (+20; 1 ignored live test), cargo/pnpm/pip audit 0, ruff + **59 pytest** (+11), tsc + **35 vitest** (+6), gitleaks 0. The 8 GB guard removed `target/debug` (8.2 GB); disk 43 GB free |
 | `cargo test -p kizuna-api --test m7_ai_settings` | 7/7 against real PostgreSQL + local mock OpenAI server: off by default, no request for tenants without opt-in, notice + admin-MFA opt-in, redaction (no e-mail/part number sent), `ai_suggested` + not decision evidence until four-eyes review, DB trigger, injection corpus (7 labels × 7 hijacked answers → fallback, only `unreviewed` claims), 500/timeout/budget fallback, import settings drive worker + long-table mapping, per-tenant/adaptive thresholds |
 | M7 follow-up | admin screens for AI opt-in (verbatim notice, acknowledgement, MFA step-up, provider/budget/usage, off switch) and detection thresholds (bounds, defaults, active values, adaptive toggle), EN+JA, axe-tested; `POST /artifacts/{id}/reextract` (reason required; new run supersedes the previous run; changed claims superseded, unchanged kept, missing ones → `needs_evidence` + withdrawn; decisions via selective invalidation; audited); AI guards `ai-map@2` (governance denylist, multilingual injection screen → security event `ingest.prompt_injection_suspected`, plausibility floor) |
-| live free model (ignored test, `gemma4:cloud` via local Ollama `127.0.0.1:11434/v1`) | pass, 1.1 s, 374+174 tokens: Werkstoff→material, Breite (mm)→width (mm), Härte→hardness; an injected label was mapped to `approval status` → stays `ai_suggested` (residual risk, ADR 0016). OmniRoute :20128 was down |
+| live free model (ignored test, `gemma4:cloud` via local Ollama `127.0.0.1:11434/v1`) | pass, 1.1 s, 374+174 tokens: Werkstoff→material, Breite (mm)→width (mm), Härte→hardness; an injected label was mapped to `approval status` → stays `ai_suggested` (residual risk, ADR 0018). OmniRoute :20128 was down |
 
 ## M6 commands run and results (2026-11-05, this host)
 | Command | Result |
@@ -48,7 +48,7 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
   extraction suspension now needs approval + per-artifact retry limit, M3 no admin decides containment about themselves,
   M4 emergency unlock only re-enables containment-disabled admins, L1 junk checkpoints → 400 without alerts, L2 server
   refuses to run as root (`KIZUNA_ALLOW_ROOT=1` for dev only).
-- ASVS 5.0 control-to-test mapping re-run: `docs/security/asvs-m1-mapping.md` (all mapped tests pass).
+- ASVS 5.0 control-to-test mapping re-run: `docs/security/asvs-mapping.md` (all mapped tests pass).
 
 ## Security review M1 (independent read-only reviewer, commit 448f97c)
 | # | Sev | Finding | Status |
@@ -79,7 +79,7 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 1. WebAuthn stays optional for admins (recorded in ADR 0006).
 2. No trademark/patent work.
 3. Pilot hosted on this server (deployment, seccomp, AV, backups, alerts: `ops-pilot` lane).
-4. External AI = yes, free models only (ADR 0016; off by default, per-tenant opt-in).
+4. External AI = yes, free models only (ADR 0018; off by default, per-tenant opt-in).
 
 ## Next step
 A re-extract button in Documents; merge the `ops-pilot` lane; then `scripts/check.sh && scripts/e2e.sh --seed 7`, and on the pilot host: run as the dedicated `kizuna` user per

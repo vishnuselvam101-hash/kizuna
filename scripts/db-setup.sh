@@ -23,5 +23,7 @@ KIZUNA_OWNER_DATABASE_URL=postgres://kizuna:$OWNER_PW@127.0.0.1:5432/kizuna_dev
 KIZUNA_TEST_DATABASE_URL=postgres://kizuna_app:$APP_PW@127.0.0.1:5432/kizuna_test
 KIZUNA_TEST_OWNER_DATABASE_URL=postgres://kizuna:$OWNER_PW@127.0.0.1:5432/kizuna_test
 KIZUNA_DATA_KEY=${KIZUNA_DATA_KEY:-$(openssl rand -base64 32)}
+KIZUNA_WEBAUTHN_RP_ID=localhost
+KIZUNA_WEBAUTHN_ORIGIN=http://localhost:8080
 ENV
 echo "roles kizuna/kizuna_app and databases kizuna_dev/kizuna_test ready; credentials in $ENV_FILE"

@@ -39,7 +39,7 @@ pub enum Kind {
     ContainmentApplied,
     ExportReport,
     BlockedRequest,
-    /// A document label looked like an instruction to the AI and was refused (ADR 0016).
+    /// A document label looked like an instruction to the AI and was refused (ADR 0018).
     PromptInjectionSuspected,
     /// A tenant security/ingest setting changed (detection thresholds, AI opt-in, import settings).
     SettingsChanged,

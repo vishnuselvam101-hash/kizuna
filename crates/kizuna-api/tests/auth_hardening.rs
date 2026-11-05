@@ -24,6 +24,10 @@ async fn clocked(keys: Option<DataKeys>) -> (Ctx, Arc<OffsetClock>) {
         if let Some(k) = keys {
             cfg.data_keys = k;
         }
+        // These tests move the clock by hours to check absolute lifetimes; the inactivity timeout and the
+        // re-authentication window have their own tests (deep_review_regressions.rs).
+        cfg.idle_ttl_secs = 24 * 3600;
+        cfg.reauth_ttl_secs = 24 * 3600;
     })
     .await;
     let clock = Arc::new(OffsetClock::default());

@@ -36,3 +36,15 @@ filter. `seccomp::tests` checks the policy compiles and never denies basic sysca
 ## Consequences
 Default-allow means unlisted dangerous syscalls (new kernel APIs) stay reachable until listed. Workers that need a
 socket (none today) would need a policy change and a new ADR.
+
+## Amendment 2026-11-05 (deep review KZ-S1/S2/S3)
+- Deny list extended (pidfd_*, process_madvise/mrelease, kcmp, personality, vmsplice, move/migrate_pages, mbind,
+  set_mempolicy*, quotactl_fd, memfd_secret, statmount/listmount, open_tree_attr, lsm_*, fanotify_mark,
+  lookup_dcookie). `clone` with any `CLONE_NEW*` flag → EPERM (argument filter); `clone3` → ENOSYS via a second
+  filter (`--add-seccomp-fd 3 --add-seccomp-fd 4`), so glibc falls back to the inspectable `clone`.
+- Every denied syscall is invoked at runtime inside the real sandbox and must return EPERM
+  (`seccomp_blocks_socket_ptrace_mount_in_sandbox`, table-driven from the Rust policy).
+- Worker address space 1 GiB (`KIZUNA_WORKER_MEMORY_MB`) and `oom_score_adj=1000` (choom), so a hostile document
+  cannot push the service cgroup into OOM-killing the server.
+A full default-deny allowlist (strace-derived) remains the long-term goal; the residual default-allow surface is
+documented here.

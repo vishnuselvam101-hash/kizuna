@@ -1,4 +1,4 @@
-//! AI-assisted extraction (ADR 0016). Runs in the API process, outside the extraction sandbox, only on records the
+//! AI-assisted extraction (ADR 0018). Runs in the API process, outside the extraction sandbox, only on records the
 //! sandboxed worker already extracted. OFF unless the operator configures `KIZUNA_AI_*` AND the tenant's admin
 //! opted in under the current data-processing notice. Any failure returns an error code; the caller then keeps the
 //! deterministic `mfg-map@1` result only (fallback).

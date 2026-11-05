@@ -106,8 +106,9 @@ fn running_as_root() -> bool {
 
 const BOOT: &str = "import sys; sys.path.insert(0, sys.argv[1]); from kizuna_extraction.worker import main; main()";
 
-/// File descriptor number on which bubblewrap reads the seccomp program in the child.
+/// File descriptor numbers on which bubblewrap reads the two seccomp programs in the child (main policy, clone3).
 pub const SECCOMP_FD: i32 = 3;
+pub const SECCOMP_FD2: i32 = 4;
 
 /// Builds the sandboxed command line for the extraction worker.
 pub fn command_argv(cfg: &Config) -> Vec<String> {
@@ -128,7 +129,9 @@ pub fn sandbox_argv(cfg: &Config, tail: Vec<String>, seccomp: bool) -> Vec<Strin
     let src = cfg.extraction_dir.to_string_lossy().into_owned();
     let limits = [
         "/usr/bin/prlimit".to_string(),
-        "--as=3221225472".into(),
+        // Address-space cap per worker (default 1 GiB): two concurrent workers stay inside the service's
+        // MemoryMax, so a hostile document cannot push the server into a cgroup OOM (deep review KZ-S3).
+        format!("--as={}", cfg.worker_memory_mb * 1024 * 1024),
         format!("--cpu={}", cfg.extraction_timeout_secs),
         "--nofile=64".into(),
         "--core=0".into(),
@@ -141,6 +144,8 @@ pub fn sandbox_argv(cfg: &Config, tail: Vec<String>, seccomp: bool) -> Vec<Strin
     if !running_as_root() {
         limits.insert(limits.len() - 1, "--nproc=64".into());
     }
+    // If the cgroup still runs out of memory, the kernel picks the worker, never the server (KZ-S3).
+    limits.extend(["/usr/bin/choom".into(), "-n".into(), "1000".into(), "--".into()]);
     if cfg.extraction_sandbox == "none" {
         return limits.into_iter().chain(tail).collect();
     }
@@ -199,7 +204,12 @@ pub fn sandbox_argv(cfg: &Config, tail: Vec<String>, seccomp: bool) -> Vec<Strin
     }
     a.extend(["--ro-bind".into(), src.clone(), src]);
     if seccomp {
-        a.extend(["--seccomp".into(), SECCOMP_FD.to_string()]);
+        a.extend([
+            "--add-seccomp-fd".into(),
+            SECCOMP_FD.to_string(),
+            "--add-seccomp-fd".into(),
+            SECCOMP_FD2.to_string(),
+        ]);
     }
     a.push("--".into());
     a.extend(limits);
@@ -345,14 +355,17 @@ pub async fn run_worker(
     Ok((parsed, crate::crypto::sha256(&out)))
 }
 
-/// A pipe whose read end carries the compiled seccomp program (fits in the pipe buffer, so no writer task).
-fn seccomp_fd() -> Result<std::os::fd::OwnedFd, WorkerError> {
+/// Pipes whose read ends carry the compiled seccomp programs (each fits in the pipe buffer, so no writer task).
+fn seccomp_fds() -> Result<[std::os::fd::OwnedFd; 2], WorkerError> {
     use std::io::Write;
-    let bpf = crate::seccomp::program_bytes().map_err(|e| WorkerError::Sandbox(format!("seccomp: {e}")))?;
-    let (r, mut w) = std::io::pipe()?;
-    w.write_all(bpf)?;
-    drop(w);
-    Ok(r.into())
+    let progs = crate::seccomp::programs_bytes().map_err(|e| WorkerError::Sandbox(format!("seccomp: {e}")))?;
+    let pipe = |bpf: &[u8]| -> Result<std::os::fd::OwnedFd, WorkerError> {
+        let (r, mut w) = std::io::pipe()?;
+        w.write_all(bpf)?;
+        drop(w);
+        Ok(r.into())
+    };
+    Ok([pipe(progs[0])?, pipe(progs[1])?])
 }
 
 /// Spawns `argv` (from `sandbox_argv`), writes `input` to stdin and returns the exit status and bounded stdout.
@@ -373,11 +386,18 @@ pub async fn run_sandboxed(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    if argv.windows(2).any(|w| w[0] == "--seccomp") {
-        cmd.fd_mappings(vec![FdMapping {
-            parent_fd: seccomp_fd()?,
-            child_fd: SECCOMP_FD,
-        }])
+    if argv.iter().any(|w| w == "--add-seccomp-fd") {
+        let [a, b] = seccomp_fds()?;
+        cmd.fd_mappings(vec![
+            FdMapping {
+                parent_fd: a,
+                child_fd: SECCOMP_FD,
+            },
+            FdMapping {
+                parent_fd: b,
+                child_fd: SECCOMP_FD2,
+            },
+        ])
         .map_err(|e| WorkerError::Sandbox(e.to_string()))?;
     }
     let mut child = cmd.spawn()?;
@@ -460,6 +480,7 @@ mod tests {
         let mut cfg = crate::config::Config::from_lookup(|k| match k {
             "KIZUNA_DATABASE_URL" => Some("postgres://x".into()),
             "KIZUNA_DATA_KEY" => Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into()),
+            "KIZUNA_DEV" => Some("1".into()),
             _ => None,
         })
         .unwrap();
@@ -485,7 +506,7 @@ mod tests {
         assert!(a.iter().any(|x| x.starts_with("--as=")));
         assert!(
             a.windows(2)
-                .any(|w| w[0] == "--seccomp" && w[1] == SECCOMP_FD.to_string()),
+                .any(|w| w[0] == "--add-seccomp-fd" && w[1] == SECCOMP_FD.to_string()),
             "seccomp filter requested"
         );
     }
@@ -502,7 +523,23 @@ def call(name, *a):
     return "allowed" if getattr(libc, name)(*a) == 0 else errno.errorcode.get(ctypes.get_errno(), "?")
 r["ptrace"] = call("ptrace", 0, 0, None, None)
 r["mount"] = call("mount", b"none", b"/tmp", b"tmpfs", 0, None)
+import sys
+libc.syscall.restype = ctypes.c_long
+def raw(nr, *a):
+    ctypes.set_errno(0)
+    rc = libc.syscall(ctypes.c_long(nr), *[ctypes.c_long(x) for x in a])
+    return "allowed" if rc >= 0 else errno.errorcode.get(ctypes.get_errno(), "?")
+# Only with the filter on: every denied syscall (numbers from the Rust policy) must be refused before the kernel runs it.
+if len(sys.argv) > 1:
+    r["denied"] = {name: raw(nr) for name, nr in json.loads(sys.argv[1])}
+    r["clone_newuser"] = raw(int(sys.argv[2]), 0x10000000 | 17)
+    r["clone3"] = raw(int(sys.argv[3]), 0, 0)
 r["seccomp_mode"] = [l.split()[1] for l in open("/proc/self/status") if l.startswith("Seccomp:")][0]
+r["oom_score_adj"] = open("/proc/self/oom_score_adj").read().strip()
+try:
+    big = bytearray(1536 * 1024 * 1024); r["alloc_1_5g"] = "allowed"; del big
+except MemoryError:
+    r["alloc_1_5g"] = "MemoryError"
 print(json.dumps(r))
 "#;
 
@@ -510,12 +547,19 @@ print(json.dumps(r))
         let mut cfg = crate::config::Config::from_lookup(|k| match k {
             "KIZUNA_DATABASE_URL" => Some("postgres://x".into()),
             "KIZUNA_DATA_KEY" => Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into()),
+            "KIZUNA_DEV" => Some("1".into()),
             _ => None,
         })
         .unwrap();
         cfg.extraction_python = "/usr/bin/python3".into();
         cfg.extraction_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/extraction/src").into();
-        let tail = vec!["/usr/bin/python3".into(), "-I".into(), "-c".into(), PROBE.into()];
+        let mut tail: Vec<String> = vec!["/usr/bin/python3".into(), "-I".into(), "-c".into(), PROBE.into()];
+        if seccomp {
+            let table: Vec<(&str, i64)> = crate::seccomp::denied();
+            tail.push(serde_json::to_string(&table).unwrap());
+            tail.push(libc::SYS_clone.to_string());
+            tail.push(libc::SYS_clone3.to_string());
+        }
         let argv = sandbox_argv(&cfg, tail, seccomp);
         let (status, out) = run_sandboxed(&argv, Vec::new(), Duration::from_secs(20)).await.unwrap();
         assert!(
@@ -537,6 +581,17 @@ print(json.dumps(r))
         assert_eq!(on["ptrace"], "EPERM", "{on}");
         assert_eq!(on["mount"], "EPERM", "{on}");
         assert_eq!(on["seccomp_mode"], "2", "filter mode active: {on}");
+        // KZ-S3: the worker is the OOM killer's first choice and cannot allocate past its address-space cap.
+        assert_eq!(on["oom_score_adj"], "1000", "{on}");
+        assert_eq!(on["alloc_1_5g"], "MemoryError", "{on}");
+        // KZ-S2: every syscall of the policy is refused at runtime (catches wrong numbers / arch mismatches).
+        let denied = on["denied"].as_object().unwrap();
+        assert_eq!(denied.len(), crate::seccomp::denied().len());
+        for (name, res) in denied {
+            assert_eq!(res, "EPERM", "{name}: {on}");
+        }
+        assert_eq!(on["clone_newuser"], "EPERM", "{on}");
+        assert_eq!(on["clone3"], "ENOSYS", "glibc falls back to clone: {on}");
         let off = probe(false).await;
         assert_eq!(off["socket"], "allowed", "control: {off}");
         assert_eq!(off["ptrace"], "allowed", "control: {off}");

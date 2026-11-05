@@ -57,6 +57,8 @@ pub struct Principal {
     pub role: Role,
     pub mfa_verified: bool,
     pub ip: String,
+    /// When this session's login (credentials + factor) happened; privileged operations need it to be recent.
+    pub auth_at: OffsetDateTime,
 }
 
 impl Principal {
@@ -85,6 +87,13 @@ impl Principal {
 
     pub async fn require_on(&self, st: &AppState, perm: Permission, res: &Resource<'_>) -> ApiResult<()> {
         match st.policy.authorize(&self.subject(), perm, res) {
+            // Privileged operations need a recent login, not just a live session (ASVS V7.5; deep review KZ-A3).
+            Decision::Allow
+                if perm.is_privileged()
+                    && st.clock.now() - self.auth_at > Duration::seconds(st.cfg.reauth_ttl_secs) =>
+            {
+                Err(ApiError::Unauthorized("reauth_required"))
+            }
             Decision::Allow => Ok(()),
             Decision::Deny(reason) => {
                 // At most 30 recorded denials per user per minute: a flood of forbidden requests cannot turn into
@@ -127,21 +136,37 @@ impl FromRequestParts<AppState> for Principal {
             return Err(ApiError::Unauthorized("invalid_token"));
         };
         let mut tx = db::tenant_tx(&st.pool, tenant).await?;
-        let row: Option<(Uuid, Uuid, bool, String)> = sqlx::query_as(
-            "SELECT s.id, s.user_id, s.mfa_verified, u.role FROM sessions s \
+        let now = st.clock.now();
+        type Row = (Uuid, Uuid, bool, String, OffsetDateTime, OffsetDateTime);
+        let row: Option<Row> = sqlx::query_as(
+            "SELECT s.id, s.user_id, s.mfa_verified, u.role, s.last_activity_at, s.auth_at FROM sessions s \
              JOIN users u ON u.tenant_id = s.tenant_id AND u.id = s.user_id \
              JOIN tenants t ON t.id = s.tenant_id \
              WHERE s.access_hash = $1 AND s.revoked_at IS NULL AND s.access_expires_at > $2 \
                AND s.expires_at > $2 AND u.status = 'active' AND t.status = 'active'",
         )
         .bind(hash.to_vec())
-        .bind(st.clock.now())
+        .bind(now)
         .fetch_optional(&mut *tx)
         .await?;
-        tx.commit().await?;
-        let Some((session_id, user_id, mfa_verified, role)) = row else {
+        let Some((session_id, user_id, mfa_verified, role, last_activity, auth_at)) = row else {
+            tx.commit().await?;
             return Err(ApiError::Unauthorized("invalid_token"));
         };
+        // Inactivity timeout (ASVS V7.3.1; deep review KZ-A1); activity is recorded at most once a minute.
+        if now - last_activity > Duration::seconds(st.cfg.idle_ttl_secs) {
+            revoke_session(&mut tx, tenant, session_id, "idle_timeout").await?;
+            tx.commit().await?;
+            return Err(ApiError::Unauthorized("session_idle"));
+        }
+        if now - last_activity > Duration::seconds(60) {
+            sqlx::query("UPDATE sessions SET last_activity_at = $2 WHERE id = $1")
+                .bind(session_id)
+                .bind(now)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
         let role = Role::parse(&role).map_err(|_| ApiError::Forbidden("unknown_role"))?;
         Ok(Principal {
             tenant_id: tenant,
@@ -150,6 +175,7 @@ impl FromRequestParts<AppState> for Principal {
             role,
             mfa_verified,
             ip,
+            auth_at,
         })
     }
 }
@@ -235,8 +261,8 @@ async fn start_session(
     let sid = Uuid::now_v7();
     let exp = now + Duration::seconds(st.cfg.session_ttl_secs);
     sqlx::query(
-        "INSERT INTO sessions (id, tenant_id, user_id, access_hash, access_expires_at, expires_at, mfa_verified, client_ip) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+        "INSERT INTO sessions (id, tenant_id, user_id, access_hash, access_expires_at, expires_at, mfa_verified, client_ip, \
+         last_activity_at, auth_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)",
     )
     .bind(sid)
     .bind(tenant)
@@ -246,6 +272,7 @@ async fn start_session(
     .bind(exp)
     .bind(mfa)
     .bind(ip)
+    .bind(now)
     .execute(&mut **tx)
     .await?;
     sqlx::query(
@@ -429,7 +456,21 @@ pub(crate) async fn first_factor(
         .await;
         return Err(fail());
     };
+    let rehash = crypto::needs_rehash(&phash).then(|| password.clone());
     let pw_ok = verify_pw_blocking(st, password, Some(phash)).await?;
+    // Upgrade hashes made with older argon2 parameters on a successful login (KZ-C5).
+    if pw_ok
+        && let Some(pw) = rehash
+        && let Ok(Ok(h)) = tokio::task::spawn_blocking(move || crypto::hash_password(&pw)).await
+    {
+        let mut tx = db::tenant_tx(&st.pool, tenant_id).await?;
+        sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1")
+            .bind(uid)
+            .bind(h)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+    }
     let reason = if status != "active" {
         Some("disabled")
     } else if locked_until.is_some_and(|t| t > st.clock.now()) {
@@ -562,14 +603,21 @@ pub async fn refresh(
         tx.commit().await?;
         return Err(invalid());
     };
-    let sess: (Uuid, bool, Option<OffsetDateTime>, OffsetDateTime, String) = sqlx::query_as(
-        "SELECT s.user_id, s.mfa_verified, s.revoked_at, s.expires_at, u.status FROM sessions s \
+    let sess: (
+        Uuid,
+        bool,
+        Option<OffsetDateTime>,
+        OffsetDateTime,
+        String,
+        OffsetDateTime,
+    ) = sqlx::query_as(
+        "SELECT s.user_id, s.mfa_verified, s.revoked_at, s.expires_at, u.status, s.last_activity_at FROM sessions s \
          JOIN users u ON u.tenant_id = s.tenant_id AND u.id = s.user_id WHERE s.id = $1 FOR UPDATE OF s",
     )
     .bind(sid)
     .fetch_one(&mut *tx)
     .await?;
-    let (uid, mfa, revoked_at, s_exp, ustatus) = sess;
+    let (uid, mfa, revoked_at, s_exp, ustatus, last_activity) = sess;
     if used_at.is_some() {
         // Reuse of a rotated token: assume theft, kill the whole token family.
         if revoked_at.is_none() {
@@ -605,6 +653,12 @@ pub async fn refresh(
         tx.commit().await?;
         return Err(invalid());
     }
+    // An idle session is not refreshable; it is revoked (KZ-A1).
+    if now - last_activity > Duration::seconds(st.cfg.idle_ttl_secs) {
+        revoke_session(&mut tx, tenant, sid, "idle_timeout").await?;
+        tx.commit().await?;
+        return Err(ApiError::Unauthorized("session_idle"));
+    }
     let access = crypto::issue_token(TokenKind::Access, tenant);
     let next = crypto::issue_token(TokenKind::Refresh, tenant);
     sqlx::query("UPDATE refresh_tokens SET used_at = $2 WHERE id = $1")
@@ -623,10 +677,11 @@ pub async fn refresh(
     .execute(&mut *tx)
     .await?;
     let acc_exp = (now + Duration::seconds(st.cfg.access_ttl_secs)).min(s_exp);
-    sqlx::query("UPDATE sessions SET access_hash = $2, access_expires_at = $3 WHERE id = $1")
+    sqlx::query("UPDATE sessions SET access_hash = $2, access_expires_at = $3, last_activity_at = $4 WHERE id = $1")
         .bind(sid)
         .bind(access.hash.to_vec())
         .bind(acc_exp)
+        .bind(now)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
@@ -785,7 +840,7 @@ pub async fn totp_setup(
     let enc = st
         .cfg
         .data_keys
-        .seal(&secret, &crypto::totp_aad(p.tenant_id, p.user_id))
+        .seal(&secret, &crypto::totp_pending_aad(p.tenant_id, p.user_id))
         .map_err(ApiError::internal)?;
     sqlx::query("UPDATE users SET totp_pending_enc = $2, updated_at = now() WHERE id = $1")
         .bind(p.user_id)
@@ -822,16 +877,23 @@ pub async fn totp_confirm(
     let secret = st
         .cfg
         .data_keys
-        .open(&pending, &crypto::totp_aad(p.tenant_id, p.user_id))
+        .open(&pending, &crypto::totp_pending_aad(p.tenant_id, p.user_id))
         .ok_or_else(|| ApiError::internal("pending totp undecryptable"))?;
     let step = crypto::totp_verify(&secret, &req.code, st.clock.now().unix_timestamp(), None)
         .ok_or(ApiError::BadRequest("invalid_code"))?;
+    // Re-sealed under the active label on confirmation (KZ-C4).
+    let active = st
+        .cfg
+        .data_keys
+        .seal(&secret, &crypto::totp_aad(p.tenant_id, p.user_id))
+        .map_err(ApiError::internal)?;
     sqlx::query(
-        "UPDATE users SET totp_secret_enc = totp_pending_enc, totp_pending_enc = NULL, totp_enabled = true, \
+        "UPDATE users SET totp_secret_enc = $3, totp_pending_enc = NULL, totp_enabled = true, \
          totp_last_step = $2, updated_at = now() WHERE id = $1",
     )
     .bind(p.user_id)
     .bind(step)
+    .bind(active)
     .execute(&mut *tx)
     .await?;
     // The enrolling session is NOT upgraded: privileged actions need a fresh login with password + TOTP,

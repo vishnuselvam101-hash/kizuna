@@ -1,6 +1,6 @@
 """Claim extraction behind an interface. The only implementation is deterministic and local (a fixed label
 vocabulary, mirroring crates/domain-manufacturing `mfg-map@1`). The sandbox has no model and no network. The
-optional AI label mapping (ADR 0016) runs in the API process on this worker's output, never in here.
+optional AI label mapping (ADR 0018) runs in the API process on this worker's output, never in here.
 
 Document text never changes the vocabulary, the rules or the output schema; unknown labels are reported, not
 turned into claims. Instruction-like text is flagged as a warning and otherwise treated as plain data.

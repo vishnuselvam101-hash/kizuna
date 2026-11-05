@@ -9,7 +9,7 @@ review is manual (this table).
 |---|---|---|---|---|
 | axum / tower / tower-http | 0.8 / 0.5 / 0.6 | MIT | HTTP server, limits, headers | tokio-rs project |
 | tokio | 1 | MIT | async runtime | |
-| reqwest | 0.12 (rustls, ring) | MIT/Apache-2.0 | outbound HTTPS to the opt-in AI provider (ADR 0016) | no default features, no redirects, no env proxy; only client in the server |
+| reqwest | 0.12 (rustls, ring) | MIT/Apache-2.0 | outbound HTTPS to the opt-in AI provider (ADR 0018) | no default features, no redirects, no env proxy; also the blocking client for Telegram alerts (ureq removed, KZ-SC6) |
 | sqlx | 0.8 (0.9 exists) | MIT/Apache-2.0 | PostgreSQL, migrations | RUSTSEC-2024-0363 fixed in 0.8.1; lockfile lists `rsa` via unused sqlx-mysql (RUSTSEC-2023-0071, not compiled; ignored with reason in `.cargo/audit.toml`) |
 | argon2 | 0.5 | MIT/Apache-2.0 | password hashing | RustCrypto |
 | aes-gcm | 0.10 | MIT/Apache-2.0 | secret encryption at rest | RustCrypto; NCC audit 2020 |
@@ -102,7 +102,6 @@ Licence from crates.io metadata; `cargo audit` 2026-11-05 after adding them: 0 a
 | command-fds | 0.3.3 | Apache-2.0 | pass the BPF pipe to bwrap as fd 3 without `unsafe` in our crate | Google; uses `nix` 0.31 + `pre_exec` internally |
 | libc | 0.2 | MIT OR Apache-2.0 | `SYS_*` syscall numbers for the policy | already in the tree |
 | lettre | 0.11.23 | MIT | SMTP alerts (blocking transport, rustls + ring + webpki-roots; no native-tls/OpenSSL) | features: smtp-transport, builder, hostname, rustls-tls |
-| ureq | 3.5.1 | MIT OR Apache-2.0 | Telegram Bot API alerts over HTTPS | default features off, `rustls` only (ring, webpki-roots) |
 
 | Tool (separate program) | Licence | Use | Advisory check |
 |---|---|---|---|

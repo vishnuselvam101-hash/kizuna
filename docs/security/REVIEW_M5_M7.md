@@ -53,7 +53,7 @@ Counts: High 0 · Medium 2 · Low 8 · Info 4 — **all fixed on main 2026-11-05
   status, including `ai_suggested`), `:881-885` (the new-evidence hook runs only for `ai_suggested → accepted`),
   `:441` (rules exclude only `rejected`/`ai_suggested`), `decisions.rs:520-526` (decisions refuse only
   `rejected`/`ai_suggested`). The DB trigger (`0010_ai_thresholds.sql`) only blocks transitions *into* `ai_suggested`.
-- **Scenario:** extraction stores an injected/hallucinated AI mapping as `ai_suggested` (ADR 0016 residual risk).
+- **Scenario:** extraction stores an injected/hallucinated AI mapping as `ai_suggested` (ADR 0018 residual risk).
   A reviewer, unsure, chooses "request evidence" — the opposite of approval. The claim becomes `needs_evidence`.
   From then on it feeds conflict detection and `compare`, and any Reviewer can cite it in `POST /decisions`
   (no `claim_ai_suggested_unreviewed` check). Dependent decisions were never notified (`on_claim_change` skipped),

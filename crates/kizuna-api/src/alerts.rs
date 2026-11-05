@@ -205,6 +205,10 @@ impl Alerter {
         }
     }
 
+    pub fn label(&self) -> &str {
+        &self.cfg.label
+    }
+
     pub fn enabled(&self) -> bool {
         self.cfg.smtp.is_some() || self.cfg.telegram.is_some()
     }
@@ -306,19 +310,41 @@ fn send_smtp(c: &SmtpConfig, subject: &str, body: &str) -> Result<(), String> {
 fn send_telegram(c: &TelegramConfig, text: &str) -> Result<(), String> {
     let url = format!("{}/bot{}/sendMessage", c.api_base, c.token.expose());
     let body = serde_json::json!({ "chat_id": c.chat_id, "text": text, "disable_web_page_preview": true }).to_string();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(15)))
-        .build()
-        .into();
-    // Never format the ureq error: it can contain the URL, which contains the bot token.
-    match agent
-        .post(&url)
-        .header("content-type", "application/json")
-        .send(body.as_bytes())
-    {
-        Ok(_) => Ok(()),
-        Err(ureq::Error::StatusCode(code)) => Err(format!("telegram http {code}")),
-        Err(_) => Err("telegram transport error".into()),
+    // One HTTP stack for the whole server (reqwest; deep review KZ-SC6). The blocking client runs on its own
+    // scoped thread, so this is safe to call from async code too. Never format the error: it can contain the URL,
+    // which contains the bot token.
+    std::thread::scope(|sc| {
+        sc.spawn(|| {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(15))
+                .redirect(reqwest::redirect::Policy::none())
+                .no_proxy()
+                .build()
+                .map_err(|_| "telegram transport error".to_string())?;
+            match client
+                .post(&url)
+                .header("content-type", "application/json")
+                .body(body)
+                .send()
+            {
+                Ok(r) if r.status().is_success() => Ok(()),
+                Ok(r) => Err(format!("telegram http {}", r.status().as_u16())),
+                Err(_) => Err("telegram transport error".into()),
+            }
+        })
+        .join()
+        .unwrap_or_else(|_| Err("telegram transport error".into()))
+    })
+}
+
+/// Off-host copy of a new signed audit checkpoint (deep review KZ-C3): the alert channel receives the exported
+/// checkpoint JSON (hashes, key id, signature: integrity data, no secrets or document content).
+pub fn checkpoint_alert(label: &str, cp: &serde_json::Value) -> Alert {
+    Alert {
+        kind: "audit.checkpoint".into(),
+        severity: "info".into(),
+        key: format!("checkpoint:{}:{}", cp["tenant_id"].as_str().unwrap_or(""), cp["seq"]),
+        text: format!("[{label}] signed audit checkpoint (keep this copy): {cp}"),
     }
 }
 

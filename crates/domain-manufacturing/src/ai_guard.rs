@@ -1,4 +1,4 @@
-//! Deterministic guards around AI label mapping (ADR 0016, `ai-map@2`). Nothing here calls a model.
+//! Deterministic guards around AI label mapping (ADR 0018, `ai-map@2`). Nothing here calls a model.
 //!
 //! 1. Governance denylist: fields and predicates that carry approval, review, validity or revision authority are
 //!    never offered to, nor accepted from, the model, and claims with such predicates are never AI-attributed.

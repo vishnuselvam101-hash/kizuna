@@ -51,6 +51,10 @@ pub struct Config {
     pub webauthn_origin: String,
     pub access_ttl_secs: i64,
     pub session_ttl_secs: i64,
+    /// Inactivity timeout: a session unused for this long is revoked (ASVS V7.3.1; deep review KZ-A1).
+    pub idle_ttl_secs: i64,
+    /// Privileged operations need a login (password + second factor) at most this old (KZ-A3).
+    pub reauth_ttl_secs: i64,
     pub max_body_bytes: usize,
     pub max_upload_bytes: usize,
     /// Number of trusted reverse proxies in front of the server (0 = ignore X-Forwarded-For).
@@ -64,12 +68,14 @@ pub struct Config {
     /// `bwrap` (default: no network, read-only minimal filesystem) or `none` (rlimits only; development only).
     pub extraction_sandbox: String,
     pub extraction_timeout_secs: u64,
+    /// Address-space limit per extraction worker in MiB (`KIZUNA_WORKER_MEMORY_MB`, default 1024).
+    pub worker_memory_mb: u64,
     /// Ed25519 seed for signed audit checkpoints (keep outside the database).
     pub audit_signing_key: Option<Secret<[u8; 32]>>,
     /// Retired audit signing keys (comma-separated in `KIZUNA_AUDIT_SIGNING_KEYS_PREVIOUS`): old checkpoints stay
     /// verifiable by their stored key id after a rotation.
     pub audit_signing_keys_previous: Vec<Secret<[u8; 32]>>,
-    /// External AI label mapping (OFF unless configured; tenants must still opt in). See ADR 0016.
+    /// External AI label mapping (OFF unless configured; tenants must still opt in). See ADR 0018.
     pub ai: Option<AiConfig>,
 }
 
@@ -136,8 +142,19 @@ impl Config {
         if session_ttl_secs < access_ttl_secs {
             return Err(ConfigError::Invalid("KIZUNA_SESSION_TTL_SECS"));
         }
-        let webauthn_rp_id = get("KIZUNA_WEBAUTHN_RP_ID").unwrap_or_else(|| "localhost".into());
-        let webauthn_origin = get("KIZUNA_WEBAUTHN_ORIGIN").unwrap_or_else(|| "http://localhost:8080".into());
+        // Outside development both must be set explicitly: a silent localhost default fails every ceremony in
+        // production without saying why (deep review KZ-I2).
+        let dev = get("KIZUNA_DEV").as_deref() == Some("1");
+        let webauthn_rp_id = match get("KIZUNA_WEBAUTHN_RP_ID").filter(|v| !v.is_empty()) {
+            Some(v) => v,
+            None if dev => "localhost".into(),
+            None => return Err(ConfigError::Missing("KIZUNA_WEBAUTHN_RP_ID")),
+        };
+        let webauthn_origin = match get("KIZUNA_WEBAUTHN_ORIGIN").filter(|v| !v.is_empty()) {
+            Some(v) => v,
+            None if dev => "http://localhost:8080".into(),
+            None => return Err(ConfigError::Missing("KIZUNA_WEBAUTHN_ORIGIN")),
+        };
         crate::webauthn::build(&webauthn_rp_id, &webauthn_origin)
             .map_err(|_| ConfigError::Invalid("KIZUNA_WEBAUTHN_ORIGIN"))?;
         let here = std::env::current_dir().unwrap_or_default();
@@ -149,6 +166,8 @@ impl Config {
             webauthn_origin,
             access_ttl_secs,
             session_ttl_secs,
+            idle_ttl_secs: num("KIZUNA_IDLE_TTL_SECS", 1800, 300, 24 * 3600)?,
+            reauth_ttl_secs: num("KIZUNA_REAUTH_TTL_SECS", 900, 60, 24 * 3600)?,
             max_body_bytes: num("KIZUNA_MAX_BODY_BYTES", 64 * 1024, 1024, 1024 * 1024)? as usize,
             max_upload_bytes: num("KIZUNA_MAX_UPLOAD_BYTES", 25 * 1024 * 1024, 1024, 200 * 1024 * 1024)? as usize,
             trusted_proxy_hops: num("KIZUNA_TRUSTED_PROXY_HOPS", 0, 0, 5)? as usize,
@@ -191,6 +210,7 @@ impl Config {
                 .map(|v| crate::keyring::parse_key(v, "KIZUNA_AUDIT_SIGNING_KEYS_PREVIOUS").map(Secret::new))
                 .collect::<Result<_, _>>()?,
             extraction_timeout_secs: num("KIZUNA_EXTRACTION_TIMEOUT_SECS", 45, 5, 50)? as u64,
+            worker_memory_mb: num("KIZUNA_WORKER_MEMORY_MB", 1024, 256, 4096)? as u64,
             ai: match (
                 get("KIZUNA_AI_BASE_URL").filter(|v| !v.is_empty()),
                 get("KIZUNA_AI_MODEL"),
@@ -232,6 +252,8 @@ mod tests {
 
     fn base() -> HashMap<&'static str, String> {
         HashMap::from([
+            ("KIZUNA_WEBAUTHN_RP_ID", "localhost".to_string()),
+            ("KIZUNA_WEBAUTHN_ORIGIN", "http://localhost:8080".to_string()),
             ("KIZUNA_DATABASE_URL", "postgres://u:supersecretpw@h/db".to_string()),
             (
                 "KIZUNA_DATA_KEY",
@@ -259,6 +281,21 @@ mod tests {
         assert_eq!(
             Config::from_lookup(|k| m.get(k).cloned()).unwrap().extraction_sandbox,
             "none"
+        );
+    }
+
+    #[test]
+    fn webauthn_relying_party_required_outside_dev() {
+        let mut m = base();
+        m.remove("KIZUNA_WEBAUTHN_RP_ID");
+        assert!(matches!(
+            Config::from_lookup(|k| m.get(k).cloned()),
+            Err(ConfigError::Missing("KIZUNA_WEBAUTHN_RP_ID"))
+        ));
+        m.insert("KIZUNA_DEV", "1".into());
+        assert_eq!(
+            Config::from_lookup(|k| m.get(k).cloned()).unwrap().webauthn_rp_id,
+            "localhost"
         );
     }
 

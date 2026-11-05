@@ -8,12 +8,12 @@ argon2id passwords; TOTP MFA (encrypted at rest, replay-protected) required for 
 access tokens and rotating refresh tokens with reuse detection; server-side revocation; deny-by-default RBAC + ABAC
 hooks; PostgreSQL RLS FORCE tenant isolation with separate owner/runtime roles; hash-chained append-only audit log;
 security_events; per-IP/per-account rate limits and lockout; secure headers, body limits, timeouts, no CORS;
-config from env, secrets redacted in Debug, gitleaks in the gate. Mapping to tests: `docs/security/asvs-m1-mapping.md`.
+config from env, secrets redacted in Debug, gitleaks in the gate. Mapping to tests: `docs/security/asvs-mapping.md`.
 
 ## Known gaps
-Seccomp filter for the extraction worker is a deny list (ADR 0016); ClamAV only when configured (ADR 0017, fail-closed quarantine); in-process rate limiter; WebAuthn
+Seccomp filter for the extraction worker is a deny list plus clone namespace-flag filter and clone3→ENOSYS (ADR 0016, deep review KZ-S1); ClamAV only when configured (ADR 0017, fail-closed quarantine); in-process rate limiter; WebAuthn
 optional for admins (founder decision); TLS must be terminated by a reverse proxy; `mfa_required` confirms a correct
-password; signed checkpoints only help when exported off-host. M2–M6 controls: docs/security/asvs-m1-mapping.md.
+password; signed checkpoints only help when exported off-host. M2–M6 controls: docs/security/asvs-mapping.md.
 
 ## Rules
 Never log passwords, tokens, keys or document contents. Every confirmed vulnerability gets a regression test.

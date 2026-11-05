@@ -57,7 +57,7 @@ python3 -I scripts/e2e/gen_dataset.py --seed "$SEED" --parts "$PARTS" --out "$WO
 PORT=$(kz_free_port)
 echo "== kizuna-server on 127.0.0.1:$PORT"
 KIZUNA_DATABASE_URL=$(kz_app_url "$DB") KIZUNA_BIND=127.0.0.1:$PORT KIZUNA_STORAGE_DIR=$WORK/objects \
-  KIZUNA_DATA_KEY=$(openssl rand -base64 32) KIZUNA_UPLOADS_PER_USER_PER_MIN=1000 KIZUNA_LOG=warn \
+  KIZUNA_DATA_KEY=$(openssl rand -base64 32) KIZUNA_UPLOADS_PER_USER_PER_MIN=1000 KIZUNA_LOG=warn KIZUNA_DEV=1 \
   $BIN/kizuna-server >"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
 kz_wait_http "http://127.0.0.1:$PORT/healthz" 30

@@ -306,6 +306,7 @@ async fn main() -> R<()> {
     let key = base64::engine::general_purpose::STANDARD.encode(kizuna_api::crypto::random_bytes::<32>());
     let cfg = Config::from_lookup(|k| match k {
         "KIZUNA_DATABASE_URL" => Some(app_url.clone()),
+        "KIZUNA_DEV" => Some("1".into()),
         "KIZUNA_DATA_KEY" => Some(key.clone()),
         "KIZUNA_STORAGE_DIR" => Some(storage.to_string_lossy().into_owned()),
         "KIZUNA_ACCESS_TTL_SECS" => Some("3600".into()),

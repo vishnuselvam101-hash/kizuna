@@ -19,7 +19,9 @@ pub const PASSWORD_MAX_CHARS: usize = 128;
 
 fn argon2() -> Argon2<'static> {
     // OWASP minimum for argon2id: m=19 MiB, t=2, p=1.
-    let params = Params::new(19_456, 2, 1, None).unwrap_or_default();
+    // Constant, valid parameters: a failure here is a programming error, never a silent fallback (KZ-C5).
+    #[allow(clippy::expect_used)]
+    let params = Params::new(19_456, 2, 1, None).expect("argon2 parameters");
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
 }
 
@@ -85,6 +87,13 @@ pub fn hash_password(pw: &str) -> Result<String, String> {
         .hash_password(pw.as_bytes(), &salt)
         .map(|h| h.to_string())
         .map_err(|e| e.to_string())
+}
+
+/// PHC prefix of hashes made with the current parameters; older hashes are upgraded at the next login (KZ-C5).
+pub const PHC_CURRENT_PREFIX: &str = "$argon2id$v=19$m=19456,t=2,p=1$";
+
+pub fn needs_rehash(phc: &str) -> bool {
+    !phc.starts_with(PHC_CURRENT_PREFIX)
 }
 
 pub fn verify_password(pw: &str, phc: &str) -> bool {
@@ -173,6 +182,15 @@ pub fn open(key: &[u8; 32], sealed: &[u8], aad: &[u8]) -> Option<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(key).ok()?;
     let (nonce, ct) = sealed.split_at(12);
     cipher.decrypt(Nonce::from_slice(nonce), Payload { msg: ct, aad }).ok()
+}
+
+/// AAD for a TOTP secret awaiting confirmation; distinct from the active one, so blobs cannot be swapped between
+/// `totp_pending_enc` and `totp_secret_enc` unnoticed (deep review KZ-C4).
+pub fn totp_pending_aad(tenant: Uuid, user: Uuid) -> Vec<u8> {
+    let mut v = b"kizuna-totp-pending-v1".to_vec();
+    v.extend_from_slice(tenant.as_bytes());
+    v.extend_from_slice(user.as_bytes());
+    v
 }
 
 pub fn totp_aad(tenant: Uuid, user: Uuid) -> Vec<u8> {
@@ -301,6 +319,8 @@ mod tests {
     fn password_hash_roundtrip_and_policy() {
         let h = hash_password("correct horse battery").unwrap();
         assert!(h.starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
+        assert!(!needs_rehash(&h));
+        assert!(needs_rehash("$argon2id$v=19$m=4096,t=3,p=1$c2FsdA$aGFzaA"));
         assert!(verify_password("correct horse battery", &h));
         assert!(!verify_password("wrong horse battery", &h));
         assert!(!verify_password("x", "not-a-phc"));
@@ -357,6 +377,12 @@ mod tests {
         let mut t = s.clone();
         t[14] ^= 1;
         assert_eq!(open(&k, &t, b"aad1"), None);
+        // KZ-C4: a pending TOTP blob does not open as the active secret (and vice versa).
+        let (tn, u) = (Uuid::now_v7(), Uuid::now_v7());
+        let pending = seal(&k, b"seed", &totp_pending_aad(tn, u)).unwrap();
+        assert_eq!(open(&k, &pending, &totp_aad(tn, u)), None);
+        let active = seal(&k, b"seed", &totp_aad(tn, u)).unwrap();
+        assert_eq!(open(&k, &active, &totp_pending_aad(tn, u)), None);
     }
 
     proptest! {
