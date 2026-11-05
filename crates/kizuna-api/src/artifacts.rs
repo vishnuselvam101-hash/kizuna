@@ -243,7 +243,7 @@ pub(crate) async fn ingest(
         .await;
         if let Some(pu) = portal_upload {
             let mut tx = db::tenant_tx(&st.pool, up.tenant).await?;
-            set_portal_status(&mut tx, pu, "rejected", None).await?;
+            set_portal_status(&mut tx, pu, "not_accepted", Some("file_type_not_accepted"), None).await?;
             tx.commit().await?;
         }
         return Err(ApiError::UnsupportedMedia);
@@ -349,11 +349,11 @@ pub(crate) async fn ingest(
     if let Some(pu) = portal_upload {
         // The supplier sees the outcome of the scan of the bytes it sent (a duplicate keeps the stored verdict).
         let shown = if artifact.status == "accepted" {
-            "accepted_for_review"
+            "received_for_review"
         } else {
             "quarantined"
         };
-        set_portal_status(&mut tx, pu, shown, Some(id)).await?;
+        set_portal_status(&mut tx, pu, shown, None, Some(id)).await?;
     }
     audit::append(
         &mut tx,
@@ -392,12 +392,22 @@ pub(crate) async fn ingest(
     Ok(Ingested { artifact, duplicate })
 }
 
-pub(crate) async fn set_portal_status(tx: &mut Tx, id: Uuid, status: &str, artifact: Option<Uuid>) -> ApiResult<()> {
+/// Sets a portal upload's supplier-visible status. Later artifact status changes (release, re-quarantine, rejection)
+/// follow automatically through the `artifacts_portal_follow` trigger (migration 0022).
+pub(crate) async fn set_portal_status(
+    tx: &mut Tx,
+    id: Uuid,
+    status: &str,
+    reason: Option<&str>,
+    artifact: Option<Uuid>,
+) -> ApiResult<()> {
     sqlx::query(
-        "UPDATE portal_uploads SET status = $2, artifact_id = coalesce($3, artifact_id), updated_at = now() WHERE id = $1",
+        "UPDATE portal_uploads SET status = $2, reason_code = $3, artifact_id = coalesce($4, artifact_id), updated_at = now() \
+         WHERE id = $1",
     )
     .bind(id)
     .bind(status)
+    .bind(reason)
     .bind(artifact)
     .execute(&mut **tx)
     .await?;

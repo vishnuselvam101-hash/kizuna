@@ -163,6 +163,11 @@ pub fn router(st: AppState) -> Router {
             get(crate::portal::list_users).post(crate::portal::invite),
         )
         .route("/portal-users/{id}/revoke", post(crate::portal::revoke))
+        .route("/suppliers", get(crate::portal::list_suppliers))
+        .route(
+            "/evidence-requests/{id}/attach-supplier",
+            post(crate::portal::attach_supplier),
+        )
         // Supplier portal (ADR 0023): a separate principal; these routes accept only `kzp.` sessions.
         .route("/portal/invite/start", post(crate::portal::invite_start))
         .route("/portal/invite/finish", post(crate::portal::invite_finish))

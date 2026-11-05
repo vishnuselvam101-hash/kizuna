@@ -123,6 +123,17 @@ async fn onboard(c: &Ctx, admin: &str, supplier: &str) -> Supplier {
     }
 }
 
+async fn attach(c: &Ctx, admin: &str, request: Uuid, supplier: Uuid) {
+    let r = c
+        .post(
+            &format!("/api/v1/evidence-requests/{request}/attach-supplier"),
+            Some(admin),
+            json!({ "supplier_id": supplier }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+}
+
 async fn portal_upload(c: &Ctx, token: &str, request: Uuid, name: &str, data: &[u8]) -> Resp {
     let boundary = "kizunaportalboundary91";
     let mut body = format!(
@@ -159,17 +170,22 @@ struct World {
 async fn world() -> World {
     let c = ctx().await;
     let (tenant, _slug, admin_id, admin) = c.admin().await;
-    // Requests exist before the supplier is invited: the invitation links them by normalised supplier name.
+    // Requests exist before the supplier is invited.
     let a_open = request(&c, tenant, "Acme Steel K.K.", "approved", admin_id).await;
     let a_draft = request(&c, tenant, "ACME STEEL K.K.", "draft", admin_id).await;
     let a_cancelled = request(&c, tenant, "Acme Steel K.K.", "cancelled", admin_id).await;
     let b_open = request(&c, tenant, "Borealis Forge", "approved", admin_id).await;
     let a = onboard(&c, &admin, "Acme Steel K.K.").await;
     let b = onboard(&c, &admin, "Borealis Forge").await;
+    // Nothing is linked by name: the admin attaches each request explicitly.
+    for (r, s) in [(a_open, a.id), (a_draft, a.id), (a_cancelled, a.id), (b_open, b.id)] {
+        attach(&c, &admin, r, s).await;
+    }
     // Another tenant with a supplier of the same name and an approved request.
     let (t2, _s2, admin2_id, admin2) = c.admin().await;
     let other_open = request(&c, t2, "Acme Steel K.K.", "approved", admin2_id).await;
-    let _ = onboard(&c, &admin2, "Acme Steel K.K.").await;
+    let o = onboard(&c, &admin2, "Acme Steel K.K.").await;
+    attach(&c, &admin2, other_open, o.id).await;
     World {
         c,
         tenant,
@@ -272,7 +288,7 @@ async fn upload_goes_through_pipeline_and_approves_nothing() {
     let w = world().await;
     let r = portal_upload(&w.c, &w.a.token, w.a_open, "mill-cert.pdf", CLEAN_PDF).await;
     assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
-    assert_eq!(r.body["status"], "accepted_for_review");
+    assert_eq!(r.body["status"], "received_for_review");
     assert!(r.body.get("artifact_id").is_none(), "no internal ids to the supplier");
     let r =
         w.c.get(&format!("/api/v1/portal/requests/{}/uploads", w.a_open), &w.a.token)
@@ -331,7 +347,11 @@ async fn upload_goes_through_pipeline_and_approves_nothing() {
             .fetch_all(&mut *otx(&w.c, w.tenant).await)
             .await
             .unwrap();
-    assert_eq!(st, ["accepted_for_review", "quarantined", "rejected"]);
+    assert_eq!(st, ["received_for_review", "quarantined", "not_accepted"]);
+    let r =
+        w.c.get(&format!("/api/v1/portal/requests/{}/uploads", w.a_open), &w.a.token)
+            .await;
+    assert_eq!(r.body[0]["reason_code"], "file_type_not_accepted", "{:?}", r.body);
 }
 
 #[tokio::test]
@@ -438,7 +458,7 @@ async fn mfa_is_required_and_revocation_is_immediate() {
         w.c.post(
             "/api/v1/portal-users",
             Some(&w.admin),
-            json!({ "supplier": "Acme Steel K.K.", "email": "late@s.test", "display_name": "L" }),
+            json!({ "supplier_id": w.a.id, "email": "late@s.test", "display_name": "L" }),
         )
         .await;
     let inv = r.body["invite_token"].as_str().unwrap().to_owned();
@@ -625,24 +645,32 @@ async fn rls_portal_scope_denies_every_other_row() {
 }
 
 #[tokio::test]
-async fn new_requests_link_to_the_supplier_and_approval_sets_due_date() {
+async fn requests_attach_only_explicitly_and_similar_names_see_nothing() {
     let w = world().await;
-    // The invitation linked the supplier's earlier requests by normalised name.
-    let id = request(&w.c, w.tenant, "acme steel k.k.", "draft", w.admin_id).await;
-    let linked: Option<Uuid> = sqlx::query_scalar("SELECT supplier_id FROM evidence_requests WHERE id = $1")
-        .bind(w.a_open)
-        .fetch_one(&mut *otx(&w.c, w.tenant).await)
-        .await
-        .unwrap();
-    assert_eq!(linked, Some(w.a.id));
-    // The link is final once set.
-    let e = sqlx::query("UPDATE evidence_requests SET supplier_id = $2 WHERE id = $1")
-        .bind(w.a_open)
-        .bind(w.b.id)
-        .execute(&mut *otx(&w.c, w.tenant).await)
+    // A request for "Acme Steel K.K." drafted before anything is attached stays invisible to supplier A...
+    let id = request(&w.c, w.tenant, "acme steel k.k.", "approved", w.admin_id).await;
+    let n = |b: &Value| b.as_array().unwrap().len();
+    assert_eq!(n(&w.c.get("/api/v1/portal/requests", &w.a.token).await.body), 1);
+    // ...and to a similarly named supplier with its own record.
+    let sim = onboard(&w.c, &w.admin, "Acme Steel").await;
+    assert_ne!(sim.id, w.a.id);
+    assert_eq!(n(&w.c.get("/api/v1/portal/requests", &sim.token).await.body), 0);
+    assert_eq!(
+        w.c.get(&format!("/api/v1/portal/requests/{id}"), &sim.token)
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    // A new supplier whose normalised name collides is refused (the admin must pick the existing record by id).
+    let r =
+        w.c.post(
+            "/api/v1/portal-users",
+            Some(&w.admin),
+            json!({ "supplier": "ACME STEEL K.K.", "email": "z@z.test", "display_name": "Z" }),
+        )
         .await;
-    assert!(e.is_err());
-    // Four-eyes approval of a draft with an explicit due date.
+    assert_eq!(r.status, StatusCode::CONFLICT, "{:?}", r.body);
+    // Only a tenant admin attaches; the attach is audited and final.
     let slug: String = sqlx::query_scalar("SELECT slug FROM tenants WHERE id = $1")
         .bind(w.tenant)
         .fetch_one(&w.c.owner)
@@ -650,25 +678,82 @@ async fn new_requests_link_to_the_supplier_and_approval_sets_due_date() {
         .unwrap();
     let (_, rev) = w.c.user(w.tenant, "reviewer").await;
     let rt = w.c.mfa_token(&slug, &rev).await;
+    let path = format!("/api/v1/evidence-requests/{id}/attach-supplier");
+    assert_eq!(
+        w.c.post(&path, Some(&rt), json!({ "supplier_id": w.a.id }))
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    attach(&w.c, &w.admin, id, w.a.id).await;
+    assert_eq!(n(&w.c.get("/api/v1/portal/requests", &w.a.token).await.body), 2);
+    assert_eq!(n(&w.c.get("/api/v1/portal/requests", &sim.token).await.body), 0);
+    let again = w.c.post(&path, Some(&w.admin), json!({ "supplier_id": sim.id })).await;
+    assert_eq!(again.status, StatusCode::CONFLICT);
+    let audited: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE action = 'evidence_request.supplier_attached' AND target_id = $1",
+    )
+    .bind(id.to_string())
+    .fetch_one(&mut *otx(&w.c, w.tenant).await)
+    .await
+    .unwrap();
+    assert_eq!(audited, 1);
+    // Four-eyes approval of a draft with an explicit due date.
+    let draft = request(&w.c, w.tenant, "Acme Steel K.K.", "draft", w.admin_id).await;
     let due = (time::OffsetDateTime::now_utc().date() + time::Duration::days(20)).to_string();
     let r =
         w.c.post(
-            &format!("/api/v1/evidence-requests/{id}/approve"),
+            &format!("/api/v1/evidence-requests/{draft}/approve"),
             Some(&rt),
             json!({ "comment": "ok", "due_on": due }),
         )
         .await;
     assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
     assert_eq!(r.body["due_on"], due.as_str());
+    assert!(r.body["supplier_id"].is_null(), "approval never links by name");
+}
+
+#[tokio::test]
+async fn upload_status_follows_release_and_rejection() {
+    let w = world().await;
+    let active = b"%PDF-1.7\n1 0 obj << /OpenAction << /S /JavaScript /JS (app.alert(2)) >> >> endobj\n%%EOF\n";
+    let r = portal_upload(&w.c, &w.a.token, w.a_open, "q.pdf", active).await;
+    assert_eq!(r.body["status"], "quarantined", "{:?}", r.body);
+    let art: Uuid = sqlx::query_scalar("SELECT artifact_id FROM portal_uploads WHERE request_id = $1")
+        .bind(w.a_open)
+        .fetch_one(&mut *otx(&w.c, w.tenant).await)
+        .await
+        .unwrap();
+    let rel =
+        w.c.post(
+            &format!("/api/v1/artifacts/{art}/release"),
+            Some(&w.admin),
+            json!({ "reason": "checked: harmless" }),
+        )
+        .await;
+    assert_eq!(rel.status, StatusCode::OK, "{:?}", rel.body);
+    let list = format!("/api/v1/portal/requests/{}/uploads", w.a_open);
+    let r = w.c.get(&list, &w.a.token).await;
+    assert_eq!(r.body[0]["status"], "received_for_review");
+    assert!(r.body[0]["reason_code"].is_null());
+    // Rejected later: "not accepted" with a neutral reason, never the internal finding or reviewer text.
     exec(
         &w.c,
         w.tenant,
-        &format!(
-            "UPDATE evidence_requests SET supplier_id = '{}' WHERE id = '{id}'",
-            w.a.id
-        ),
+        &format!("UPDATE artifacts SET status = 'rejected' WHERE id = '{art}'"),
     )
     .await;
-    let r = w.c.get("/api/v1/portal/requests", &w.a.token).await;
-    assert_eq!(r.body.as_array().unwrap().len(), 2);
+    let r = w.c.get(&list, &w.a.token).await;
+    assert_eq!(r.body[0]["status"], "not_accepted");
+    assert_eq!(r.body[0]["reason_code"], "not_accepted_after_review");
+    let text = r.body.to_string();
+    assert!(!text.contains("JavaScript") && !text.contains("harmless"), "{text}");
+    // Final: a later status change does not bring it back.
+    exec(
+        &w.c,
+        w.tenant,
+        &format!("UPDATE artifacts SET status = 'accepted' WHERE id = '{art}'"),
+    )
+    .await;
+    assert_eq!(w.c.get(&list, &w.a.token).await.body[0]["status"], "not_accepted");
 }

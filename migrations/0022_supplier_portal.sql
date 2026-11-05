@@ -72,8 +72,8 @@ CREATE TABLE supplier_sessions (
 );
 CREATE INDEX supplier_sessions_user ON supplier_sessions (tenant_id, supplier_user_id) WHERE revoked_at IS NULL;
 
--- Requests are addressed to a supplier record; the link is set once (when the supplier is invited or the request
--- drafted) and the due date is fixed when the request is approved.
+-- Requests are addressed to a supplier record only by an explicit, audited admin action (never by name matching);
+-- the link is set once and the due date is fixed when the request is approved.
 ALTER TABLE evidence_requests ADD COLUMN supplier_id uuid, ADD COLUMN due_on date,
     ADD FOREIGN KEY (tenant_id, supplier_id) REFERENCES suppliers (tenant_id, id);
 CREATE INDEX evidence_requests_supplier ON evidence_requests (tenant_id, supplier_id, status);
@@ -114,8 +114,12 @@ CREATE TABLE portal_uploads (
     artifact_id       uuid,
     original_filename text NOT NULL CHECK (length(original_filename) BETWEEN 1 AND 255),
     size_bytes        bigint NOT NULL CHECK (size_bytes >= 0),
+    -- What the supplier is shown; follows the artifact's real state (trigger below), never internal findings.
     status            text NOT NULL DEFAULT 'received'
-                      CHECK (status IN ('received', 'scanning', 'quarantined', 'accepted_for_review', 'rejected')),
+                      CHECK (status IN ('received', 'scanning', 'quarantined', 'received_for_review', 'not_accepted')),
+    -- Neutral reason for `not_accepted` only (no scanner findings or reviewer text reach the supplier).
+    reason_code       text CHECK (reason_code IN ('file_type_not_accepted', 'not_accepted_after_review', 'upload_failed')),
+    CHECK ((status = 'not_accepted') = (reason_code IS NOT NULL)),
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (tenant_id, supplier_id) REFERENCES suppliers (tenant_id, id),
@@ -131,17 +135,37 @@ BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'portal uploads are append-only' USING ERRCODE = 'insufficient_privilege';
     END IF;
-    IF (to_jsonb(NEW) - ARRAY['status', 'artifact_id', 'updated_at']) IS DISTINCT FROM
-       (to_jsonb(OLD) - ARRAY['status', 'artifact_id', 'updated_at']) THEN
+    IF (to_jsonb(NEW) - ARRAY['status', 'artifact_id', 'updated_at', 'reason_code']) IS DISTINCT FROM
+       (to_jsonb(OLD) - ARRAY['status', 'artifact_id', 'updated_at', 'reason_code']) THEN
         RAISE EXCEPTION 'portal upload content is immutable' USING ERRCODE = 'insufficient_privilege';
     END IF;
-    IF OLD.status IN ('quarantined', 'accepted_for_review', 'rejected') THEN
+    IF OLD.artifact_id IS NOT NULL AND NEW.artifact_id IS DISTINCT FROM OLD.artifact_id THEN
+        RAISE EXCEPTION 'portal upload artifact link is final' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF OLD.status = 'not_accepted' THEN
         RAISE EXCEPTION 'portal upload status % is final', OLD.status USING ERRCODE = 'insufficient_privilege';
     END IF;
     RETURN NEW;
 END $$;
 CREATE TRIGGER portal_uploads_guard BEFORE UPDATE OR DELETE ON portal_uploads
     FOR EACH ROW EXECUTE FUNCTION kz_portal_uploads_guard();
+
+-- The supplier-visible status follows the artifact: released from quarantine → received_for_review, quarantined
+-- again (e.g. incident containment) → quarantined, rejected → not_accepted (neutral reason). Runs in the caller's
+-- tenant transaction, so RLS applies as for any tenant write.
+CREATE FUNCTION kz_portal_uploads_follow() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE portal_uploads SET
+        status = CASE NEW.status WHEN 'accepted' THEN 'received_for_review' WHEN 'quarantined' THEN 'quarantined'
+                                 ELSE 'not_accepted' END,
+        reason_code = CASE WHEN NEW.status = 'rejected' THEN 'not_accepted_after_review' END,
+        updated_at = now()
+    WHERE tenant_id = NEW.tenant_id AND artifact_id = NEW.id AND status <> 'not_accepted';
+    RETURN NULL;
+END $$;
+CREATE TRIGGER artifacts_portal_follow AFTER UPDATE OF status ON artifacts
+    FOR EACH ROW WHEN (NEW.status IS DISTINCT FROM OLD.status AND NEW.status IN ('accepted', 'quarantined', 'rejected'))
+    EXECUTE FUNCTION kz_portal_uploads_follow();
 
 DO $$
 DECLARE t text;
@@ -187,7 +211,7 @@ CREATE POLICY portal_read ON portal_uploads FOR SELECT
     USING (tenant_id = kz_portal_tenant_id() AND supplier_id = kz_portal_supplier_id());
 
 GRANT SELECT, INSERT ON suppliers, portal_uploads TO kizuna_app;
-GRANT UPDATE (status, artifact_id, updated_at) ON portal_uploads TO kizuna_app;
+GRANT UPDATE (status, artifact_id, updated_at, reason_code) ON portal_uploads TO kizuna_app;
 GRANT SELECT, INSERT ON supplier_users, supplier_sessions TO kizuna_app;
 GRANT UPDATE (status, invite_hash, password_hash, totp_pending_enc, totp_secret_enc, totp_last_step, failed_logins,
               locked_until, activated_at, revoked_at, revoked_by) ON supplier_users TO kizuna_app;

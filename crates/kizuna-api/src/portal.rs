@@ -63,18 +63,6 @@ fn norm(name: &str) -> String {
         .collect()
 }
 
-/// The supplier record whose normalised name matches `name`, if one exists.
-pub async fn supplier_by_name(tx: &mut Tx, name: &str) -> ApiResult<Option<Uuid>> {
-    let n = norm(name);
-    if n.is_empty() {
-        return Ok(None);
-    }
-    Ok(sqlx::query_scalar("SELECT id FROM suppliers WHERE name_norm = $1")
-        .bind(n)
-        .fetch_optional(&mut **tx)
-        .await?)
-}
-
 fn audit_rec<'a>(
     actor: Uuid,
     action: &'a str,
@@ -142,7 +130,11 @@ pub async fn list_users(State(st): State<AppState>, p: Principal) -> ApiResult<J
 
 #[derive(Deserialize)]
 pub struct InviteReq {
-    pub supplier: String,
+    /// An existing supplier record, or…
+    pub supplier_id: Option<Uuid>,
+    /// …the name of a NEW supplier record (refused if a record with the same normalised name exists: the admin then
+    /// picks it by id, so similar names never silently merge into one scope).
+    pub supplier: Option<String>,
     pub email: String,
     pub display_name: String,
 }
@@ -163,55 +155,14 @@ pub async fn invite(
     p.require(&st, Permission::UserManage).await?;
     let email = auth::normalize_email(&req.email);
     let name = req.display_name.trim();
-    let supplier = req.supplier.trim();
-    let n = norm(supplier);
     if email.len() < 3 || email.len() > 254 || !email.contains('@') || email.chars().any(char::is_whitespace) {
         return Err(ApiError::BadRequest("invalid_email"));
     }
     if name.is_empty() || name.chars().count() > 200 {
         return Err(ApiError::BadRequest("invalid_display_name"));
     }
-    if n.is_empty() || supplier.chars().count() > 200 {
-        return Err(ApiError::BadRequest("invalid_supplier"));
-    }
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let sid: Uuid = match supplier_by_name(&mut tx, supplier).await? {
-        Some(id) => id,
-        None => {
-            let id = Uuid::now_v7();
-            sqlx::query(
-                "INSERT INTO suppliers (id, tenant_id, name, name_norm, created_by) VALUES ($1,$2,$3,$4,$5) \
-                 ON CONFLICT (tenant_id, name_norm) DO NOTHING",
-            )
-            .bind(id)
-            .bind(p.tenant_id)
-            .bind(supplier)
-            .bind(&n)
-            .bind(p.user_id)
-            .execute(&mut *tx)
-            .await?;
-            supplier_by_name(&mut tx, supplier)
-                .await?
-                .ok_or(ApiError::Conflict("supplier_changed"))?
-        }
-    };
-    // Address the supplier's existing requests to the record (the link is set once and then final).
-    let unlinked: Vec<(Uuid, String)> =
-        sqlx::query_as("SELECT id, supplier FROM evidence_requests WHERE supplier_id IS NULL LIMIT 10000")
-            .fetch_all(&mut *tx)
-            .await?;
-    let ids: Vec<Uuid> = unlinked
-        .into_iter()
-        .filter(|(_, s)| norm(s) == n)
-        .map(|(id, _)| id)
-        .collect();
-    if !ids.is_empty() {
-        sqlx::query("UPDATE evidence_requests SET supplier_id = $2 WHERE id = ANY($1) AND supplier_id IS NULL")
-            .bind(&ids)
-            .bind(sid)
-            .execute(&mut *tx)
-            .await?;
-    }
+    let sid = resolve_supplier(&mut tx, &p, req.supplier_id, req.supplier.as_deref()).await?;
     let taken: Option<i32> =
         sqlx::query_scalar("SELECT 1 FROM supplier_users WHERE email = $1 AND status <> 'revoked'")
             .bind(&email)
@@ -246,8 +197,7 @@ pub async fn invite(
             "portal_user.invited",
             "supplier_user",
             id,
-            json!({ "email": email, "supplier_id": sid, "supplier": supplier, "expires_at": expires.unix_timestamp(),
-                    "requests_linked": ids.len() }),
+            json!({ "email": email, "supplier_id": sid, "expires_at": expires.unix_timestamp() }),
         ),
     )
     .await?;
@@ -257,6 +207,114 @@ pub async fn invite(
         user,
         invite_token: token.value,
     }))
+}
+
+/// The supplier record for an invitation: an existing one by id, or a new one by name (never matched by name).
+async fn resolve_supplier(tx: &mut Tx, p: &Principal, id: Option<Uuid>, name: Option<&str>) -> ApiResult<Uuid> {
+    match (id, name.map(str::trim)) {
+        (Some(id), None) => sqlx::query_scalar("SELECT id FROM suppliers WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&mut **tx)
+            .await?
+            .ok_or(ApiError::BadRequest("unknown_supplier")),
+        (None, Some(name)) => {
+            let n = norm(name);
+            if n.is_empty() || name.chars().count() > 200 {
+                return Err(ApiError::BadRequest("invalid_supplier"));
+            }
+            let id = Uuid::now_v7();
+            let created = sqlx::query(
+                "INSERT INTO suppliers (id, tenant_id, name, name_norm, created_by) VALUES ($1,$2,$3,$4,$5) \
+                 ON CONFLICT (tenant_id, name_norm) DO NOTHING",
+            )
+            .bind(id)
+            .bind(p.tenant_id)
+            .bind(name)
+            .bind(&n)
+            .bind(p.user_id)
+            .execute(&mut **tx)
+            .await?
+            .rows_affected();
+            if created == 0 {
+                return Err(ApiError::Conflict("supplier_exists"));
+            }
+            audit::append(
+                tx,
+                p.tenant_id,
+                Record::user(p.user_id, "supplier.created", "supplier", id, json!({ "name": name })),
+            )
+            .await?;
+            Ok(id)
+        }
+        _ => Err(ApiError::BadRequest("invalid_supplier")),
+    }
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct SupplierOut {
+    pub id: Uuid,
+    pub name: String,
+}
+
+/// GET /suppliers — supplier records of the tenant (for invitations and request attachment).
+pub async fn list_suppliers(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Vec<SupplierOut>>> {
+    p.require(&st, Permission::UserRead).await?;
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let rows = sqlx::query_as::<_, SupplierOut>("SELECT id, name FROM suppliers ORDER BY name LIMIT 1000")
+        .fetch_all(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Deserialize)]
+pub struct AttachReq {
+    pub supplier_id: Uuid,
+}
+
+/// POST /evidence-requests/{id}/attach-supplier — addresses a request to a supplier record (tenant admin, audited).
+/// The only way a request becomes visible in the portal; the link is final (database guard).
+pub async fn attach_supplier(
+    State(st): State<AppState>,
+    p: Principal,
+    Path(id): Path<Uuid>,
+    ApiJson(req): ApiJson<AttachReq>,
+) -> ApiResult<Json<Value>> {
+    p.require(&st, Permission::UserManage).await?;
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let (current, text): (Option<Uuid>, String) =
+        sqlx::query_as("SELECT supplier_id, supplier FROM evidence_requests WHERE id = $1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(ApiError::NotFound)?;
+    if current.is_some() {
+        return Err(ApiError::Conflict("supplier_already_attached"));
+    }
+    let name: String = sqlx::query_scalar("SELECT name FROM suppliers WHERE id = $1")
+        .bind(req.supplier_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(ApiError::BadRequest("unknown_supplier"))?;
+    sqlx::query("UPDATE evidence_requests SET supplier_id = $2 WHERE id = $1")
+        .bind(id)
+        .bind(req.supplier_id)
+        .execute(&mut *tx)
+        .await?;
+    audit::append(
+        &mut tx,
+        p.tenant_id,
+        Record::user(
+            p.user_id,
+            "evidence_request.supplier_attached",
+            "evidence_request",
+            id,
+            json!({ "supplier_id": req.supplier_id, "supplier": name, "request_supplier_text": text }),
+        ),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({ "id": id, "supplier_id": req.supplier_id })))
 }
 
 /// POST /portal-users/{id}/revoke — ends access at once: open invitation voided, every session revoked.
@@ -1019,13 +1077,15 @@ pub struct PortalUploadOut {
     pub id: Uuid,
     pub original_filename: String,
     pub size_bytes: i64,
-    /// received → scanning → quarantined | accepted_for_review (or rejected: file type refused).
+    /// received → scanning → quarantined | received_for_review | not_accepted; follows the document's real state.
     pub status: String,
+    /// Neutral reason when `not_accepted`: file_type_not_accepted | not_accepted_after_review | upload_failed.
+    pub reason_code: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 
-const UP_COLS: &str = "id, original_filename, size_bytes, status, created_at";
+const UP_COLS: &str = "id, original_filename, size_bytes, status, reason_code, created_at";
 
 /// GET /portal/requests/{id}/uploads — the caller's supplier's uploads against the request, with status.
 pub async fn list_uploads(
@@ -1127,7 +1187,7 @@ pub async fn upload(
             ),
         )
         .await?;
-        artifacts::set_portal_status(&mut tx, upload_id, "scanning", None).await?;
+        artifacts::set_portal_status(&mut tx, upload_id, "scanning", None, None).await?;
         tx.commit().await?;
     }
     let up = Uploader {
@@ -1139,7 +1199,7 @@ pub async fn upload(
     if let Err(e) = artifacts::ingest(&st, &up, data, &name, declared, "inspection_report", Some(upload_id)).await {
         // Whatever stopped it, the supplier sees the upload as not accepted (never stuck in "scanning").
         let mut tx = db::tenant_tx(&st.pool, pp.tenant_id).await?;
-        sqlx::query("UPDATE portal_uploads SET status = 'rejected', updated_at = now() WHERE id = $1 AND status IN ('received', 'scanning')")
+        sqlx::query("UPDATE portal_uploads SET status = 'not_accepted', reason_code = 'upload_failed', updated_at = now() WHERE id = $1 AND status IN ('received', 'scanning')")
             .bind(upload_id)
             .execute(&mut *tx)
             .await?;

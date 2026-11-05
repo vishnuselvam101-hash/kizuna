@@ -27,6 +27,7 @@ export interface PortalUpload {
   original_filename: string;
   size_bytes: number;
   status: string;
+  reason_code: string | null;
   created_at: string;
 }
 interface PortalToken {
@@ -36,9 +37,9 @@ interface PortalToken {
 const UPLOAD_TONE: Record<string, "ok" | "warn" | "crit" | "neutral"> = {
   received: "neutral",
   scanning: "neutral",
-  accepted_for_review: "ok",
+  received_for_review: "ok",
   quarantined: "warn",
-  rejected: "crit",
+  not_accepted: "crit",
 };
 
 /** Reads `#invite=<token>` once and removes it from the address bar (it never reaches server logs or history). */
@@ -260,7 +261,7 @@ function RequestList({ api, onOpen }: { api: Api; onOpen: (id: string) => void }
 }
 
 function RequestDetail({ api, id, onBack }: { api: Api; id: string; onBack: () => void }) {
-  const { t, lang, fmtDate, fmtNum } = useI18n();
+  const { t, tv, lang, fmtDate, fmtNum } = useI18n();
   const req = useLoad(() => api.request<PortalRequest>("GET", `/portal/requests/${id}`), [api, id]);
   const ups = useLoad(() => api.request<PortalUpload[]>("GET", `/portal/requests/${id}/uploads`), [api, id]);
   const file = useRef<HTMLInputElement>(null);
@@ -362,6 +363,7 @@ function RequestDetail({ api, id, onBack }: { api: Api; id: string; onBack: () =
                     {fmtDate(u.created_at)} · {fmtNum(Math.ceil(u.size_bytes / 1024))} KB
                   </span>
                   <Badge group="upload" value={u.status} tone={UPLOAD_TONE[u.status]} />
+                  {u.reason_code && <span className="hint">{tv("upload.reason", u.reason_code)}</span>}
                 </li>
               ))}
             </ul>

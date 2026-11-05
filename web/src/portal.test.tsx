@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { PortalApp, type PortalRequest, type PortalUpload } from "./PortalApp";
 import { SupplierPortalPanel, type SupplierUser } from "./SupplierPortalPanel";
@@ -17,8 +17,9 @@ const req: PortalRequest = {
 };
 const detail: PortalRequest = { ...req, body_ja: "再提出のお願い", body_en: "Please resend the mill certificate." };
 const uploads: PortalUpload[] = [
-  { id: "u-1", original_filename: "cert.pdf", size_bytes: 2048, status: "accepted_for_review", created_at: "2026-11-05T10:00:00Z" },
-  { id: "u-2", original_filename: "macro.pdf", size_bytes: 900, status: "quarantined", created_at: "2026-11-05T10:01:00Z" },
+  { id: "u-1", original_filename: "cert.pdf", size_bytes: 2048, status: "received_for_review", reason_code: null, created_at: "2026-11-05T10:00:00Z" },
+  { id: "u-2", original_filename: "macro.pdf", size_bytes: 900, status: "quarantined", reason_code: null, created_at: "2026-11-05T10:01:00Z" },
+  { id: "u-4", original_filename: "x.exe", size_bytes: 9, status: "not_accepted", reason_code: "file_type_not_accepted", created_at: "2026-11-05T10:02:00Z" },
 ];
 
 function signedIn() {
@@ -26,7 +27,7 @@ function signedIn() {
     "GET /portal/requests": [req],
     "GET /portal/requests/r-1": detail,
     "GET /portal/requests/r-1/uploads": uploads,
-    "POST /portal/requests/r-1/uploads": { ...uploads[0], id: "u-3", original_filename: "new.pdf", status: "accepted_for_review" },
+    "POST /portal/requests/r-1/uploads": { ...uploads[0], id: "u-3", original_filename: "new.pdf", status: "received_for_review" },
     "POST /portal/logout": { ok: true },
   });
   f.api.setTokens({ access_token: "kzp.x.y", refresh_token: "" });
@@ -54,7 +55,9 @@ test.each(["en", "ja"] as const)("request list and detail have no axe violations
   await screen.findByText("RR-0193A7C2D4E5");
   expect(await axeViolations(container)).toEqual([]);
   fireEvent.click(screen.getByRole("button", { name: lang === "en" ? "Open request RR-0193A7C2D4E5" : "依頼 RR-0193A7C2D4E5 を開く" }));
-  await screen.findByText(lang === "en" ? "Accepted for review" : "確認待ちとして受理");
+  await screen.findByText(lang === "en" ? "Received for review" : "確認待ちとして受領");
+  expect(screen.getByText(lang === "en" ? "Not accepted" : "受理されませんでした")).toBeTruthy();
+  expect(screen.getByText(lang === "en" ? /This file type is not accepted/ : /このファイル形式は受け付けていません/)).toBeTruthy();
   expect(screen.getByText(lang === "en" ? "Held for security check" : "安全確認のため保留")).toBeTruthy();
   expect(screen.getByText(lang === "en" ? /material grade · part BRK-100/ : /材質 · 品番 BRK-100/)).toBeTruthy();
   expect(await axeViolations(container)).toEqual([]);
@@ -127,12 +130,20 @@ test.each(["en", "ja"] as const)("admin supplier-user panel: invite shows the li
     "GET /portal-users": [su({}), su({ id: "su-2", email: "new@b.test", status: "invited" })],
     "POST /portal-users": { user: su({ id: "su-3", email: "kim@b.test", status: "invited" }), invite_token: "kzi.t.secret" },
     "POST /portal-users/su-1/revoke": su({ status: "revoked" }),
+    "GET /suppliers": [{ id: "s-1", name: "Acme Steel" }],
+    "GET /evidence-requests": [
+      { id: "rq-1", reference: "RR-AAA", supplier: "Acme Steel K.K.", status: "approved", supplier_id: null },
+      { id: "rq-2", reference: "RR-BBB", supplier: "Acme Steel", status: "approved", supplier_id: "s-1" },
+    ],
+    "POST /evidence-requests/rq-1/attach-supplier": { id: "rq-1", supplier_id: "s-1" },
   });
   const { container } = renderWithSession(<SupplierPortalPanel />, { api, lang });
   await screen.findByText("sato@acme.test");
   expect(await axeViolations(container)).toEqual([]);
   const en = lang === "en";
-  fireEvent.change(screen.getByLabelText(en ? "Supplier" : "サプライヤー"), { target: { value: "Borealis" } });
+  const invite = screen.getByRole("button", { name: en ? "Create invitation" : "招待を作成" }).closest("form")!;
+  expect(within(invite).getByLabelText(en ? "Supplier" : "サプライヤー")).toBeTruthy();
+  fireEvent.change(screen.getByLabelText(en ? "New supplier name" : "新しいサプライヤー名"), { target: { value: "Borealis" } });
   fireEvent.change(screen.getByLabelText(en ? "Contact name" : "担当者名"), { target: { value: "Kim" } });
   fireEvent.change(screen.getByLabelText(en ? "Contact email" : "担当者メールアドレス"), { target: { value: "kim@b.test" } });
   fireEvent.click(screen.getByRole("button", { name: en ? "Create invitation" : "招待を作成" }));
@@ -143,6 +154,14 @@ test.each(["en", "ja"] as const)("admin supplier-user panel: invite shows the li
   expect(await axeViolations(container)).toEqual([]);
   fireEvent.click(screen.getByRole("button", { name: en ? "Confirm" : "確定" }));
   await waitFor(() => expect(calls.some((c) => c.path === "/portal-users/su-1/revoke")).toBe(true));
+  // Attaching a request is explicit: only unattached requests are offered, and the chosen supplier id is sent.
+  const form = screen.getByRole("button", { name: en ? "Attach" : "設定" }).closest("form")!;
+  const [reqSel, supSel] = within(form).getAllByRole("combobox");
+  expect(within(reqSel).queryByText(/RR-BBB/)).toBeNull();
+  fireEvent.change(reqSel, { target: { value: "rq-1" } });
+  fireEvent.change(supSel, { target: { value: "s-1" } });
+  fireEvent.submit(form);
+  await waitFor(() => expect(calls.find((c) => c.path === "/evidence-requests/rq-1/attach-supplier")?.body).toEqual({ supplier_id: "s-1" }));
 });
 
 test("a viewer sees supplier users but cannot invite or revoke", async () => {

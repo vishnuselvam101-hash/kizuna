@@ -317,7 +317,7 @@ pub struct RequestOut {
     #[serde(with = "time::serde::rfc3339::option")]
     pub reviewed_at: Option<OffsetDateTime>,
     pub review_comment: Option<String>,
-    /// The supplier record this request is addressed to (supplier portal), once linked.
+    /// The supplier record this request is addressed to (supplier portal); set only by an explicit admin attach.
     pub supplier_id: Option<Uuid>,
     /// Answer-by date, fixed at approval; shown to the supplier in the portal.
     #[serde(with = "iso_date::option")]
@@ -364,7 +364,6 @@ pub async fn create(
         {
             continue;
         }
-        let supplier_id = crate::portal::supplier_by_name(&mut tx, &s.supplier).await?;
         let id = Uuid::now_v7();
         let reference = format!("RR-{}", &id.simple().to_string()[..12].to_uppercase());
         let draft = Draft {
@@ -385,8 +384,8 @@ pub async fn create(
         );
         sqlx::query(
             "INSERT INTO evidence_requests (id, tenant_id, reference, supplier, engine, decision_ids, documents, requested_count, \
-             baseline_count, exact, body_ja, body_en, content_sha256, created_by, supplier_id) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+             baseline_count, exact, body_ja, body_en, content_sha256, created_by) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
         )
         .bind(id)
         .bind(p.tenant_id)
@@ -402,7 +401,6 @@ pub async fn create(
         .bind(&en)
         .bind(sha.to_vec())
         .bind(p.user_id)
-        .bind(supplier_id)
         .execute(&mut *tx)
         .await?;
         audit::append(&mut tx, p.tenant_id, Record::user(p.user_id, "evidence_request.drafted", "evidence_request", id,

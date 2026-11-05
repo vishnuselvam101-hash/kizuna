@@ -23,7 +23,15 @@ export function SupplierPortalPanel() {
   const { t, fmtDate } = useI18n();
   const manage = can("user_manage");
   const list = useLoad(() => api.request<SupplierUser[]>("GET", "/portal-users"), []);
-  const [f, setF] = useState({ supplier: "", email: "", display_name: "" });
+  const suppliers = useLoad(() => api.request<{ id: string; name: string }[]>("GET", "/suppliers"), []);
+  const requests = useLoad(
+    () => (manage ? api.request<{ id: string; reference: string; supplier: string; status: string; supplier_id: string | null }[]>("GET", "/evidence-requests") : Promise.resolve([])),
+    [],
+  );
+  const NEW = "__new__";
+  const [f, setF] = useState({ supplier_id: NEW, supplier: "", email: "", display_name: "" });
+  const [att, setAtt] = useState({ request: "", supplier_id: "" });
+  const unattached = (requests.data ?? []).filter((r) => !r.supplier_id && r.status !== "cancelled");
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
   const [pending, setPending] = useState<SupplierUser | null>(null);
   const [msg, setMsg] = useState("");
@@ -35,6 +43,8 @@ export function SupplierPortalPanel() {
     try {
       setMsg(await fn());
       list.reload();
+      suppliers.reload();
+      requests.reload();
     } catch (x) {
       setErr(x);
     }
@@ -43,11 +53,27 @@ export function SupplierPortalPanel() {
   function invite(e: React.FormEvent) {
     e.preventDefault();
     run(async () => {
-      const r = await api.request<{ user: SupplierUser; invite_token: string }>("POST", "/portal-users", f);
+      const body =
+        f.supplier_id === NEW
+          ? { supplier: f.supplier, email: f.email, display_name: f.display_name }
+          : { supplier_id: f.supplier_id, email: f.email, display_name: f.display_name };
+      const r = await api.request<{ user: SupplierUser; invite_token: string }>("POST", "/portal-users", body);
       // The token travels in the fragment: browsers never send it to a server or put it in a Referer.
       setLink({ email: r.user.email, url: `${window.location.origin}/portal#invite=${r.invite_token}` });
-      setF({ supplier: "", email: "", display_name: "" });
+      setF({ supplier_id: NEW, supplier: "", email: "", display_name: "" });
       return t("supplierUsers.invited", { email: r.user.email });
+    });
+  }
+
+  function attach(e: React.FormEvent) {
+    e.preventDefault();
+    const r = unattached.find((x) => x.id === att.request);
+    const sup = suppliers.data?.find((x) => x.id === att.supplier_id);
+    if (!r || !sup) return;
+    run(async () => {
+      await api.request("POST", `/evidence-requests/${r.id}/attach-supplier`, { supplier_id: sup.id });
+      setAtt({ request: "", supplier_id: "" });
+      return t("supplierUsers.attached", { ref: r.reference, supplier: sup.name });
     });
   }
 
@@ -130,8 +156,21 @@ export function SupplierPortalPanel() {
           <h3 id="su-invite-h">{t("supplierUsers.invite")}</h3>
           <label>
             {t("supplierUsers.supplier")}
-            <input required maxLength={200} value={f.supplier} onChange={(e) => setF({ ...f, supplier: e.target.value })} />
+            <select value={f.supplier_id} onChange={(e) => setF({ ...f, supplier_id: e.target.value })}>
+              <option value={NEW}>{t("supplierUsers.newSupplier")}</option>
+              {suppliers.data?.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
           </label>
+          {f.supplier_id === NEW && (
+            <label>
+              {t("supplierUsers.newSupplierName")}
+              <input required maxLength={200} value={f.supplier} onChange={(e) => setF({ ...f, supplier: e.target.value })} />
+            </label>
+          )}
           <label>
             {t("supplierUsers.name")}
             <input required maxLength={200} value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} />
@@ -143,6 +182,43 @@ export function SupplierPortalPanel() {
           <div>
             <button className="primary">{t("supplierUsers.inviteBtn")}</button>
           </div>
+        </form>
+      )}
+      {manage && (
+        <form onSubmit={attach} className="form-grid" aria-labelledby="su-attach-h">
+          <h3 id="su-attach-h">{t("supplierUsers.attach")}</h3>
+          <p className="hint">{t("supplierUsers.attachLead")}</p>
+          {requests.data && unattached.length === 0 ? (
+            <Empty text={t("supplierUsers.noUnattached")} />
+          ) : (
+            <>
+              <label>
+                {t("supplierUsers.request")}
+                <select required value={att.request} onChange={(e) => setAtt({ ...att, request: e.target.value })}>
+                  <option value="" />
+                  {unattached.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.reference} · {r.supplier}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("supplierUsers.supplier")}
+                <select required value={att.supplier_id} onChange={(e) => setAtt({ ...att, supplier_id: e.target.value })}>
+                  <option value="" />
+                  {suppliers.data?.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div>
+                <button className="primary">{t("supplierUsers.attachBtn")}</button>
+              </div>
+            </>
+          )}
         </form>
       )}
     </Panel>
