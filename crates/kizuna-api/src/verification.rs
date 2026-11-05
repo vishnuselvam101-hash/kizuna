@@ -217,20 +217,49 @@ async fn extract_common(st: AppState, p: Principal, id: Uuid, re: Option<String>
         return Err(ApiError::BadRequest("document_too_large_for_extraction"));
     }
     // I1: one extraction per artifact at a time (session-level lock, released when this request ends).
-    let mut lock_conn = st.pool.acquire().await?;
+    let mut lock = ExtractionLock(Some(st.pool.acquire().await?));
     let got: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(hashtextextended($1, 19))")
         .bind(format!("{}:{id}", p.tenant_id))
-        .fetch_one(&mut *lock_conn)
+        .fetch_one(lock.conn())
         .await?;
     if !got {
+        lock.release_unheld();
         return Err(ApiError::Conflict("extraction_in_progress"));
     }
     let result = extract_locked(&st, &p, id, bytes, art, re).await;
-    let _ = sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 19))")
+    let unlocked: Result<bool, _> = sqlx::query_scalar("SELECT pg_advisory_unlock(hashtextextended($1, 19))")
         .bind(format!("{}:{id}", p.tenant_id))
-        .execute(&mut *lock_conn)
+        .fetch_one(lock.conn())
         .await;
+    if matches!(unlocked, Ok(true)) {
+        lock.release_unheld();
+    }
     result
+}
+
+/// The pooled connection that holds an extraction's session-level advisory lock. If the request is cancelled (client
+/// disconnect, proxy timeout) or the unlock fails, the handler never reaches its unlock: the connection is then closed
+/// instead of returned to the pool, which ends the session and so releases the lock (chaos C1). Returning it with the
+/// lock held would answer `extraction_in_progress` for that artifact until the connection happened to die.
+struct ExtractionLock(Option<sqlx::pool::PoolConnection<sqlx::Postgres>>);
+
+impl ExtractionLock {
+    fn conn(&mut self) -> &mut sqlx::PgConnection {
+        self.0.as_mut().expect("lock connection present until release")
+    }
+
+    /// The lock is not (or no longer) held: the connection may go back to the pool.
+    fn release_unheld(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for ExtractionLock {
+    fn drop(&mut self) {
+        if let Some(c) = self.0.as_mut() {
+            c.close_on_drop();
+        }
+    }
 }
 
 async fn extract_locked(
