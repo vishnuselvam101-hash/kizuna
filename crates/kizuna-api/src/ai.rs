@@ -25,6 +25,14 @@ pub struct Suggested {
     pub mappings: usize,
     pub tokens: Value,
     pub duration_ms: u128,
+    /// Mappings refused by the guards (`governance:<label>`, `implausible:<label>`).
+    pub dropped: Vec<String>,
+}
+
+/// Result of one AI attempt plus the labels refused before sending (instruction-like text).
+pub struct Outcome {
+    pub result: Result<Option<Suggested>, &'static str>,
+    pub refused: Vec<String>,
 }
 
 /// `Ok(None)`: AI not used (off, not opted in, nothing to map). `Err(code)`: AI was attempted or refused by budget;
@@ -36,17 +44,18 @@ pub async fn suggest(
     artifact: Uuid,
     kind: &str,
     records: &[Record],
-) -> ApiResult<Result<Option<Suggested>, &'static str>> {
-    let Some(cfg) = cfg else { return Ok(Ok(None)) };
+) -> ApiResult<Outcome> {
+    let done = |result, refused| Ok(Outcome { result, refused });
+    let Some(cfg) = cfg else { return done(Ok(None), vec![]) };
     let mut tx = db::tenant_tx(pool, tenant).await?;
     if !crate::tenant_settings::ai_opted_in(&mut tx).await? {
         tx.commit().await?;
-        return Ok(Ok(None));
+        return done(Ok(None), vec![]);
     }
-    let cands = aimap::candidates(records);
+    let (cands, refused) = aimap::candidates(records);
     if cands.is_empty() {
         tx.commit().await?;
-        return Ok(Ok(None));
+        return done(Ok(None), refused);
     }
     let system = aimap::system_prompt();
     let user = aimap::user_prompt(kind, &cands);
@@ -54,29 +63,33 @@ pub async fn suggest(
     let chars = (system.chars().count() + user.chars().count()) as i64;
     if let Err(code) = reserve(&mut tx, cfg, tenant, artifact, &prompt_hash, chars).await? {
         tx.commit().await?;
-        return Ok(Err(code));
+        return done(Err(code), refused);
     }
     tx.commit().await?;
 
     let started = Instant::now();
     let content = match call(cfg, &system, &user).await {
         Ok(c) => c,
-        Err(code) => return Ok(Err(code)),
+        Err(code) => return done(Err(code), refused),
     };
     let duration_ms = started.elapsed().as_millis();
-    let sugg = match aimap::parse_response(&content.0, &cands) {
+    let (sugg, dropped) = match aimap::parse_response(&content.0, &cands) {
         Ok(s) => s,
-        Err(code) => return Ok(Err(code)),
+        Err(code) => return done(Err(code), refused),
     };
-    Ok(Ok(Some(Suggested {
-        claims: aimap::suggested_claims(kind, records, &sugg),
-        model: cfg.model.clone(),
-        prompt_sha256: prompt_hash,
-        labels_sent: cands.len(),
-        mappings: sugg.len(),
-        tokens: content.1,
-        duration_ms,
-    })))
+    done(
+        Ok(Some(Suggested {
+            claims: aimap::suggested_claims(kind, records, &sugg),
+            model: cfg.model.clone(),
+            prompt_sha256: prompt_hash,
+            labels_sent: cands.len(),
+            mappings: sugg.len(),
+            tokens: content.1,
+            duration_ms,
+            dropped,
+        })),
+        refused,
+    )
 }
 
 /// Per-tenant budget (calls and prompt characters per UTC day) and rate limit (calls per minute). The call is

@@ -2,6 +2,7 @@
 //! manufacturing conflict rules. Core crates know nothing about these predicates.
 
 pub mod ai;
+pub mod ai_guard;
 pub mod mapping;
 pub mod rules;
 

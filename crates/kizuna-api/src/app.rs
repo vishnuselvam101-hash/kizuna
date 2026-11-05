@@ -102,6 +102,7 @@ pub fn router(st: AppState) -> Router {
         .route("/claims/{id}/supersede", post(claims::supersede))
         .route("/evidence/{subject_type}/{subject_key}", get(claims::subject))
         .route("/artifacts/{id}/extract", post(verification::extract))
+        .route("/artifacts/{id}/reextract", post(verification::reextract))
         .route("/claims/{id}/review", post(verification::review_claim))
         .route("/verification/run", post(verification::run_detection))
         .route("/conflicts", get(verification::list_conflicts))

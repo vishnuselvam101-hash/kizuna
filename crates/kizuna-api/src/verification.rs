@@ -71,6 +71,23 @@ pub async fn claim_owners(tx: &mut Tx, claims: &[Uuid]) -> ApiResult<Vec<Uuid>> 
     .await?)
 }
 
+/// Identity of an extracted claim across runs: subject, predicate, scope and origin (rules vs AI).
+fn identity(subject_type: &str, subject_key: &str, predicate: &str, scope: &Value, ai: bool) -> String {
+    json!([subject_type, subject_key, predicate, scope, ai]).to_string()
+}
+
+fn same_value(o: &ClaimOut, v: &evidence_core::claim::ValidClaim) -> bool {
+    let num = |s: &Option<String>| {
+        s.as_deref()
+            .and_then(|x| Decimal::from_str(x).ok())
+            .map(|d| d.normalize())
+    };
+    o.value_text == v.value_text
+        && num(&o.value_num) == num(&v.value_num)
+        && o.value_unit == v.value_unit
+        && o.revision == v.revision
+}
+
 fn confidence_for(extractor: &str) -> i32 {
     match extractor.split('@').next().unwrap_or("") {
         "csv" | "xlsx" => 9000,
@@ -90,6 +107,11 @@ pub struct ExtractResp {
     pub ai_model: Option<String>,
     /// Version of the tenant's import settings used (0 = defaults).
     pub import_settings_version: i32,
+    /// Re-extraction only: the run this one supersedes and what happened to the old claims.
+    pub supersedes_run: Option<Uuid>,
+    pub claims_superseded: usize,
+    pub claims_unchanged: usize,
+    pub claims_not_reconfirmed: usize,
     pub unmapped_labels: Vec<String>,
     pub warnings: Vec<String>,
 }
@@ -142,6 +164,32 @@ async fn record_failed_run(
 }
 
 pub async fn extract(State(st): State<AppState>, p: Principal, Path(id): Path<Uuid>) -> ApiResult<Json<ExtractResp>> {
+    extract_common(st, p, id, None).await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReextractReq {
+    pub reason: String,
+}
+
+/// Explicit re-extraction (e.g. after an import-settings change): a new run that supersedes the current one. New
+/// claims supersede changed old claims (old versions stay queryable); unchanged claims are kept; old claims the new
+/// run no longer finds become `needs_evidence`. Dependent decisions go through selective invalidation. Audited.
+pub async fn reextract(
+    State(st): State<AppState>,
+    p: Principal,
+    Path(id): Path<Uuid>,
+    ApiJson(req): ApiJson<ReextractReq>,
+) -> ApiResult<Json<ExtractResp>> {
+    let reason = req.reason.trim().to_string();
+    if reason.is_empty() || reason.chars().count() > 500 {
+        return Err(ApiError::BadRequest("reason_required"));
+    }
+    extract_common(st, p, id, Some(reason)).await
+}
+
+async fn extract_common(st: AppState, p: Principal, id: Uuid, re: Option<String>) -> ApiResult<Json<ExtractResp>> {
     p.require(&st, Permission::ClaimWrite).await?;
     let (intact, bytes, art) = artifacts::verify_integrity(&st, &p, id).await?;
     if art.status != "accepted" {
@@ -177,7 +225,7 @@ pub async fn extract(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
     if !got {
         return Err(ApiError::Conflict("extraction_in_progress"));
     }
-    let result = extract_locked(&st, &p, id, bytes, art).await;
+    let result = extract_locked(&st, &p, id, bytes, art, re).await;
     let _ = sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 19))")
         .bind(format!("{}:{id}", p.tenant_id))
         .execute(&mut *lock_conn)
@@ -191,21 +239,26 @@ async fn extract_locked(
     id: Uuid,
     bytes: Vec<u8>,
     art: artifacts::ArtifactOut,
+    re: Option<String>,
 ) -> ApiResult<Json<ExtractResp>> {
-    {
+    // The current run: succeeded and not superseded by a later re-extraction.
+    let prev_run = {
         let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
         let done: Option<Uuid> = sqlx::query_scalar(
-            "SELECT id FROM extraction_runs WHERE artifact_id = $1 AND mapping_version = $2 AND status = 'succeeded'",
+            "SELECT r.id FROM extraction_runs r WHERE r.artifact_id = $1 AND r.mapping_version = $2 AND r.status = 'succeeded' \
+             AND NOT EXISTS (SELECT 1 FROM extraction_runs s WHERE s.supersedes_run = r.id)",
         )
         .bind(id)
         .bind(MAPPING_VERSION)
         .fetch_optional(&mut *tx)
         .await?;
         tx.commit().await?;
-        if done.is_some() {
-            return Err(ApiError::Conflict("already_extracted"));
+        match (done, &re) {
+            (Some(_), None) => return Err(ApiError::Conflict("already_extracted")),
+            (None, Some(_)) => return Err(ApiError::Conflict("not_extracted")),
+            (d, _) => d,
         }
-    }
+    };
     {
         let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
         let suspended = crate::incidents::extraction_suspended(&mut tx).await?;
@@ -266,7 +319,27 @@ async fn extract_locked(
     warnings.extend(import.ignored.iter().map(|k| format!("import_setting_ignored:{k}")));
     // Optional AI label mapping on the already-extracted records (never on raw document bytes). Any failure keeps
     // the deterministic result only.
-    let ai = match crate::ai::suggest(&st.pool, st.cfg.ai.as_ref(), p.tenant_id, id, &art.kind, &records).await? {
+    let outcome = crate::ai::suggest(&st.pool, st.cfg.ai.as_ref(), p.tenant_id, id, &art.kind, &records).await?;
+    if !outcome.refused.is_empty() {
+        // Instruction-like document text aimed at the AI: refused, never sent, raised as a security event. Only
+        // hashes of the labels are logged (no document text in the security log).
+        warnings.push(format!("ai_label_refused:{}", outcome.refused.len()));
+        let hashes: Vec<String> = outcome
+            .refused
+            .iter()
+            .map(|l| hex::encode(&crate::crypto::sha256(l.as_bytes())[..8]))
+            .collect();
+        sec::record(
+            &st.pool,
+            Some(p.tenant_id),
+            Kind::PromptInjectionSuspected,
+            Some(p.user_id),
+            Some(&p.ip),
+            json!({ "artifact_id": id, "labels": outcome.refused.len(), "label_sha256_prefixes": hashes }),
+        )
+        .await;
+    }
+    let ai = match outcome.result {
         Ok(s) => s,
         Err(code) => {
             warnings.push(format!("ai_fallback:{code}"));
@@ -288,6 +361,9 @@ async fn extract_locked(
             None
         }
     };
+    if let Some(a) = &ai {
+        warnings.extend(a.dropped.iter().take(50).map(|d| format!("ai_mapping_dropped:{d}")));
+    }
     let ai_method = ai.as_ref().map(|a| crate::ai::method(&a.model)).unwrap_or_default();
     let mut all: Vec<(&evidence_core::claim::ClaimInput, bool)> = mapped.claims.iter().map(|c| (c, false)).collect();
     if let Some(a) = &ai {
@@ -298,6 +374,30 @@ async fn extract_locked(
     let mut created = 0usize;
     let mut ai_created = 0usize;
     let mut claim_ids = Vec::new();
+    let (mut superseded, mut unchanged) = (0usize, 0usize);
+    // Re-extraction: current extracted (not manual) claims of this artifact, by identity.
+    let mut old: BTreeMap<String, Vec<ClaimOut>> = BTreeMap::new();
+    if prev_run.is_some() {
+        let rows = sqlx::query_as::<_, ClaimOut>(&format!(
+            "SELECT {} FROM claims WHERE artifact_id = $1 AND superseded_at IS NULL AND extraction_method <> 'manual' \
+             ORDER BY recorded_at FOR UPDATE",
+            claims::CLAIM_COLS
+        ))
+        .bind(id)
+        .fetch_all(&mut *tx)
+        .await?;
+        for c in rows {
+            let k = identity(
+                &c.subject_type,
+                &c.subject_key,
+                &c.predicate,
+                &c.scope,
+                c.extraction_method.starts_with("ai:"),
+            );
+            old.entry(k).or_default().push(c);
+        }
+    }
+    let reason = re.clone().unwrap_or_default();
     for (c, is_ai) in all {
         let v = match evidence_core::claim::validate(c) {
             Ok(v) => v,
@@ -306,6 +406,21 @@ async fn extract_locked(
                 continue;
             }
         };
+        let prior = old
+            .get_mut(&identity(
+                &v.subject_type,
+                &v.subject_key,
+                &v.predicate,
+                &v.scope,
+                is_ai,
+            ))
+            .and_then(|l| (!l.is_empty()).then(|| l.remove(0)));
+        if let Some(o) = &prior
+            && same_value(o, &v)
+        {
+            unchanged += 1;
+            continue;
+        }
         let cid = claims::insert_claim(
             &mut tx,
             p.tenant_id,
@@ -333,8 +448,46 @@ async fn extract_locked(
             },
         )
         .await?;
-        // AI suggestions do not touch decisions until a reviewer accepts them.
-        if !is_ai {
+        if let Some(o) = &prior {
+            sqlx::query("UPDATE claims SET superseded_at = now(), superseded_by = $2 WHERE id = $1")
+                .bind(o.id)
+                .bind(cid)
+                .execute(&mut *tx)
+                .await?;
+            audit::append(
+                &mut tx,
+                p.tenant_id,
+                Record::user(
+                    p.user_id,
+                    "claim.superseded",
+                    "claim",
+                    o.id,
+                    json!({ "by": cid, "reason": reason, "extraction_run": run, "via": "reextract" }),
+                ),
+            )
+            .await?;
+            superseded += 1;
+            let fresh = claims::fetch(&mut tx, cid).await?;
+            let change = if !is_ai {
+                Some(dependency_engine::Change::Superseded {
+                    old_claim: o.id.to_string(),
+                    new_claim: cid.to_string(),
+                    new: crate::decisions::snapshot_of(&fresh),
+                })
+            } else if o.review_status != "ai_suggested" {
+                // A reviewed claim replaced by an unreviewed suggestion is no longer evidence.
+                Some(dependency_engine::Change::Withdrawn {
+                    old_claim: o.id.to_string(),
+                    reason: "superseded by an unreviewed AI suggestion on re-extraction".into(),
+                })
+            } else {
+                None
+            };
+            if let Some(ch) = change {
+                crate::decisions::on_claim_change(&mut tx, p.tenant_id, p.user_id, ch).await?;
+            }
+        } else if !is_ai {
+            // AI suggestions do not touch decisions until a reviewer accepts them.
             let fresh = claims::fetch(&mut tx, cid).await?;
             crate::decisions::on_claim_change(&mut tx, p.tenant_id, p.user_id, crate::decisions::new_evidence(&fresh))
                 .await?;
@@ -342,6 +495,43 @@ async fn extract_locked(
         claim_ids.push(cid);
         created += 1;
         ai_created += usize::from(is_ai);
+    }
+    // Old claims the new run no longer produces: kept, but flagged for review and withdrawn as evidence.
+    let mut not_reconfirmed = 0usize;
+    for o in old.into_values().flatten() {
+        // Already rejected or already flagged (e.g. by an earlier re-extraction): nothing new to record.
+        if matches!(o.review_status.as_str(), "rejected" | "needs_evidence") {
+            continue;
+        }
+        not_reconfirmed += 1;
+        if o.review_status != "ai_suggested" {
+            sqlx::query("UPDATE claims SET review_status = 'needs_evidence' WHERE id = $1")
+                .bind(o.id)
+                .execute(&mut *tx)
+                .await?;
+            crate::decisions::on_claim_change(
+                &mut tx,
+                p.tenant_id,
+                p.user_id,
+                dependency_engine::Change::Withdrawn {
+                    old_claim: o.id.to_string(),
+                    reason: "not found on re-extraction".into(),
+                },
+            )
+            .await?;
+        }
+        audit::append(
+            &mut tx,
+            p.tenant_id,
+            Record::user(
+                p.user_id,
+                "claim.not_reconfirmed",
+                "claim",
+                o.id,
+                json!({ "reason": reason, "extraction_run": run, "previous_status": o.review_status }),
+            ),
+        )
+        .await?;
     }
     if let Some(a) = &ai {
         audit::append(
@@ -363,7 +553,8 @@ async fn extract_locked(
     }
     sqlx::query(
         "INSERT INTO extraction_runs (id, tenant_id, artifact_id, extractor, mapping_version, status, records, claims_created, \
-         output_sha256, warnings, started_by, started_at) VALUES ($1,$2,$3,$4,$5,'succeeded',$6,$7,$8,$9,$10,$11)",
+         output_sha256, warnings, started_by, started_at, supersedes_run, import_settings_version) \
+         VALUES ($1,$2,$3,$4,$5,'succeeded',$6,$7,$8,$9,$10,$11,$12,$13)",
     )
     .bind(run)
     .bind(p.tenant_id)
@@ -376,6 +567,8 @@ async fn extract_locked(
     .bind(json!({ "warnings": warnings, "import_settings_version": import.version, "unmapped_labels": mapped.unmapped_labels.iter().take(50).collect::<Vec<_>>() }))
     .bind(p.user_id)
     .bind(started)
+    .bind(prev_run)
+    .bind(import.version)
     .execute(&mut *tx)
     .await?;
     audit::append(
@@ -383,10 +576,18 @@ async fn extract_locked(
         p.tenant_id,
         Record::user(
             p.user_id,
-            "extraction.completed",
+            if prev_run.is_some() {
+                "extraction.reextracted"
+            } else {
+                "extraction.completed"
+            },
             "artifact",
             id,
-            json!({ "run_id": run, "extractor": extractor, "claims": created, "output_sha256": hex::encode(out_hash) }),
+            json!({
+                "run_id": run, "extractor": extractor, "claims": created, "output_sha256": hex::encode(out_hash),
+                "supersedes_run": prev_run, "reason": re, "import_settings_version": import.version,
+                "superseded": superseded, "unchanged": unchanged, "not_reconfirmed": not_reconfirmed,
+            }),
         ),
     )
     .await?;
@@ -398,6 +599,10 @@ async fn extract_locked(
         claims_created: created,
         ai_claims_suggested: ai_created,
         import_settings_version: import.version,
+        supersedes_run: prev_run,
+        claims_superseded: superseded,
+        claims_unchanged: unchanged,
+        claims_not_reconfirmed: not_reconfirmed,
         ai_model: ai.as_ref().map(|a| a.model.clone()),
         unmapped_labels: mapped.unmapped_labels,
         warnings,

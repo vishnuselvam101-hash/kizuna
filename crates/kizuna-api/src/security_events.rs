@@ -39,6 +39,8 @@ pub enum Kind {
     ContainmentApplied,
     ExportReport,
     BlockedRequest,
+    /// A document label looked like an instruction to the AI and was refused (ADR 0016).
+    PromptInjectionSuspected,
 }
 
 impl Kind {
@@ -66,6 +68,7 @@ impl Kind {
             Kind::ContainmentApplied => "response.containment_applied",
             Kind::ExportReport => "export.report",
             Kind::BlockedRequest => "response.blocked_request",
+            Kind::PromptInjectionSuspected => "ingest.prompt_injection_suspected",
         }
     }
 
@@ -83,7 +86,8 @@ impl Kind {
             | Kind::ArtifactQuarantined
             | Kind::QuarantineReleased
             | Kind::ContainmentApplied
-            | Kind::BlockedRequest => "medium",
+            | Kind::BlockedRequest
+            | Kind::PromptInjectionSuspected => "medium",
             Kind::RefreshTokenReuse => "high",
             Kind::AuditChainBroken | Kind::ArtifactIntegrityFailure => "critical",
         }
