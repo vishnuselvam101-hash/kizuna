@@ -106,7 +106,14 @@ export function DetectionSettingsPanel() {
           />
         </label>
         <span className="hint" id={hid}>
-          {b ? t("det.range", { min: b[0], max: b[1], def }) : t("det.default", { def })}
+          {b
+            ? t("det.range", {
+                min: b[0],
+                max: b[1],
+                def,
+                unit: k === "adaptive_max_factor" ? "×" : t(k === "baseline_days" ? "unit.days" : "unit.events"),
+              })
+            : t("det.default", { def })}
           {k === "brute_force_lock" && ` · ${t("det.lockHint")}`}
         </span>
       </div>
@@ -175,7 +182,13 @@ export function DetectionSettingsPanel() {
             <button className="primary" disabled={!me.session_mfa_verified}>
               {t("det.save")}
             </button>
-            <button type="button" onClick={() => (setC({ ...d.defaults, thresholds: { ...d.defaults.thresholds } }), setErrs([]))}>
+            <button
+              type="button"
+              className="reset"
+              onClick={() =>
+                window.confirm(t("integrations.resetConfirm")) && (setC({ ...d.defaults, thresholds: { ...d.defaults.thresholds } }), setErrs([]))
+              }
+            >
               {t("det.reset")}
             </button>
           </div>

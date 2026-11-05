@@ -42,7 +42,7 @@ export function validateSettings(s: ImportSettings): string[] {
 }
 
 export function IntegrationsView() {
-  const { t, tv } = useI18n();
+  const { t, tv, fmtNum } = useI18n();
   const [s, setS] = useState<ImportSettings>(DEFAULT_SETTINGS);
   const [errs, setErrs] = useState<string[]>([]);
   const { api } = useSession();
@@ -72,13 +72,29 @@ export function IntegrationsView() {
   }
   const num = (v: string) => (v === "" ? NaN : Number(v));
   const invalid = (k: string) => errs.includes(k);
-  const numField = (k: string, label: string, v: number, set: (n: number) => void, min: number, max: number) => (
-    <label>
-      {label}
-      <input type="number" inputMode="numeric" min={min} max={max} value={Number.isNaN(v) ? "" : v} aria-invalid={invalid(k)} onChange={(e) => set(num(e.target.value))} />
-      <span className="hint">{t("integrations.range", { min, max })}</span>
-    </label>
-  );
+  const UNITS: Record<string, string> = { max_upload_mb: "MB", header_row: "row", max_records: "records", max_sheets: "sheets", max_pages: "pages" };
+  const numField = (k: string, label: string, v: number, set: (n: number) => void, min: number, max: number) => {
+    const hid = `imp-${k.replace(".", "-")}-hint`;
+    const unit = UNITS[k.split(".").pop() ?? ""];
+    return (
+      <label>
+        {label}
+        <input
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          value={Number.isNaN(v) ? "" : v}
+          aria-invalid={invalid(k)}
+          aria-describedby={hid}
+          onChange={(e) => set(num(e.target.value))}
+        />
+        <span className="hint" id={hid}>
+          {t("integrations.range", { min: fmtNum(min), max: fmtNum(max), unit: unit ? t(`unit.${unit}` as never) : "" })}
+        </span>
+      </label>
+    );
+  };
 
   function exportJson(e: React.FormEvent) {
     e.preventDefault();
@@ -167,7 +183,6 @@ export function IntegrationsView() {
               <label key={k}>
                 {t(`integrations.map.${k}` as never)}
                 <input
-                  className="mono"
                   value={s.mapping[k]}
                   aria-invalid={invalid(`mapping.${k}`)}
                   onChange={(e) => setS({ ...s, mapping: { ...s.mapping, [k]: e.target.value } })}
@@ -186,7 +201,11 @@ export function IntegrationsView() {
             {t("integrations.save")}
           </button>
           <button>{t("integrations.export")}</button>
-          <button type="button" onClick={() => (setS(DEFAULT_SETTINGS), setErrs([]))}>
+          <button
+            type="button"
+            className="reset"
+            onClick={() => window.confirm(t("integrations.resetConfirm")) && (setS(DEFAULT_SETTINGS), setErrs([]))}
+          >
             {t("integrations.reset")}
           </button>
         </div>

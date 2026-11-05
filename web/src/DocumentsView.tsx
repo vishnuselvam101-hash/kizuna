@@ -17,6 +17,30 @@ export function DocumentsView() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // Re-extraction (after an import-settings change) is a deliberate two-step action with a required reason.
+  const [re, setRe] = useState<{ id: string; name: string } | null>(null);
+  const [reason, setReason] = useState("");
+
+  function reextract(e: React.FormEvent) {
+    e.preventDefault();
+    if (!re || !reason.trim()) return;
+    const target = re;
+    act(async () => {
+      const r = await api.request<{ claims_created: number; claims_superseded: number; claims_unchanged: number; claims_not_reconfirmed: number }>(
+        "POST",
+        `/artifacts/${target.id}/reextract`,
+        { reason: reason.trim() },
+      );
+      setRe(null);
+      setReason("");
+      return t("docs.reextracted", {
+        n: fmtNum(r.claims_created),
+        sup: fmtNum(r.claims_superseded),
+        same: fmtNum(r.claims_unchanged),
+        flagged: fmtNum(r.claims_not_reconfirmed),
+      });
+    });
+  }
 
   async function act(fn: () => Promise<string>) {
     setMsg("");
@@ -73,6 +97,25 @@ export function DocumentsView() {
         </Panel>
       )}
       <Notice msg={msg} error={err ?? list.error} />
+      {re && (
+        <Panel title={t("docs.reextractTitle", { name: re.name })} id="reextract">
+          <form onSubmit={reextract}>
+            <p className="muted">{t("docs.reextractLead")}</p>
+            <label>
+              {t("docs.reextractReason")}
+              <textarea required maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </label>
+            <div className="actions">
+              <button className="primary" disabled={busy || !reason.trim()}>
+                {t("docs.reextractConfirm")}
+              </button>
+              <button type="button" onClick={() => (setRe(null), setReason(""))}>
+                {t("common.cancel")}
+              </button>
+            </div>
+          </form>
+        </Panel>
+      )}
       <Panel title={t("docs.library")} id="lib">
         <Loading on={list.loading} />
         {list.data && list.data.length === 0 && <Empty text={t("docs.none")} />}
@@ -131,6 +174,15 @@ export function DocumentsView() {
                         }
                       >
                         {t("docs.extract")}
+                      </button>
+                    )}
+                    {a.status === "accepted" && can("claim_write") && (
+                      <button
+                        disabled={busy}
+                        aria-label={t("docs.reextractFor", { name: a.display_name })}
+                        onClick={() => (setRe({ id: a.id, name: a.display_name }), setReason(""))}
+                      >
+                        {t("docs.reextract")}
                       </button>
                     )}
                   </>

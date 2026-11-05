@@ -42,9 +42,9 @@ Security and Decisions. All screenshots were viewed. Axe runs in the page on eve
 - Native date inputs show the browser-locale format (`mm/dd/yyyy` in en-US Chromium). A custom picker is not worth the JS.
 
 ## For the admin AI opt-in / detection-threshold agent (not touched here)
-- **Import settings (`IntegrationsView`)**: numeric ranges show as a bare "1–200" hint under the field. Prefer "1–200 MB" with the unit, and set `aria-describedby` on the input. The column-mapping inputs are mono while the others are sans. Use one style.
-- **Import settings**: "Save settings" (primary), "Export settings (JSON)" and "Reset to defaults" sit in one row. Reset should be visually separated or confirm, because it is destructive to unsaved edits.
-- **Security (`SecurityView`)**: the "Last seen" cell lacks `className: "num"` (sans and wrapping, while every other date is mono and nowrap). In JA the Rule column wraps to 4 lines at 390. Give it `nowrap` or a min width.
+- **[fixed 2026-11-05]** **Import settings (`IntegrationsView`)**: numeric ranges show as a bare "1–200" hint under the field. Prefer "1–200 MB" with the unit, and set `aria-describedby` on the input. The column-mapping inputs are mono while the others are sans. Use one style.
+- **[fixed 2026-11-05]** **Import settings**: "Save settings" (primary), "Export settings (JSON)" and "Reset to defaults" sit in one row. Reset should be visually separated or confirm, because it is destructive to unsaved edits.
+- **[fixed 2026-11-05]** **Security (`SecurityView`)**: the "Last seen" cell lacks `className: "num"` (sans and wrapping, while every other date is mono and nowrap). In JA the Rule column wraps to 4 lines at 390. Give it `nowrap` or a min width.
 - **Security**: the incident table "Summary" text comes from the server in English only. If thresholds or rules gain new names, add `sec.rule.<name>` in both dictionaries (the fallback shows snake_case with spaces).
 - Use the shared tones: `Badge tone="warn"` (dashed) for "needs a person", `ok` (gold) only for verified, and `neutral` for plain states. Do not colour a KPI number amber when only its sub-line is the warning.
 - **Reports audit trail**: Actor and Target show short IDs ("user u1", "artifact a1"). Resolving names needs an API join (see API_GAPS.md).

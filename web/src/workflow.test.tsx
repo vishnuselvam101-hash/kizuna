@@ -131,6 +131,24 @@ test("document upload sends multipart kind + file and reports the stored status"
   expect((sent!.get("file") as File).name).toBe("drw.pdf");
 });
 
+test("re-extract needs a reason, posts it and reports what changed", async () => {
+  let sent: unknown = null;
+  const { api } = fakeApi({
+    "GET /artifacts": [{ ...artifact, status: "accepted" }],
+    "POST /artifacts/art-1/reextract": (b: unknown) => (
+      (sent = b), { claims_created: 1, claims_superseded: 1, claims_unchanged: 3, claims_not_reconfirmed: 2 }
+    ),
+  });
+  renderWithSession(<DocumentsView />, { api });
+  fireEvent.click(await screen.findByRole("button", { name: `Re-extract claims from ${artifact.display_name}` }));
+  const go = screen.getByRole("button", { name: "Re-extract now" }) as HTMLButtonElement;
+  expect(go.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText(/Reason \(required/), { target: { value: "header row fixed" } });
+  fireEvent.click(go);
+  await screen.findByText("1 new claims; 1 superseded, 3 unchanged, 2 flagged as no longer found.");
+  expect(sent).toEqual({ reason: "header row fixed" });
+});
+
 test("decision trace: revoke needs explicit confirmation; reconfirm posts the comment", async () => {
   const posted: string[] = [];
   const { api } = fakeApi({

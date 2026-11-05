@@ -130,11 +130,11 @@ export function SecurityView() {
           selectedKey={sel?.incident.id ?? null}
           cols={[
             { key: "sev", label: t("sec.severity"), value: (i) => i.severity, render: (i) => <Badge group="sec.sev" value={i.severity} tone={sevTone(i.severity)} /> },
-            { key: "rule", label: t("sec.rule"), value: (i) => i.rule, render: (i) => tv("sec.rule", i.rule) },
+            { key: "rule", label: t("sec.rule"), value: (i) => i.rule, render: (i) => tv("sec.rule", i.rule), className: "nowrap" },
             { key: "subject", label: t("sec.subject"), value: (i) => i.subject, render: (i) => <code>{i.subject}</code> },
             { key: "summary", label: t("sec.summary"), render: (i) => i.summary },
             { key: "status", label: t("sec.status"), value: (i) => i.status, render: (i) => <Badge group="sec.istatus" value={i.status} /> },
-            { key: "seen", label: t("sec.last_seen"), value: (i) => i.last_seen, render: (i) => fmtDate(i.last_seen) },
+            { key: "seen", label: t("sec.last_seen"), value: (i) => i.last_seen, render: (i) => fmtDate(i.last_seen), className: "num" },
           ]}
         />
       </Panel>

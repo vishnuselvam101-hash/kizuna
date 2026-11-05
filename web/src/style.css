@@ -324,3 +324,6 @@ figure.graph { margin: 0; }
 .legend .ok::before { border-color: var(--gold); }
 .legend .info::before { border-color: var(--info); }
 .legend .warn::before { border-color: var(--warn); }
+
+/* Destructive-to-edits reset sits apart from the save actions (UI audit). */
+.actions .reset { margin-inline-start: auto; }

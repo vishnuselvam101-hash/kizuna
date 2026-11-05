@@ -143,7 +143,7 @@ export const detectionSettings = (over: Partial<DetectionSettings> = {}): Detect
     brute_force_lock: [3, 100],
     spray_failures: [5, 500],
     spray_users: [2, 100],
-    authz_denials: [5, 1000],
+    authz_denials: [3, 150],
     privileged_ops: [5, 1000],
     upload_abuse: [10, 5000],
     extraction_failures: [5, 1000],

@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { vi } from "vitest";
 import { AiExtractionPanel, type AiExtraction } from "./AiExtractionPanel";
 import { DetectionSettingsPanel, validateDetection } from "./DetectionSettingsPanel";
 import { AI_NOTICE_TEXT, aiExtraction, detectionSettings } from "./fixtures";
@@ -112,7 +113,7 @@ test("detection: thresholds show bounds, defaults and active values; invalid inp
   const { api, calls } = detBackend();
   renderWithSession(<DetectionSettingsPanel />, { api });
   const lock = (await screen.findByLabelText("Threshold: Failed sign-ins before lock")) as HTMLInputElement;
-  expect(screen.getAllByText(/3–100 · default 10/).length).toBe(1);
+  expect(screen.getAllByText(/3–100 events · default 10/).length).toBe(1);
   const row = screen.getByRole("row", { name: /Uploads/ });
   expect(within(row).getByText("180")).toBeTruthy();
   fireEvent.change(lock, { target: { value: "4" } });
@@ -153,8 +154,15 @@ test("detection: reset restores defaults; server rejection is shown", async () =
   renderWithSession(<DetectionSettingsPanel />, { api });
   const exportsInput = (await screen.findByLabelText("Threshold: Exports")) as HTMLInputElement;
   expect(exportsInput.value).toBe("99");
+  // Reset asks first; declining keeps the edits.
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
   fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
+  expect(exportsInput.value).toBe("99");
+  fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
+  expect(confirmSpy).toHaveBeenCalledTimes(2);
+  confirmSpy.mockRestore();
   expect(exportsInput.value).toBe("20");
+  expect(screen.getAllByText(/–150 events · default/).length).toBeGreaterThan(0);
   expect((screen.getByRole("checkbox", { name: "Adaptive thresholds" }) as HTMLInputElement).checked).toBe(false);
   fireEvent.click(screen.getByRole("button", { name: "Save thresholds" }));
   await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/rejected the thresholds/));
