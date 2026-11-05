@@ -1,0 +1,18 @@
+[package]
+name = "tolerance"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Pure dimensional-tolerance engine: spec model, ISO 286 fits, JA/EN notation parser, ISO 14253-1 conformance, 1-D stack-up (no I/O)."
+
+[dependencies]
+rust_decimal.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

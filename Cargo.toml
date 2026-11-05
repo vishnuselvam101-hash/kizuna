@@ -12,6 +12,7 @@ members = [
     "crates/kizuna-api",
     "crates/kizuna-bench",
     "crates/quality-stats",
+    "crates/tolerance",
 ]
 
 [workspace.package]
