@@ -50,7 +50,7 @@ pub(crate) enum Field {
     Result,
 }
 
-const DIMS: [(&str, &str); 8] = [
+const DIMS: [(&str, &str); 16] = [
     ("length", "length"),
     ("width", "width"),
     ("height", "height"),
@@ -59,13 +59,28 @@ const DIMS: [(&str, &str); 8] = [
     ("outer diameter", "outer_diameter"),
     ("inner diameter", "inner_diameter"),
     ("od", "outer_diameter"),
+    // Japanese drawing / spec sheet labels (JIS terms).
+    ("長さ", "length"),
+    ("幅", "width"),
+    ("高さ", "height"),
+    ("厚さ", "thickness"),
+    ("板厚", "thickness"),
+    ("直径", "diameter"),
+    ("外径", "outer_diameter"),
+    ("内径", "inner_diameter"),
 ];
 
-const PROPS: [(&str, &str); 4] = [
+const PROPS: [(&str, &str); 10] = [
     ("hardness", "hardness"),
     ("tensile strength", "tensile_strength"),
     ("yield strength", "yield_strength"),
     ("surface roughness", "surface_roughness"),
+    ("硬さ", "hardness"),
+    ("硬度", "hardness"),
+    ("引張強さ", "tensile_strength"),
+    ("耐力", "yield_strength"),
+    ("降伏点", "yield_strength"),
+    ("表面粗さ", "surface_roughness"),
 ];
 
 fn dim(s: &str) -> Option<&'static str> {
@@ -119,7 +134,7 @@ pub(crate) fn field(label: &str) -> Option<Field> {
         "quantity" | "qty" | "数量" => Field::Quantity,
         "lot" | "lot number" | "lot no" | "ロット" => Field::Lot,
         "result" | "inspection result" | "judgement" | "判定" => Field::Result,
-        "tolerance" | "tol" => Field::Tolerance(None),
+        "tolerance" | "tol" | "公差" => Field::Tolerance(None),
         _ => {
             if let Some(d) = dim(label) {
                 return Some(Field::Dimension(d));
@@ -135,7 +150,13 @@ pub(crate) fn field(label: &str) -> Option<Field> {
                     return Some(Field::Measured(d));
                 }
             }
-            for (prefix, suffix) in [("", " tolerance"), ("tolerance ", ""), ("", " tol")] {
+            for (prefix, suffix) in [
+                ("", " tolerance"),
+                ("tolerance ", ""),
+                ("", " tol"),
+                ("", "公差"),
+                ("", " 公差"),
+            ] {
                 if let Some(rest) = label.strip_prefix(prefix).and_then(|r| r.strip_suffix(suffix))
                     && rest != label
                     && let Some(d) = dim(rest)
@@ -524,6 +545,41 @@ mod tests {
             "document text cannot create predicates"
         );
         assert!(m.claims.iter().all(|c| evidence_core::claim::validate(c).is_ok()));
+    }
+
+    #[test]
+    fn regression_qa_japanese_dimension_property_and_tolerance_labels() {
+        // A Japanese spec sheet / mill sheet: these labels were reported as unrecognised and the values lost.
+        let r = vec![
+            rec("品番", "JA-BRK-1001", "doc"),
+            rec("長さ (mm)", "120.0", "doc"),
+            rec("外径 (mm)", "40", "doc"),
+            rec("板厚 (mm)", "3.2", "doc"),
+            rec("引張強さ (MPa)", "580", "doc"),
+            rec("硬さ (HV)", "175", "doc"),
+            rec("長さ公差", "±0.2", "doc"),
+        ];
+        let m = map_records("spec_document", &r, 8000);
+        assert!(m.unmapped_labels.is_empty(), "{:?}", m.unmapped_labels);
+        let len = find(&m, "mfg.dimension.length");
+        assert_eq!(
+            (len[0].value_num.as_deref(), len[0].value_unit.as_deref()),
+            (Some("120"), Some("mm"))
+        );
+        assert_eq!(
+            find(&m, "mfg.dimension.outer_diameter")[0].value_num.as_deref(),
+            Some("40")
+        );
+        assert_eq!(find(&m, "mfg.dimension.thickness")[0].value_num.as_deref(), Some("3.2"));
+        assert_eq!(
+            find(&m, "mfg.property.tensile_strength")[0].value_unit.as_deref(),
+            Some("MPa")
+        );
+        assert_eq!(find(&m, "mfg.property.hardness")[0].value_num.as_deref(), Some("175"));
+        assert_eq!(
+            find(&m, "mfg.tolerance.length.plus")[0].value_num.as_deref(),
+            Some("0.2")
+        );
     }
 
     #[test]
