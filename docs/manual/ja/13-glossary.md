@@ -58,3 +58,9 @@ UI に表示されない用語：
 | セキュリティキー | Security key | WebAuthn による物理的な第 2 要素（API のみ）。 |
 | リカバリーコード | Recovery code | セキュリティキー紛失時に使う使い捨てコード。 |
 | 運用者 | Operator | サーバー、バックアップ、シークレットを管理する人。 |
+| 是正処置（8D） | Corrective-action case | 指摘から起票し、D1〜D8 の各ステップを引用した証拠で完了する（ADR 0024）。 |
+| 暫定処置 | Containment | D3: 不良品の流出を直ちに止める処置。 |
+| 根本原因（発生原因・流出原因） | Root cause (occurrence / escape) | D4: なぜ起きたか、なぜ流出したか。各原因はクレームまたは文書を引用する。 |
+| 恒久対策 | Permanent corrective action | D5: 担当者と期限を持ち、根本原因に対応する対策。期限超過は通知される。 |
+| 効果確認 | Verification of effectiveness | D6: 対策後に記録された証拠（SPC 起点では管理状態への復帰）で示す。サプライヤー自身の報告だけでは不可。 |
+| 水平展開 | Horizontal deployment | D7: 類似の製品・ライン・拠点への展開（不要ならその理由）。 |

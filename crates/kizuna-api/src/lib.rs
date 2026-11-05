@@ -7,6 +7,7 @@ pub mod app;
 pub mod artifacts;
 pub mod audit;
 pub mod auth;
+pub mod capa;
 pub mod claims;
 pub mod clock;
 pub mod config;

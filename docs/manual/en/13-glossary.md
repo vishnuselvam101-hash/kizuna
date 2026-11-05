@@ -58,3 +58,9 @@ Terms not shown in the UI:
 | Security key | セキュリティキー | WebAuthn hardware second factor (API only). |
 | Recovery code | リカバリーコード | One-time code for a lost security key. |
 | Operator | 運用者 | Whoever runs the server, backups and secrets. |
+| Corrective-action case (8D) | 是正処置 | A case opened from a finding; disciplines D1–D8, each completed only with cited evidence (ADR 0024). |
+| Containment | 暫定処置 | D3: immediate action that stops defective parts from reaching the customer. |
+| Root cause (occurrence / escape) | 根本原因（発生原因・流出原因） | D4: why it happened and why it was not caught; every cause cites claims or documents. |
+| Permanent corrective action | 恒久対策 | D5: actions with owner and due date, each addressing a root cause; overdue ones notify. |
+| Verification of effectiveness | 効果確認 | D6: proven by evidence recorded after the fix (and, for SPC cases, back in control); never by the supplier's own report alone. |
+| Horizontal deployment | 水平展開 | D7: applying the fix to similar parts, lines or sites (or recording why not). |

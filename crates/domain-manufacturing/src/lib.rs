@@ -3,6 +3,7 @@
 
 pub mod ai;
 pub mod ai_guard;
+pub mod capa;
 mod ja;
 pub mod mapping;
 pub mod resupply;
