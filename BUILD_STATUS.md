@@ -17,6 +17,12 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | M7 | done | opt-in AI-assisted label mapping with free models (ADR 0016), saved import settings consumed by the worker, per-tenant + adaptive detection thresholds (ADR 0015), web API gaps 2–8 switched to real endpoints, WebAuthn-optional decision recorded (ADR 0006) |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
+## Innovation I1 + I4: three-way match and minimal re-request (2026-11-05, branch `innov-match`)
+| Command | Result |
+|---|---|
+| `scripts/check.sh` (own DB `kizuna_test_match`) | **pass**: fmt, clippy `-D warnings`, 241 Rust tests incl. `tests/innov_match.rs` (3, real PostgreSQL + sandboxed extraction), audits 0, 62 pytest, 57 vitest (+7 match/re-request UI incl. axe EN/JA) |
+| `scripts/e2e.sh --seed 7` / `--seed 11 --parts 48` | pass. Match case: 30 PO lines, 22 injected mismatches (11 kinds × 2): precision 1.00, recall 1.00 (tp 22, fp 0, fn 0) on both seeds. Re-request: 4 evidence changes → 3 documents requested (all expected) vs 6 under "resend everything"; the approval change asks the supplier for nothing. SYNTHETIC: generator and rules were built together, so this shows the pipeline works on known layouts, not accuracy on real documents. `dirty: true` in provenance = the untracked research note only |
+
 ## M7 results (2026-11-05, this host)
 | Command | Result |
 |---|---|
