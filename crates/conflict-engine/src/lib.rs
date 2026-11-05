@@ -64,27 +64,65 @@ pub trait Rule: Send + Sync {
 
 /// Runs every rule per subject; findings are de-duplicated on (kind, unordered claim pair) and sorted.
 pub fn run(rules: &[&dyn Rule], facts: &[Fact], ctx: &Ctx) -> Vec<Finding> {
-    let mut by_subject: BTreeMap<&str, Vec<&Fact>> = BTreeMap::new();
+    run_parallel(rules, facts, ctx, 1)
+}
+
+/// Facts grouped by subject (ordered), each group sorted by claim id: the unit of work of a run.
+pub fn by_subject(facts: &[Fact]) -> Vec<(&str, Vec<&Fact>)> {
+    let mut m: BTreeMap<&str, Vec<&Fact>> = BTreeMap::new();
     for f in facts {
-        by_subject.entry(f.subject.as_str()).or_default().push(f);
+        m.entry(f.subject.as_str()).or_default().push(f);
     }
-    let mut out: Vec<Finding> = Vec::new();
-    for (subject, mut fs) in by_subject {
-        fs.sort_by(|a, b| a.id.cmp(&b.id));
-        for r in rules {
-            for mut f in r.detect(subject, &fs, ctx) {
-                if let Some(b) = f.claim_b.clone()
-                    && b < f.claim_a
-                {
-                    f.claim_b = Some(std::mem::replace(&mut f.claim_a, b));
-                }
-                if !out
-                    .iter()
-                    .any(|o| o.kind == f.kind && o.claim_a == f.claim_a && o.claim_b == f.claim_b)
-                {
-                    out.push(f);
-                }
+    m.into_iter()
+        .map(|(s, mut fs)| {
+            fs.sort_by(|a, b| a.id.cmp(&b.id));
+            (s, fs)
+        })
+        .collect()
+}
+
+fn detect_subject(rules: &[&dyn Rule], subject: &str, fs: &[&Fact], ctx: &Ctx, out: &mut Vec<Finding>) {
+    for r in rules {
+        for mut f in r.detect(subject, fs, ctx) {
+            if let Some(b) = f.claim_b.clone()
+                && b < f.claim_a
+            {
+                f.claim_b = Some(std::mem::replace(&mut f.claim_a, b));
             }
+            out.push(f);
+        }
+    }
+}
+
+/// Same output as [`run`], with subjects evaluated on up to `threads` worker threads (contiguous chunks of the
+/// ordered subject list; results are merged in subject order, so the output does not depend on `threads`).
+pub fn run_parallel(rules: &[&dyn Rule], facts: &[Fact], ctx: &Ctx, threads: usize) -> Vec<Finding> {
+    let groups = by_subject(facts);
+    let threads = threads.clamp(1, groups.len().max(1));
+    let chunk = groups.len().div_ceil(threads).max(1);
+    let eval = |part: &[(&str, Vec<&Fact>)]| {
+        let mut out = Vec::new();
+        for (s, fs) in part {
+            detect_subject(rules, s, fs, ctx, &mut out);
+        }
+        out
+    };
+    let parts: Vec<Vec<Finding>> = if threads == 1 {
+        vec![eval(&groups)]
+    } else {
+        std::thread::scope(|sc| {
+            let hs: Vec<_> = groups.chunks(chunk).map(|c| sc.spawn(move || eval(c))).collect();
+            hs.into_iter()
+                .map(|h| h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
+                .collect()
+        })
+    };
+    // First occurrence wins, exactly as a sequential pass in subject order.
+    let mut seen: std::collections::HashSet<(&'static str, String, Option<String>)> = std::collections::HashSet::new();
+    let mut out: Vec<Finding> = Vec::new();
+    for f in parts.into_iter().flatten() {
+        if seen.insert((f.kind, f.claim_a.clone(), f.claim_b.clone())) {
+            out.push(f);
         }
     }
     out.sort_by(|a, b| (a.subject.as_str(), a.kind, &a.claim_a).cmp(&(b.subject.as_str(), b.kind, &b.claim_a)));

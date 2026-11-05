@@ -21,7 +21,7 @@ master that was 5 091 pairs for 301 true typos (11 700 keys); precision fell fro
   `same_supplier_and_drawing` / `context_agrees` / `no_comparable_context`.
 - **Per-tenant mode** (`GET/PUT /api/v1/settings/entity-resolution`, `{expected_version, typo_review}`):
   `off` (no rule), `strict` (default), `broad` (every typo-shaped pair to review, the previous behaviour). Stored in
-  the append-only `tenant_settings` (kind `entity_resolution`, migration 0022); change needs a tenant admin with MFA,
+  the append-only `tenant_settings` (kind `entity_resolution`, migration 0024 on main); change needs a tenant admin with MFA,
   is audited (`settings.entity_resolution_updated`) and raises `admin.settings_changed`, flagged `weakening` when the
   mode becomes less sensitive (broad → strict → off).
 - **API context:** current part claims `*.part_name`, `*.supplier` (or `scope.supplier`), `*.drawing_number`,

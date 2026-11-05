@@ -32,7 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     kizuna_api::review_batches::spawn_worker(pool.clone(), cfg.review_batch_chunk, std::time::Duration::from_secs(2));
+    let staging_max_age = std::time::Duration::from_secs(cfg.staging_max_age_secs);
     let mut state = AppState::new(pool.clone(), cfg);
+    kizuna_api::storage::spawn_staging_sweeper(
+        pool.clone(),
+        std::sync::Arc::clone(&state.store),
+        staging_max_age,
+        std::time::Duration::from_secs(600),
+    );
     state.av = kizuna_api::antivirus::from_lookup(|k| std::env::var(k).ok())?;
     if state.av.configured() {
         match state.av.probe() {
