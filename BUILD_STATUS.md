@@ -1,55 +1,45 @@
 # Build status
 
-Updated: 2026-11-05 (end of M5). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local), Node 24.22.2,
-pnpm 12.15.0, Python 3.14.4 + uv.
+Updated: 2026-11-05 (end of M6, integrated `main`). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local),
+Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI workflow written but never executed.
+
+**Not production-ready.** Synthetic data only; pilot-readiness needs the founder decisions below.
 
 ## Milestones
-| M | State | Notes |
+| M | State | Summary |
 |---|---|---|
-| M0 | done | ADRs 0001–0010, THREAT_MODEL, claim data model, test plan, research + unverified-claims registers, dependency register |
-| M1 | done | auth (argon2id, TOTP, rotating refresh + reuse detection, revocation), tenants, RBAC/ABAC, RLS FORCE, audit chain, security events, rate limits, headers, CI, check.sh; independent review: 9 findings, 8 fixed with regression tests |
-| M2 | done | artifacts (content-typed, static scan, quarantine/release, content-addressed FS store, capture provenance, integrity verify on every read), claims v1 (append-only, supersession, transaction-time `known_at` and valid-time `valid_at` queries), evidence explorer API, React UI (login+MFA, documents, evidence explorer) |
-| M3 | done | sandboxed extraction worker (CSV, XLSX, PDF text, tesseract OCR; bubblewrap + prlimit), `mfg-map@1` record→claim mapping, entity resolution (safe normalisation + human-confirmed aliases), 9 conflict kinds (`mfg-rules@1`), findings with sources/limitations, review workflow (approve/reject/request evidence, four-eyes on manual claims), revision comparison, UI for findings/review/revisions |
-| M4 | done | decisions with derivation snapshots + SHA-256, typed dependencies (claim/decision, applicability, materiality), selective invalidation hook on supersession/rejection/new evidence incl. earlier claim versions, propagation through decision edges, invalidation events, traces (known-at/changed-since/reproducibility), reconfirm/revoke, verification report (JSON/Markdown), decisions UI |
-| M5 | done | detection rules (10), incidents, pre-authorised vs approval-gated containment (sessions, account, address, artifact quarantine, uploads, extraction), guards (last admin, admin address), revert/resolve, emergency unlock CLI, enforcement at login/upload/extraction, signed Ed25519 audit checkpoints (closes M1 #6 when exported), artifact self-repair on re-upload, security dashboard UI |
+| M0 | done | ADRs 0001–0015, threat model, claim data model, test plan, research + unverified-claims registers, dependency register |
+| M1 | done | argon2id, TOTP, rotating refresh + reuse detection, revocation, tenants, deny-by-default RBAC/ABAC, RLS FORCE with separate owner/runtime roles, hash-chained audit, security events, rate limits, headers, CI, `scripts/check.sh` |
+| M2 | done | content-typed uploads, static scan + quarantine, content-addressed store, capture provenance, integrity on every read, append-only bitemporal claims, evidence explorer |
+| M3 | done | sandboxed Python extraction (CSV, XLSX, PDF text/tables, scanned-PDF OCR, images, DXF title blocks; bubblewrap + prlimit), `mfg-map@1`, blocked entity resolution with human-confirmed aliases, 9 conflict kinds (`mfg-rules@1`), review workflow with four-eyes |
+| M4 | done | decisions with derivation hashes, typed dependencies with materiality, selective invalidation incl. earlier claim versions and decision chains, traces, reconfirm/revoke, signed verification reports |
+| M5 | done | 10 detection rules, incidents, pre-authorised vs approval-gated containment, guards, revert/resolve, emergency unlock, Ed25519 audit checkpoints, security monitoring screen |
+| M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
-## Commands run and results (2026-11-05, this machine)
+## Commands run and results (2026-11-05, this host, final `main`)
 | Command | Result |
 |---|---|
-| `scripts/db-setup.sh` | roles `kizuna`, `kizuna_app`; DBs `kizuna_dev`, `kizuna_test` created |
-| `scripts/check.sh` | pass: fmt, clippy -D warnings, 46 Rust tests (audit-engine 6, policy-engine 5, kizuna-api unit 11, integration m1_audit 6 / m1_auth 12 / m1_authz_tenancy 6), cargo audit (1 ignored, not compiled: RUSTSEC-2023-0071), pnpm audit 0, ruff + 1 pytest, tsc + 2 vitest, gitleaks 0 |
-| smoke: `kizuna-admin migrate/create-tenant/create-user`, `kizuna-server` + curl login, `kizuna-admin verify-audit acme` | login 200, chain intact (3 events); server refuses to start with the owner role (`Error: Owner`); server log contained no password/token strings |
+| `scripts/check.sh` | **pass**: fmt; clippy `-D warnings`; **156 Rust tests** (unit + property + integration against real PostgreSQL incl. the real bubblewrap-sandboxed worker); cargo audit 0 vulnerabilities (1 documented ignore of an uncompiled crate); pnpm audit 0; pip-audit 0; ruff + **48 pytest**; tsc + **29 vitest** (incl. axe a11y); gitleaks 0 (35 exact fingerprints allowlisted: invalid tokens of dropped E2E DBs, see `.gitleaksignore`) |
+| `scripts/fuzz.sh 20000` | pass in 142 s: every proptest property (scanner, ZIP reader, PDF name decoding, tokens, canonical JSON, decimals, claim validation, record mapping, quantity/tolerance/date parsers, ER blocking ≡ all-pairs, invalidation ≡ ground truth) at 20 000 cases + Python worker tests. cargo-fuzz not installed |
+| `scripts/e2e.sh --seed 7` / `--seed 11 --parts 48` | pass: rule-finding precision 1.00, fault recall 1.00 (25/25 and seed-11 set), malicious uploads 3/3 refused/quarantined, unauthorised requests 10/10 denied (`reports/e2e/`) |
+| `scripts/bench.sh` | `reports/bench/bench-20261105T1432Z.md` — MEASURED on a shared, loaded host; ER candidates 5 000 keys P50 41 ms (was ~3.6 s for 2 000 keys before blocking) |
+| `scripts/backup.sh` + `scripts/restore-drill.sh --tamper-test` | pass: restore 1.1 s, verify 0.07 s, 54/54 artifacts intact, tampered object detected (`reports/drill/drill-20261105T145442Z.json`) |
+| semgrep (p/rust, p/python, p/typescript, p/secrets) | 5 findings, all triaged as non-issues (CLI `env::args`, temp dirs in tests/bench) |
+| trivy fs (vuln, secret, misconfig) | 0 findings on Cargo.lock, uv.lock, pnpm-lock.yaml |
+| clippy pedantic on security crates | lossy casts fixed; remaining are `must_use`/doc-style lints (not enforced) |
+| cargo-deny | not installed; licences reviewed manually in `docs/research/dependencies.md` |
 
-## Run at end of M2
-`scripts/check.sh` → pass: fmt, clippy -D warnings, **72 Rust tests** (audit-engine 6, evidence-core 9, policy-engine 5,
-kizuna-api unit 15, integration m1_audit 6 / m1_auth 12 / m1_authz_tenancy 6 / m1_review_regressions 6 /
-m2_evidence 7), cargo audit (1 documented ignore), pnpm audit 0, ruff + pytest 1, tsc + vitest 4, gitleaks 0.
-
-## Run at end of M5
-`scripts/check.sh` → pass: Rust all green incl. `m5_defense` 8 tests (token theft, spraying block + revert, admin
-address guard, last-admin refusal + emergency unlock, integrity quarantine + recovery, upload/authz containment,
-checkpoint detects full re-chain by DB owner, RBAC/isolation), Python 11, web 7, audits 0 open, gitleaks 0.
-
-## Run at end of M4
-`scripts/check.sh` → pass. Rust **103 tests** (adds dependency-engine 5 incl. proptest flagged-set = ground truth on
-random DAGs, `m4_decisions` 6 integration tests), Python 11, web 6, audits 0 open, gitleaks 0.
-
-## M4 self-review notes
-Hooks run inside the evidence-changing transaction (no lost flags); propagation loads all decision→decision edges of
-a tenant; markdown report escapes `|`, `<` and newlines in user text; decisions/dependencies/invalidation events are
-immutable at DB level (trigger + grants).
-
-## Run at end of M3
-`scripts/check.sh` → pass. Rust **92 tests** (adds entity-resolution, conflict-engine, domain-manufacturing unit tests
-and `m3_verification` 6 integration tests that run the real bubblewrap-sandboxed worker on generated PDF/CSV
-documents), Python **11** (CSV/XLSX/PDF/OCR extraction, DTD refusal, malformed PDFs, prompt-injection-as-data,
-sandbox hardening), web **5**, audits 0 open, gitleaks 0.
-Accuracy of extraction/ER/conflict rules has **not** been measured on real or labelled data yet (M6 synthetic benchmark).
-
-## M3 self-review notes
-Worker output is treated as untrusted (fixed vocabulary mapping + claim validation); extraction is synchronous within
-the request (45 s cap, 2 concurrent workers); detection loads all current part claims of a tenant into memory;
-static PDF markers can be obfuscated (sandbox is the second line); scanned PDFs are not OCRed.
+## Security reviews
+- M1 independent review: 9 findings, all fixed (details below).
+- M2–M4 independent review (`docs/security/REVIEW_M2_M4.md`): 22 findings; 20 fixed with regression tests, I3 documented,
+  M6 partly fixed (no seccomp yet).
+- Final independent review of M5 + lanes (2026-11-05): 7 findings, all fixed with regression tests
+  (`tests/final_review_regressions.rs`): H1 detection flood (per-user denial-event limit, non-blocking detection lock,
+  newest-first window), M1 incident lifecycle (false positives stay resolved, expired blocks re-applied), M2 tenant-wide
+  extraction suspension now needs approval + per-artifact retry limit, M3 no admin decides containment about themselves,
+  M4 emergency unlock only re-enables containment-disabled admins, L1 junk checkpoints → 400 without alerts, L2 server
+  refuses to run as root (`KIZUNA_ALLOW_ROOT=1` for dev only).
+- ASVS 5.0 control-to-test mapping re-run: `docs/security/asvs-m1-mapping.md` (all mapped tests pass).
 
 ## Security review M1 (independent read-only reviewer, commit 448f97c)
 | # | Sev | Finding | Status |
@@ -64,27 +54,22 @@ static PDF markers can be obfuscated (sandbox is the second line); scanned PDFs 
 | 8 | Low | No admin unlock path | fixed: PATCH `status: active` clears lockout; test `regression_m1r8_*` |
 | 9 | Low | Limiter O(n) prune under key flood | fixed: key cap 100k, prune throttled, fail closed for new keys; unit test |
 
-## M2 self-review notes
-Upload memory bound = upload limit × concurrent uploads (per-user rate limit 30/min); objects written before DB commit
-can be orphaned on rollback (content-addressed, harmless, no GC yet); static scan is not antivirus (ADR 0011).
-
-## Auth hardening lane (branch `lane-auth`, 2026-11-05)
-WebAuthn (webauthn-rs 0.6.2) with recovery codes / peer reset / operator CLI, offline common-password screening,
-versioned data keys + `kizuna-admin rotate-data-key`, injected clock; migration `0006_auth_hardening.sql`.
-`scripts/check.sh`: fmt, clippy -D warnings, **119 Rust tests** (new: `auth_hardening` 9 integration, 8 unit),
-cargo audit 0 (425 crates), Python/web pass; gitleaks dir scan of changed paths 0 (`gitleaks git` scans all refs and
-reports findings from other lanes' commits). Independent review: 2 findings fixed (enrolment/login downgrade race guard,
-unbounded challenge rows) with tests; the race guard in `complete_login` is SQL-level and not reproducible over HTTP.
-CLI smoke: `rotate-data-key` exits 2 while any secret is unreadable/stale, `unknown tenant` on a bad slug.
-
 ## Known defects / gaps
-- WebAuthn verified only with a software authenticator (no real-hardware or browser test yet); attestation not enforced.
-- Password screening uses a bundled 46k common-password list, not a full breach corpus. In-process rate limiter.
-- Data keys come from env (no KMS/HSM); rotation is an operator-run CLI job.
-- Python extraction is still a scaffold (M3).
-- No orphan-object garbage collection; no bulk integrity sweep job yet (M5).
-- CI workflow written but never executed (no remote, by instruction).
+- No seccomp filter in the extraction sandbox; process limit only when the server runs as a non-root user.
+- Static upload scan is not antivirus; `/ObjStm` PDFs are quarantined conservatively (expect false positives).
+- Extraction accuracy, ER and conflict rules measured only on synthetic data (E2E); no real supplier documents yet.
+- Detection thresholds are static; address blocks are per tenant and login-only; no cross-tenant (platform) correlation.
+- Notifications are in-app only. Import settings are stored/versioned but not yet consumed by the extraction worker.
+  Web API gaps 2–8 have endpoints; the UI still uses its earlier client-side workarounds for them.
+- Benchmarks ran on a busy shared host (upper bounds). CI workflow never executed (no remote).
+- Rate limiter is per process (single instance only). Dependency major upgrades pending (sqlx 0.9, rand 0.10, ...).
+
+## Founder decisions needed
+1. Make WebAuthn mandatory for tenant administrators (today: optional; once enrolled it is required for that admin).
+2. KIZUNA trademark/patent/FTO checks before any public demo (`docs/research/unverified-claims.md`).
+3. Pilot hosting, TLS domain, off-host backup/checkpoint storage, and whether e-mail/webhook alerts are allowed.
+4. Any external AI provider for extraction (none used; would need customer authorisation + data-processing policy).
 
 ## Next step
-M6: integrate parallel lanes (m6-prep, lane-python, lane-web, lane-auth), E2E, benchmarks, backup/restore,
-fuzzing, final security review.
+`scripts/check.sh && scripts/e2e.sh --seed 7`, then on pilot hardware: run as the dedicated `kizuna` user per
+`docs/deploy/DEPLOYMENT.md`, add a seccomp profile for the worker, and re-run `scripts/bench.sh` on an idle host.

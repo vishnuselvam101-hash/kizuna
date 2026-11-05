@@ -8,7 +8,7 @@
 | M3 | PDF/spreadsheet extraction, identity matching, spec comparison, revisions, conflicts, review | done |
 | M4 | valid/transaction time, decisions, typed dependencies, materiality, selective invalidation, traces | done |
 | M5 | detection rules, containment, quarantine, revocation, incident dashboard, recovery | done |
-| M6 | E2E, security review, benchmarks, backup/restore, deployment docs, demo | next |
+| M6 | E2E, security review, benchmarks, backup/restore, deployment docs, demo | done (pilot demo; not production) |
 
-Backlog: WebAuthn; breached-password check; key rotation; signed audit checkpoints; shared rate-limit store;
+Backlog: seccomp for the worker; shared rate-limit store; UI switch to the new summary/paging endpoints;
 dependency major upgrades (see dependencies.md).
