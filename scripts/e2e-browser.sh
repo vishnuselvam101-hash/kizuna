@@ -64,11 +64,18 @@ echo "$DB" >"$WORK/db"
 : >"$WORK/pids"
 if [[ $MODE == full ]]; then
   # shellcheck disable=SC2329  # invoked by the EXIT trap
-  cleanup() { down "$WORK"; ((KEEP)) && echo "kept: $WORK" || rm -rf "$WORK"; }
+  cleanup() {
+    down "$WORK"
+    if ((KEEP)); then echo "kept: $WORK"; else rm -rf "$WORK"; fi
+  }
   trap cleanup EXIT
 else
   # shellcheck disable=SC2329
-  failed_up() { local rc=$?; ((rc)) && { down "$WORK"; rm -rf "$WORK"; }; exit $rc; }
+  failed_up() {
+    local rc=$?
+    if ((rc)); then down "$WORK"; rm -rf "$WORK"; fi
+    exit "$rc"
+  }
   trap failed_up EXIT
 fi
 
