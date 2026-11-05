@@ -91,6 +91,12 @@ pub fn router(st: AppState) -> Router {
         .route("/auth/mfa/totp/confirm", post(auth::totp_confirm))
         .route("/auth/mfa/webauthn/register/start", post(webauthn::register_start))
         .route("/auth/mfa/webauthn/register/finish", post(webauthn::register_finish))
+        .route("/auth/mfa/status", get(webauthn::status))
+        .route(
+            "/auth/mfa/webauthn/credentials/{id}/remove",
+            post(webauthn::remove_credential),
+        )
+        .route("/auth/mfa/recovery-codes", post(webauthn::regenerate_recovery_codes))
         .route("/auth/webauthn/login/start", post(webauthn::login_start))
         .route("/auth/webauthn/login/finish", post(webauthn::login_finish))
         .route("/auth/webauthn/recover", post(webauthn::recover))

@@ -686,3 +686,150 @@ async fn adding_a_key_to_a_protected_account_needs_a_key_session() {
     let r = c.login(&slug, &email, PW, None).await;
     assert_eq!(r.body["error"], "webauthn_required");
 }
+
+#[tokio::test]
+async fn own_security_keys_and_recovery_codes_need_a_key_session_and_password() {
+    let (c, _clock) = clocked(None).await;
+    let (t, slug, uid, tok) = c.admin().await;
+    let email = admin_email(&c, uid, t).await;
+    let st = c.get("/api/v1/auth/mfa/status", &tok).await;
+    assert_eq!(st.body["webauthn_enabled"], false, "{:?}", st.body);
+    let mut key = SoftPasskey::new(true);
+    let codes = enroll_key(&c, &tok, &mut key).await["recovery_codes"].clone();
+    let tok = wa_login(&c, &slug, &email, &mut key).await;
+    let mut key2 = SoftPasskey::new(true);
+    enroll_key(&c, &tok, &mut key2).await;
+    let tok = wa_login(&c, &slug, &email, &mut key2).await;
+    let st = c.get("/api/v1/auth/mfa/status", &tok).await;
+    assert_eq!(st.body["webauthn_enabled"], true);
+    assert_eq!(st.body["recovery_codes_remaining"], 10);
+    let creds = st.body["credentials"].as_array().unwrap().clone();
+    assert_eq!(creds.len(), 2);
+    assert_eq!(creds[0]["label"], "yubikey");
+    assert!(
+        st.body.to_string().find("passkey").is_none(),
+        "no key material leaves the server"
+    );
+
+    // Regenerate: wrong password refused; old codes stop working, new ones are returned once.
+    let bad = c
+        .post(
+            "/api/v1/auth/mfa/recovery-codes",
+            Some(&tok),
+            json!({ "password": "wrong password here" }),
+        )
+        .await;
+    assert_eq!(bad.status, StatusCode::UNAUTHORIZED);
+    let r = c
+        .post("/api/v1/auth/mfa/recovery-codes", Some(&tok), json!({ "password": PW }))
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+    let fresh = r.body["recovery_codes"].as_array().unwrap().clone();
+    assert_eq!(fresh.len(), 10);
+    let old = c
+        .post(
+            "/api/v1/auth/webauthn/recover",
+            None,
+            json!({ "tenant": slug, "email": email, "password": PW, "recovery_code": codes[0] }),
+        )
+        .await;
+    assert_eq!(
+        old.status,
+        StatusCode::UNAUTHORIZED,
+        "regenerated codes replace the old set"
+    );
+
+    // A session without a key (recovery) cannot manage keys.
+    let rec = c
+        .post(
+            "/api/v1/auth/webauthn/recover",
+            None,
+            json!({ "tenant": slug, "email": email, "password": PW, "recovery_code": fresh[0] }),
+        )
+        .await;
+    assert_eq!(rec.status, StatusCode::OK, "{:?}", rec.body);
+    let weak = rec.body["access_token"].as_str().unwrap().to_owned();
+    let st = c.get("/api/v1/auth/mfa/status", &weak).await;
+    assert_eq!(st.body["webauthn_enabled"], false, "recovery cleared the keys");
+    let r = c
+        .post(
+            "/api/v1/auth/mfa/recovery-codes",
+            Some(&weak),
+            json!({ "password": PW }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+
+    // Re-enrol two keys, then remove them one by one.
+    let mut k3 = SoftPasskey::new(true);
+    enroll_key(&c, &weak, &mut k3).await;
+    let tok = wa_login(&c, &slug, &email, &mut k3).await;
+    let mut k4 = SoftPasskey::new(true);
+    enroll_key(&c, &tok, &mut k4).await;
+    let tok = wa_login(&c, &slug, &email, &mut k4).await;
+    let other = wa_login(&c, &slug, &email, &mut k3).await;
+    let creds = c.get("/api/v1/auth/mfa/status", &tok).await.body["credentials"].clone();
+    let (first, second) = (creds[0]["id"].as_str().unwrap(), creds[1]["id"].as_str().unwrap());
+    let r = c
+        .post(
+            &format!("/api/v1/auth/mfa/webauthn/credentials/{first}/remove"),
+            Some(&tok),
+            json!({ "password": "wrong password here" }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    let r = c
+        .post(
+            &format!("/api/v1/auth/mfa/webauthn/credentials/{first}/remove"),
+            Some(&tok),
+            json!({ "password": PW }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+    assert_eq!(r.body["remaining"], 1);
+    assert_eq!(
+        c.get("/api/v1/auth/me", &other).await.status,
+        StatusCode::OK,
+        "removing a spare key keeps sessions"
+    );
+    let s = wa_start(&c, &slug, &email, PW).await;
+    let rcr: RequestChallengeResponse = serde_json::from_value(s.body["public_key"].clone()).unwrap();
+    assert!(
+        k3.do_authentication(origin(), rcr).is_err(),
+        "the removed key is no longer offered"
+    );
+
+    // Another user cannot remove this user's key (404, not 403: no existence oracle).
+    let (_, e2) = c.user(t, "tenant_admin").await;
+    let t2 = c.mfa_token(&slug, &e2).await;
+    let r = c
+        .post(
+            &format!("/api/v1/auth/mfa/webauthn/credentials/{second}/remove"),
+            Some(&t2),
+            json!({ "password": PW }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+
+    let r = c
+        .post(
+            &format!("/api/v1/auth/mfa/webauthn/credentials/{second}/remove"),
+            Some(&tok),
+            json!({ "password": PW }),
+        )
+        .await;
+    assert_eq!(r.body["webauthn_enabled"], false, "{:?}", r.body);
+    assert_eq!(
+        c.get("/api/v1/auth/me", &other).await.status,
+        StatusCode::UNAUTHORIZED,
+        "other sessions end"
+    );
+    assert_eq!(
+        c.get("/api/v1/auth/me", &tok).await.status,
+        StatusCode::OK,
+        "the acting session stays"
+    );
+    let st = c.get("/api/v1/auth/mfa/status", &tok).await;
+    assert_eq!(st.body["recovery_codes_remaining"], 0);
+    assert!(c.security_kinds(t).await.iter().any(|k| k == "auth.mfa_reset"));
+}

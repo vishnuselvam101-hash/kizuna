@@ -469,13 +469,21 @@ async fn uploader_cannot_release_own_quarantine_and_reports_are_audited() {
     assert_eq!(r.body["artifact"]["status"], "quarantined");
     let id = r.body["artifact"]["id"].as_str().unwrap().to_owned();
     let own = c
-        .post(&format!("/api/v1/artifacts/{id}/release"), Some(&admin), json!({}))
+        .post(
+            &format!("/api/v1/artifacts/{id}/release"),
+            Some(&admin),
+            json!({ "reason": "reviewed the scan findings" }),
+        )
         .await;
     assert_eq!(own.status, StatusCode::FORBIDDEN, "{:?}", own.body);
     let (_, e2) = c.user(t, "tenant_admin").await;
     let a2 = c.mfa_token(&slug, &e2).await;
     let ok = c
-        .post(&format!("/api/v1/artifacts/{id}/release"), Some(&a2), json!({}))
+        .post(
+            &format!("/api/v1/artifacts/{id}/release"),
+            Some(&a2),
+            json!({ "reason": "reviewed the scan findings" }),
+        )
         .await;
     assert_eq!(ok.status, StatusCode::OK, "{:?}", ok.body);
     let rep = c.post("/api/v1/reports", Some(&admin), json!({ "scope": "all" })).await;

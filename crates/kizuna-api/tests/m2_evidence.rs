@@ -85,13 +85,29 @@ async fn active_pdf_is_quarantined_until_privileged_release() {
             .contains(&"ingest.artifact_quarantined".to_string())
     );
     assert_eq!(
-        c.post(&format!("/api/v1/artifacts/{id}/release"), Some(&rev), json!({}))
-            .await
-            .status,
+        c.post(
+            &format!("/api/v1/artifacts/{id}/release"),
+            Some(&rev),
+            json!({ "reason": "reviewed the scan findings" })
+        )
+        .await
+        .status,
         StatusCode::FORBIDDEN
     );
+    let no_reason = c
+        .post(
+            &format!("/api/v1/artifacts/{id}/release"),
+            Some(&admin),
+            json!({ "reason": "  " }),
+        )
+        .await;
+    assert_eq!(no_reason.body["error"], "reason_required", "{:?}", no_reason.body);
     let r = c
-        .post(&format!("/api/v1/artifacts/{id}/release"), Some(&admin), json!({}))
+        .post(
+            &format!("/api/v1/artifacts/{id}/release"),
+            Some(&admin),
+            json!({ "reason": "reviewed the scan findings" }),
+        )
         .await;
     assert_eq!(r.body["status"], "accepted", "{:?}", r.body);
 }
@@ -336,4 +352,59 @@ async fn evidence_view_shows_disagreement_and_rbac() {
         .status,
         StatusCode::NOT_FOUND
     );
+}
+
+#[tokio::test]
+async fn release_refuses_unauthorised_callers_before_reading_the_body() {
+    let c = ctx().await;
+    let (t, slug, _, _) = c.admin().await;
+    let (_, e) = c.user(t, "reviewer").await;
+    let rev = c.token(&slug, &e).await;
+    let r = c
+        .call(
+            Method::POST,
+            &format!("/api/v1/artifacts/{}/release", uuid::Uuid::now_v7()),
+            Some(&rev),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN, "{:?}", r.body);
+}
+
+#[tokio::test]
+async fn tenant_upload_limit_is_enforced_below_the_server_ceiling() {
+    let c = ctx_with(|cfg| cfg.max_upload_bytes = 3 * 1024 * 1024).await;
+    let (_, _, _, admin) = c.admin().await;
+    let mut big = CLEAN_PDF.to_vec();
+    big.extend(std::iter::repeat_n(b' ', 1024 * 1024 + 10));
+    // No tenant setting: the server ceiling (3 MB) applies and a 1 MB file is accepted.
+    let r = c.upload(&admin, "a.pdf", &big, None).await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+    let put = c
+        .call(
+            Method::PUT,
+            "/api/v1/integrations/import-settings",
+            Some(&admin),
+            Some(json!({ "expected_version": 0, "settings": { "max_upload_mb": 1 } })),
+        )
+        .await;
+    assert_eq!(put.status, StatusCode::OK, "{:?}", put.body);
+    big.push(b' ');
+    let r = c.upload(&admin, "b.pdf", &big, None).await;
+    assert_eq!(r.status, StatusCode::PAYLOAD_TOO_LARGE, "{:?}", r.body);
+    // A tenant value above the ceiling never raises it.
+    let put = c
+        .call(
+            Method::PUT,
+            "/api/v1/integrations/import-settings",
+            Some(&admin),
+            Some(json!({ "expected_version": 1, "settings": { "max_upload_mb": 200 } })),
+        )
+        .await;
+    assert_eq!(put.status, StatusCode::OK, "{:?}", put.body);
+    let r = c.upload(&admin, "c.pdf", &big, None).await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+    let huge = vec![b' '; 3 * 1024 * 1024 + 1];
+    let r = c.upload(&admin, "d.pdf", &huge, None).await;
+    assert_eq!(r.status, StatusCode::PAYLOAD_TOO_LARGE, "{:?}", r.body);
 }

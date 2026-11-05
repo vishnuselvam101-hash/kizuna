@@ -496,6 +496,159 @@ pub async fn recover(
     ))
 }
 
+#[derive(Serialize, sqlx::FromRow)]
+pub struct CredentialOut {
+    pub id: Uuid,
+    pub label: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub last_used_at: Option<time::OffsetDateTime>,
+}
+
+#[derive(Serialize)]
+pub struct MfaStatus {
+    pub totp_enabled: bool,
+    pub webauthn_enabled: bool,
+    pub credentials: Vec<CredentialOut>,
+    pub recovery_codes_remaining: i64,
+}
+
+/// The caller's own second factors (no secret material): enrolled methods, security keys, unused recovery codes.
+pub async fn status(State(st): State<AppState>, p: Principal) -> ApiResult<Json<MfaStatus>> {
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let (totp_enabled, webauthn_enabled): (bool, bool) =
+        sqlx::query_as("SELECT totp_enabled, webauthn_enabled FROM users WHERE id = $1")
+            .bind(p.user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let credentials: Vec<CredentialOut> = sqlx::query_as(
+        "SELECT id, label, created_at, last_used_at FROM webauthn_credentials WHERE user_id = $1 ORDER BY created_at",
+    )
+    .bind(p.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let recovery_codes_remaining: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM mfa_recovery_codes WHERE user_id = $1 AND used_at IS NULL")
+            .bind(p.user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    Ok(Json(MfaStatus {
+        totp_enabled,
+        webauthn_enabled,
+        credentials,
+        recovery_codes_remaining,
+    }))
+}
+
+/// Step-up for changes to an existing security-key setup: the current password AND a session that was established
+/// with a security key (a stolen password-only or recovery session cannot weaken or re-key the account).
+async fn step_up_with_key(st: &AppState, p: &Principal, password: String) -> ApiResult<()> {
+    reauthenticate(st, p, password).await?;
+    if !p.mfa_verified {
+        return Err(ApiError::Forbidden("mfa_required"));
+    }
+    Ok(())
+}
+
+/// Removes one of the caller's security keys. Removing the last key turns security-key sign-in off, deletes the
+/// recovery codes and ends every other session of the user.
+pub async fn remove_credential(
+    State(st): State<AppState>,
+    p: Principal,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+    ApiJson(req): ApiJson<PasswordReq>,
+) -> ApiResult<Json<serde_json::Value>> {
+    step_up_with_key(&st, &p, req.password).await?;
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    sqlx::query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE")
+        .bind(p.user_id)
+        .execute(&mut *tx)
+        .await?;
+    let gone = sqlx::query("DELETE FROM webauthn_credentials WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(p.user_id)
+        .execute(&mut *tx)
+        .await?;
+    if gone.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM webauthn_credentials WHERE user_id = $1")
+        .bind(p.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    let mut revoked = 0;
+    if left == 0 {
+        clear_all(&mut tx, p.user_id).await?;
+        sqlx::query("UPDATE users SET webauthn_enabled = false, updated_at = now() WHERE id = $1")
+            .bind(p.user_id)
+            .execute(&mut *tx)
+            .await?;
+        revoked =
+            auth::revoke_user_sessions(&mut tx, p.tenant_id, p.user_id, Some(p.session_id), "webauthn_removed").await?;
+    }
+    audit::append(
+        &mut tx,
+        p.tenant_id,
+        Record::user(
+            p.user_id,
+            "auth.mfa_credential_removed",
+            "user",
+            p.user_id,
+            json!({ "method": "webauthn", "credential": id, "remaining": left, "sessions_revoked": revoked }),
+        ),
+    )
+    .await?;
+    tx.commit().await?;
+    if left == 0 {
+        sec::record(
+            &st.pool,
+            Some(p.tenant_id),
+            Kind::MfaReset,
+            Some(p.user_id),
+            Some(&p.ip),
+            json!({ "via": "self_removed_last_key", "method": "webauthn" }),
+        )
+        .await;
+    }
+    Ok(Json(
+        json!({ "ok": true, "remaining": left, "webauthn_enabled": left > 0 }),
+    ))
+}
+
+/// Issues a fresh set of recovery codes (shown once); every earlier code stops working.
+pub async fn regenerate_recovery_codes(
+    State(st): State<AppState>,
+    p: Principal,
+    ApiJson(req): ApiJson<PasswordReq>,
+) -> ApiResult<Json<serde_json::Value>> {
+    step_up_with_key(&st, &p, req.password).await?;
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let enabled: bool = sqlx::query_scalar("SELECT webauthn_enabled FROM users WHERE id = $1 FOR UPDATE")
+        .bind(p.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if !enabled {
+        return Err(ApiError::Conflict("webauthn_not_enrolled"));
+    }
+    let codes = issue_recovery_codes(&mut tx, p.tenant_id, p.user_id).await?;
+    audit::append(
+        &mut tx,
+        p.tenant_id,
+        Record::user(
+            p.user_id,
+            "auth.recovery_codes_regenerated",
+            "user",
+            p.user_id,
+            json!({ "count": codes.len() }),
+        ),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Json(json!({ "recovery_codes": codes })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

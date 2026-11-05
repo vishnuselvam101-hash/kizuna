@@ -154,7 +154,8 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 @media (max-width: 960px) {
   .grid2, .grid2.wide-right { grid-template-columns: minmax(0, 1fr); }
   .topbar { gap: var(--s3); padding: 0 var(--s3); }
-  .who, .brand-name, .kbd-btn { display: none; }
+  .brand-name, .kbd-btn { display: none; }
+  .who { max-width: 14ch; }
   .content { padding: var(--s3); }
   .sub-nav { padding: 0 var(--s3); }
 }
@@ -327,3 +328,28 @@ figure.graph { margin: 0; }
 
 /* Destructive-to-edits reset sits apart from the save actions (UI audit). */
 .actions .reset { margin-inline-start: auto; }
+
+/* web-gaps: claim ids, single-claim review, claim picker, account security, quarantine release */
+.callout.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); border-style: dashed; background: var(--warn-bg); }
+.claim-id { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.icon-btn { min-width: 24px; min-height: 24px; padding: 0 4px; line-height: 1; font-size: var(--t-sm); background: transparent; border: 1px solid transparent; color: var(--fg-muted); }
+.icon-btn:hover { border-color: var(--line-strong); color: var(--fg); }
+.claim-review { margin-top: var(--s4); padding: var(--s3); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
+.claim-review h3 { font-size: var(--t-md, 1rem); margin: 0; }
+.claim-picker { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s2) var(--s3); margin: 0; }
+.claim-picker legend { padding: 0 var(--s1); }
+.picker-list { list-style: none; margin: var(--s2) 0 0; padding: 0; max-height: 18rem; overflow: auto; border-top: 1px solid var(--line); }
+.picker-list li { border-bottom: 1px solid var(--line); }
+.picker-list .check { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); padding: 4px 2px; cursor: pointer; }
+.picker-list .check:hover { background: var(--surface-2); }
+.span-all { grid-column: 1 / -1; }
+fieldset.faulty { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s2) var(--s3); margin: var(--s3) 0; }
+fieldset.faulty .check { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); }
+.step-hint:focus { outline: none; }
+.codes { columns: 2; font-size: var(--t-md, 1rem); letter-spacing: 0.04em; padding-left: 2.2em; }
+.codes-box { margin: var(--s3) 0; }
+.qr { display: block; margin: var(--s2) 0; border-radius: 4px; max-width: 100%; height: auto; }
+code.secret { word-break: break-all; user-select: all; }
+button.who { border: 0; background: transparent; cursor: pointer; }
+button.who:hover, button.who[aria-current="page"] { color: var(--fg); text-decoration: underline; }
+tr[aria-current="true"] td { background: var(--info-bg); }

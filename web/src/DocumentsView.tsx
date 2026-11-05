@@ -1,12 +1,114 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DataTable } from "./DataTable";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
-import type { Artifact } from "./types";
+import type { Artifact, ArtifactDetail } from "./types";
 import { fileSize } from "./format";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
 
 export const DOC_KINDS = ["spec_document", "drawing", "purchase_order", "inspection_report", "spreadsheet", "other"] as const;
+
+/**
+ * Quarantine release (tenant administrators). Four-eyes: the server refuses anyone who uploaded the document, and so
+ * does this screen before asking; a written reason is required and recorded in the audit chain.
+ */
+function QuarantineRelease({ a, onClose, onReleased }: { a: Artifact; onClose: () => void; onReleased: (msg: string) => void }) {
+  const { api, me } = useSession();
+  const { t, fmtDate } = useI18n();
+  const [detail, setDetail] = useState<ArtifactDetail | null>(null);
+  const [loadErr, setLoadErr] = useState<unknown>(null);
+  const [reason, setReason] = useState("");
+  const [checked, setChecked] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    api
+      .request<ArtifactDetail>("GET", `/artifacts/${a.id}`)
+      .then((d) => live && setDetail(d))
+      .catch((x) => live && setLoadErr(x));
+    return () => {
+      live = false;
+    };
+  }, [api, a.id]);
+  const uploaders = detail ? [detail.artifact.created_by, ...detail.captures.map((c) => c.uploaded_by)] : [];
+  const own = uploaders.includes(me.user_id);
+  async function release(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reason.trim() || !checked) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      await api.request<Artifact>("POST", `/artifacts/${a.id}/release`, { reason: reason.trim() });
+      onReleased(t("quarantine.released", { name: a.display_name }));
+    } catch (x) {
+      setErr(x);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const findings = a.scan_result?.findings ?? [];
+  return (
+    <Panel title={t("quarantine.title", { name: a.display_name })} id="qr">
+      <Notice error={loadErr ?? err} />
+      <dl className="kv">
+        <dt>{t("quarantine.findings")}</dt>
+        <dd>{findings.length ? findings.join(", ") : t("common.none")}</dd>
+        <dt>{t("docs.sha")}</dt>
+        <dd>
+          <code title={a.sha256}>{a.sha256.slice(0, 16)}…</code>
+        </dd>
+        <dt>{t("quarantine.uploads")}</dt>
+        <dd>
+          {detail
+            ? detail.captures.map((c) => (
+                <div key={c.uploaded_at + c.uploaded_by}>
+                  <span className="mono">{c.original_filename}</span> · <span className="num">{fmtDate(c.uploaded_at)}</span>
+                  {c.uploaded_by === me.user_id && <span className="badge warn">{t("quarantine.you")}</span>}
+                </div>
+              ))
+            : t("common.loading")}
+        </dd>
+      </dl>
+      {a.scan_result?.quarantined_by_incident !== undefined && <p className="callout">{t("quarantine.incidentNote")}</p>}
+      {!me.session_mfa_verified && <p className="callout warn">{t("quarantine.needMfa")}</p>}
+      {detail && own ? (
+        <p className="callout crit" role="note">
+          {t("quarantine.ownUpload")}
+        </p>
+      ) : (
+        detail && (
+          <form onSubmit={release}>
+            <p className="muted">{t("quarantine.lead")}</p>
+            <label>
+              {t("quarantine.reason")}
+              <textarea required maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+              {t("quarantine.confirmCheck")}
+            </label>
+            <div className="actions">
+              <button className="danger" disabled={busy || !reason.trim() || !checked || !me.session_mfa_verified}>
+                {t("quarantine.release")}
+              </button>
+              <button type="button" onClick={onClose}>
+                {t("common.cancel")}
+              </button>
+            </div>
+          </form>
+        )
+      )}
+      {detail && own && (
+        <div className="actions">
+          <button type="button" onClick={onClose}>
+            {t("claim.close")}
+          </button>
+        </div>
+      )}
+    </Panel>
+  );
+}
 
 export function DocumentsView() {
   const { api, can } = useSession();
@@ -19,6 +121,7 @@ export function DocumentsView() {
   const [busy, setBusy] = useState(false);
   // Re-extraction (after an import-settings change) is a deliberate two-step action with a required reason.
   const [re, setRe] = useState<{ id: string; name: string } | null>(null);
+  const [rel, setRel] = useState<Artifact | null>(null);
   const [reason, setReason] = useState("");
 
   function reextract(e: React.FormEvent) {
@@ -116,6 +219,19 @@ export function DocumentsView() {
           </form>
         </Panel>
       )}
+      {rel && (
+        <QuarantineRelease
+          key={rel.id}
+          a={rel}
+          onClose={() => setRel(null)}
+          onReleased={(m) => {
+            setRel(null);
+            setErr(null);
+            setMsg(m);
+            list.reload();
+          }}
+        />
+      )}
       <Panel title={t("docs.library")} id="lib">
         <Loading on={list.loading} />
         {list.data && list.data.length === 0 && <Empty text={t("docs.none")} />}
@@ -162,6 +278,11 @@ export function DocumentsView() {
                     >
                       {t("docs.verify")}
                     </button>
+                    {a.status === "quarantined" && can("incident_manage") && (
+                      <button disabled={busy} aria-label={t("quarantine.reviewFor", { name: a.display_name })} onClick={() => setRel(a)}>
+                        {t("quarantine.review")}
+                      </button>
+                    )}
                     {a.status === "accepted" && can("claim_write") && (
                       <button
                         disabled={busy}

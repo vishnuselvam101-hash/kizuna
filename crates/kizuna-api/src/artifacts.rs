@@ -11,7 +11,7 @@ use axum::http::{HeaderValue, header};
 use axum::response::Response;
 use evidence_core::scan::{self, Limits, Verdict};
 use policy_engine::Permission;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -109,6 +109,18 @@ async fn read_upload(mut mp: Multipart, max: usize) -> ApiResult<(Vec<u8>, Strin
     Ok((data, name, declared, kind))
 }
 
+/// Effective per-upload byte limit: the tenant's Import setting (`max_upload_mb`, when set and positive) can only
+/// lower the operator ceiling `KIZUNA_MAX_UPLOAD_BYTES`, never raise it.
+pub fn upload_limit(server_max: usize, tenant_mb: Option<i64>) -> usize {
+    match tenant_mb {
+        Some(mb) if mb > 0 => usize::try_from(mb)
+            .ok()
+            .and_then(|m| m.checked_mul(1024 * 1024))
+            .map_or(server_max, |b| b.min(server_max)),
+        _ => server_max,
+    }
+}
+
 pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> ApiResult<Json<UploadResp>> {
     p.require(&st, Permission::ArtifactUpload).await?;
     if !st.limiter.check(
@@ -126,15 +138,24 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         .await;
         return Err(ApiError::TooManyRequests);
     }
-    {
+    let limit = {
         let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
         let blocked = crate::incidents::uploads_blocked(&mut tx, p.user_id).await?;
+        let tenant_mb: Option<i64> = sqlx::query_scalar(
+            "SELECT CASE WHEN jsonb_typeof(settings->'max_upload_mb') = 'number' \
+               THEN floor((settings->>'max_upload_mb')::numeric)::bigint END \
+             FROM import_settings ORDER BY version DESC LIMIT 1",
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .flatten();
         tx.commit().await?;
         if blocked {
             return Err(ApiError::Forbidden("uploads_restricted"));
         }
-    }
-    let (data, name, declared, kind) = read_upload(mp, st.cfg.max_upload_bytes).await?;
+        upload_limit(st.cfg.max_upload_bytes, tenant_mb)
+    };
+    let (data, name, declared, kind) = read_upload(mp, limit).await?;
     let mut report = scan::scan(&data, &Limits::default());
     let sha = crypto::sha256(&data);
     // Antivirus after the static scan (ADR 0017): any non-clean engine outcome quarantines (fail closed).
@@ -437,9 +458,28 @@ pub async fn content(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
     Ok(res)
 }
 
-/// Releases a quarantined artifact after human review (privileged, MFA, audited).
-pub async fn release(State(st): State<AppState>, p: Principal, Path(id): Path<Uuid>) -> ApiResult<Json<ArtifactOut>> {
+#[derive(Deserialize)]
+pub struct ReleaseReq {
+    pub reason: Option<String>,
+}
+
+/// Releases a quarantined artifact after human review (privileged, MFA, audited, reason required). The body is
+/// parsed only after the permission check so an unauthorised caller always gets 403.
+pub async fn release(
+    State(st): State<AppState>,
+    p: Principal,
+    Path(id): Path<Uuid>,
+    body: axum::body::Bytes,
+) -> ApiResult<Json<ArtifactOut>> {
     p.require(&st, Permission::IncidentManage).await?;
+    let req: ReleaseReq = serde_json::from_slice(&body).map_err(|_| ApiError::BadRequest("invalid_json"))?;
+    let reason = req.reason.as_deref().map(str::trim).unwrap_or("").to_owned();
+    if reason.is_empty() {
+        return Err(ApiError::BadRequest("reason_required"));
+    }
+    if reason.chars().count() > 2000 {
+        return Err(ApiError::BadRequest("reason_too_long"));
+    }
     // Four-eyes: nobody releases a document they uploaded (review M5-M7 L8).
     {
         let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
@@ -499,7 +539,13 @@ pub async fn release(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
     audit::append(
         &mut tx,
         p.tenant_id,
-        Record::user(p.user_id, "artifact.released", "artifact", id, json!({})),
+        Record::user(
+            p.user_id,
+            "artifact.released",
+            "artifact",
+            id,
+            json!({ "reason": reason }),
+        ),
     )
     .await?;
     let out = fetch(&mut tx, id).await?;
@@ -510,7 +556,7 @@ pub async fn release(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
         Kind::QuarantineReleased,
         Some(p.user_id),
         Some(&p.ip),
-        json!({ "artifact_id": id }),
+        json!({ "artifact_id": id, "reason": reason }),
     )
     .await;
     Ok(Json(out))
@@ -518,6 +564,18 @@ pub async fn release(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tenant_upload_limit_only_lowers_the_server_ceiling() {
+        use super::upload_limit as l;
+        const MB: usize = 1024 * 1024;
+        assert_eq!(l(25 * MB, None), 25 * MB);
+        assert_eq!(l(25 * MB, Some(5)), 5 * MB);
+        assert_eq!(l(25 * MB, Some(500)), 25 * MB);
+        assert_eq!(l(25 * MB, Some(0)), 25 * MB);
+        assert_eq!(l(25 * MB, Some(-3)), 25 * MB);
+        assert_eq!(l(25 * MB, Some(i64::MAX)), 25 * MB);
+    }
+
     #[test]
     fn filenames_are_display_only() {
         use super::sanitize_filename as s;

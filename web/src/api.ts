@@ -1,3 +1,5 @@
+import { getAssertion } from "./webauthn";
+
 // API client. Tokens live only in memory (never localStorage) to limit XSS token theft.
 
 export class ApiError extends Error {
@@ -72,6 +74,30 @@ export class Api {
       password,
       totp_code: totp_code || null,
     });
+    this.tokens = t;
+    return t;
+  }
+
+  /** Password first, then the security key (navigator.credentials.get); yields an MFA-verified session. */
+  async loginWithKey(tenant: string, email: string, password: string) {
+    const start = await this.request<{ challenge_id: string; public_key: { publicKey: Record<string, unknown> } }>(
+      "POST",
+      "/auth/webauthn/login/start",
+      { tenant, email, password },
+    );
+    const credential = await getAssertion(start.public_key);
+    const t = await this.request<Tokens & { mfa_verified: boolean }>("POST", "/auth/webauthn/login/finish", {
+      tenant,
+      challenge_id: start.challenge_id,
+      credential,
+    });
+    this.tokens = t;
+    return t;
+  }
+
+  /** Lost security key: password + one-time recovery code. Clears the keys; the session is not MFA-verified. */
+  async recover(tenant: string, email: string, password: string, recovery_code: string) {
+    const t = await this.request<Tokens & { mfa_verified: boolean }>("POST", "/auth/webauthn/recover", { tenant, email, password, recovery_code });
     this.tokens = t;
     return t;
   }

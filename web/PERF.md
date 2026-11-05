@@ -15,7 +15,8 @@ PW_CORE=<playwright-core path> OUT=<dir> node scripts/ui-review.mjs
 
 | Chunk | Size | Loaded on |
 |---|---|---|
-| `index.js` (app shell, all screens) | 76.4 KB | every route (budget 180 KB) |
+| `index.js` (app shell, all screens) | 76.4 KB (98.1 KB after web-gaps, 2026-11-05) | every route (budget 180 KB) |
+| `qrcode.js` (qrcode-generator 1.4.4, MIT) | 7.6 KB | dynamic import only while enrolling an authenticator app (Account security) |
 | `index.css` | 4.8 KB | every route |
 | `scene3d.js` (three.js 0.170.0, MIT) | 122.7 KB | dynamic import only by the login hero, Overview graph and decision trace graph, and only when WebGL2 is available, motion is allowed and the device is not low-power |
 | Fonts (woff2, latin subsets; Japanese via unicode-range slices) | ~13–21 KB each | on first use; `font-display: swap` |

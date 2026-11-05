@@ -44,12 +44,25 @@ test("approve and reject need a reason; request-evidence does not", () => {
   wrap(<FindingDetail d={conflictDetail} onReview={onReview} canReview />);
   fireEvent.click(screen.getByRole("button", { name: "Reject evidence" }));
   expect(onReview).not.toHaveBeenCalled();
-  expect(screen.getByRole("alert").textContent).toMatch(/reason is required/);
+  expect(screen.getAllByRole("alert").map((a) => a.textContent).join(" ")).toMatch(/reason is required/);
   fireEvent.click(screen.getByRole("button", { name: "Request more evidence" }));
-  expect(onReview).toHaveBeenLastCalledWith("request_evidence", "");
+  expect(onReview).toHaveBeenLastCalledWith("request_evidence", "", []);
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "PO is outdated" } });
   fireEvent.click(screen.getByRole("button", { name: "Approve (documented waiver)" }));
-  expect(onReview).toHaveBeenLastCalledWith("approve", "PO is outdated");
+  expect(onReview).toHaveBeenLastCalledWith("approve", "PO is outdated", []);
+});
+
+test("rejecting a finding requires naming the faulty evidence and sends it", () => {
+  const onReview = vi.fn();
+  wrap(<FindingDetail d={conflictDetail} onReview={onReview} canReview />);
+  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "PO superseded by rev D" } });
+  fireEvent.click(screen.getByRole("button", { name: "Reject evidence" }));
+  expect(onReview).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert").textContent).toMatch(/evidence you tick is rejected/);
+  const group = screen.getByRole("group", { name: /Which evidence is wrong/ });
+  fireEvent.click(within(group).getByRole("checkbox", { name: /Contradicting source/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Reject evidence" }));
+  expect(onReview).toHaveBeenLastCalledWith("reject", "PO superseded by rev D", ["c-b"]);
 });
 
 test("evidence table shows disagreeing claims with source, method and review state", () => {
