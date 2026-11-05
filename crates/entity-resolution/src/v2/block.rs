@@ -11,6 +11,8 @@ pub struct RecordKeys {
     pub prefixes: Vec<String>,
     /// Distinct q-grams (bigrams) of the comparison keys.
     pub qgrams: Vec<String>,
+    /// Exact keys (e.g. single-deletion variants): records sharing one are compared.
+    pub exact: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -90,6 +92,21 @@ pub fn candidate_pairs(recs: &[RecordKeys], cfg: &BlockConfig) -> Vec<(u32, u32)
             }
         }
     }
+    // 2b. Exact-key blocks (deletion neighbourhood: catches one substitution, insertion, deletion or
+    // transposition even where prefix blocks are too large and q-grams are stop-grams).
+    let mut exact: HashMap<&str, Vec<u32>> = HashMap::new();
+    for (i, r) in recs.iter().enumerate() {
+        for k in &r.exact {
+            exact.entry(k.as_str()).or_default().push(i as u32);
+        }
+    }
+    for members in exact.values().filter(|m| m.len() <= cfg.qgram_cap) {
+        for x in 0..members.len() {
+            for y in x + 1..members.len() {
+                add(&mut pairs, members[x], members[y]);
+            }
+        }
+    }
     // 3. Q-gram index with stop-grams removed.
     let mut postings: HashMap<&str, Vec<u32>> = HashMap::new();
     for (i, r) in recs.iter().enumerate() {
@@ -127,6 +144,7 @@ mod tests {
             sort_keys: vec![k.into()],
             prefixes: vec![k.chars().take(3).collect()],
             qgrams: qgrams(k),
+            exact: vec![],
         }
     }
 

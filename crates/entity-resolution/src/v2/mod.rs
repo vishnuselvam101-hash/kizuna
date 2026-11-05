@@ -153,6 +153,7 @@ fn block_keys(kind: Kind, p: &Prepared) -> RecordKeys {
                 sort_keys: vec![c.core.clone()],
                 prefixes: vec![format!("c:{}", c.core.chars().take(2).collect::<String>())],
                 qgrams: qgrams(&c.core).into_iter().map(|q| format!("c:{q}")).collect(),
+                exact: vec![],
             };
             if let Some(r) = c.romaji.as_ref().filter(|r| !r.is_empty()) {
                 k.sort_keys.push(r.clone());
@@ -161,11 +162,24 @@ fn block_keys(kind: Kind, p: &Prepared) -> RecordKeys {
             }
             k
         }
-        _ => RecordKeys {
-            sort_keys: vec![p.ocr.clone()],
-            prefixes: vec![p.ocr.chars().take(4).collect()],
-            qgrams: qgrams(&p.ocr),
-        },
+        _ => {
+            let c: Vec<char> = p.core.chars().collect();
+            let mut exact = vec![format!("={}", p.core)];
+            if c.len() >= 5 {
+                exact.extend((0..c.len()).map(|i| {
+                    let v: String = c.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, x)| x).collect();
+                    format!("={v}")
+                }));
+            }
+            exact.sort();
+            exact.dedup();
+            RecordKeys {
+                sort_keys: vec![p.ocr.clone()],
+                prefixes: vec![p.ocr.chars().take(4).collect()],
+                qgrams: qgrams(&p.ocr),
+                exact,
+            }
+        }
     }
 }
 

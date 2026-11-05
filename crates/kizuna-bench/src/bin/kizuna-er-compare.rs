@@ -74,7 +74,7 @@ fn evaluate(d: &Dataset, runs: usize) -> Value {
                 "pairs_compared": compared1, "time_ms_median": median(t1) },
         "v2": { "score": score(&truth, &p2), "score_same_script": score(&reachable, &p2.iter().filter(|p| !truth.contains_key(*p) || reachable.contains_key(*p)).cloned().collect()),
                 "pairs_compared": r2.stats.pairs_compared, "time_ms_median": median(t2), "outcomes": outcomes,
-                "em": r2.stats.em, "t_match": r2.stats.t_match, "t_possible": r2.stats.t_possible, "typo_reviews": r2.stats.typo_reviews, "params": r2.stats.params },
+                "em": r2.stats.em, "t_match": r2.stats.t_match, "t_possible": r2.stats.t_possible, "typo_reviews": r2.stats.typo_reviews, "typo_reviews_true": r2.candidates.iter().filter(|c| c.reasons.contains(&"possible_typo_or_different_part") && truth.contains_key(&pair(&c.left, &c.right))).count(), "params": r2.stats.params },
         "v2_missed_same_script_sample": reachable.keys().filter(|p| !p2.contains(*p)).take(12).map(|(a, b)| format!("{a} | {b}")).collect::<Vec<_>>(),
         "v2_false_positive_sample": p2.iter().filter(|p| !truth.contains_key(*p)).take(12).map(|(a, b)| format!("{a} | {b}")).collect::<Vec<_>>(),
         "per_variant_recall": per_variant.iter().map(|(k, (n, a, b))| (k.to_string(), json!({"pairs": n, "v1": a, "v2": b}))).collect::<serde_json::Map<_, _>>(),
