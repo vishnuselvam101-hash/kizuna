@@ -31,5 +31,9 @@ Status: accepted (2026-11-05)
 - A hash proves integrity since capture, never truthfulness or authenticity of the content (directive §9).
 - Signed checkpoints: deferred to M5/M6 (Ed25519 via `ed25519-dalek`) behind a key-management interface.
 
+- **Founder decision 2026-11-05: WebAuthn stays optional for tenant administrators.** TOTP satisfies the MFA
+  requirement for privileged permissions; an administrator who enrols a security key is held to it (above). Not
+  mandated because pilot users may lack authenticators; revisit before production or for defence customers.
+
 ## Consequences
 No home-made primitives; protocol code (TOTP, chain encoding) is small and vector/property tested.

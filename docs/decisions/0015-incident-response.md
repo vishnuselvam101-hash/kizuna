@@ -21,6 +21,22 @@ Status: accepted (2026-11-05)
   (closes M1 review finding #6 when checkpoints are exported and the key is not stored with the database).
 - Notifications are in-app only; e-mail/webhook connectors need a deployment decision.
 
+- **Per-tenant thresholds (M7, 2026-11-05).** `GET/PUT /security/detection-settings` (read: security-event
+  readers; write: tenant_admin with MFA, versioned in `tenant_settings`, optimistic concurrency, audited
+  `settings.detection_updated`). Settings: `mode` (`static` | `adaptive`), `thresholds` (any subset; defaults below),
+  `adaptive_max_factor` (1–5, default 3), `baseline_days` (1–30, default 7). Unknown keys are refused.
+  Defaults / allowed ranges: brute_force 5 (3–50), brute_force_lock 10 (3–100, ≥ brute_force), spray_failures 8
+  (3–200), spray_users 3 (2–50), authz_denials 10 (3–500), privileged_ops 5 (2–200), upload_abuse 5 (2–200),
+  extraction_failures 5 (2–200), exports 20 (3–1000). Upper bounds stop a tenant or a stolen admin session from
+  switching detection off.
+- **Adaptive mode** raises only activity-volume rules (authorization probing, privileged bursts, upload abuse,
+  extraction failures, exports) to `busiest past window + 1`, where the baseline is the tenant's own events older
+  than 1 h and within `baseline_days` (per user where the rule is per user). Clamped to
+  `[configured, configured × adaptive_max_factor]`, so a slow attacker can raise a threshold at most by the factor,
+  and an ongoing burst never counts toward its own baseline. Credential, token and integrity rules are never adapted.
+  Recomputed at most every 10 minutes per tenant (in-process cache, dropped when settings change).
+  `GET` returns the active thresholds.
+
 ## Consequences
-Thresholds are static defaults, untuned on real traffic. Address blocks are per tenant and only apply to login.
+Defaults are untuned on real traffic; tenants can now tune them within bounds. Address blocks are per tenant and only apply to login.
 Platform-level (null-tenant) events are not correlated across tenants yet.

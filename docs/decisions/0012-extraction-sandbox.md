@@ -1,4 +1,7 @@
-# ADR 0012: Sandboxed, deterministic document extraction (no external AI)
+# ADR 0012: Sandboxed, deterministic document extraction (no external AI inside the sandbox)
+
+> Amended 2026-11-05 by ADR 0016: optional, per-tenant opt-in AI label mapping runs in the API process on
+> already-extracted records, never inside this sandbox and never on raw documents.
 
 Status: accepted (2026-11-05)
 

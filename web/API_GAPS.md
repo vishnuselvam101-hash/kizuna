@@ -14,12 +14,22 @@ The UI uses only the existing `/api/v1` routes. These gaps were noted instead of
 | 8 | Reports are per decision; no organisation-level audit report | Reports screen generates per-decision Markdown/JSON and exports raw audit events as JSON | `POST /reports` (scope: date range / subject / all open findings) returning a hashed, signed report with `Content-Disposition` |
 | 9 | Users screen cannot list a user's sessions | "End sessions" revokes all | `GET /users/{id}/sessions` |
 
-## Status (integrator, 2026-11-05)
+## Status (2026-11-05, M7) — all nine gaps closed
 
-All nine gaps now have server endpoints with integration tests (`crates/kizuna-api/tests/m6_api_gaps.rs`):
-1 `GET/PUT /integrations/import-settings` (versioned, optimistic concurrency, admin+MFA, audited) — **UI wired** (save + load).
-Stored settings are not yet consumed by the extraction worker (worker uses its built-in limits).
-2 `GET /dashboard/summary` · 3 `/claims?limit&after` + `GET /subjects?type&after&limit` · 4 `artifact_display_name` in claims ·
-5 `evidence_claim_ids` in decisions · 6 supplier entity decisions · 7 `/compare/{subject_type}/{key}` ·
-8 `POST /reports` (org report, hashed, Ed25519-signed when a key is configured) · 9 `GET /users/{id}/sessions` — **UI wired**.
-Gaps 2–8: the API exists; the UI still uses its earlier client-side workarounds (switching is a follow-up).
+Every gap has a server endpoint with integration tests (`crates/kizuna-api/tests/m6_api_gaps.rs`,
+`m7_ai_settings.rs`) and the UI uses it; the client-side workarounds in the table above are removed.
+
+| # | Endpoint | UI |
+|---|---|---|
+| 1 | `GET/PUT /integrations/import-settings` (versioned, optimistic concurrency, admin+MFA, audited) | Integrations → Import settings; **consumed by the extraction worker since M7** (CSV delimiter/encoding/header row, XLSX sheet/header row, OCR on/off + language, record/page/sheet limits, long-table column mapping); the run records `import_settings_version` |
+| 2 | `GET /dashboard/summary` | Overview key figures |
+| 3 | `/claims?limit&after`, `GET /subjects?type&after&limit` | Overview graph (first 300 claims), Records paging ("Load more"; the identifier filter searches loaded pages only) |
+| 4 | `artifact_display_name` in claims | Evidence tables |
+| 5 | `evidence_claim_ids` in decisions | Org graph links decisions to their cited claims |
+| 6 | supplier entity decisions | Duplicate review on Components and Suppliers |
+| 7 | `/compare/{subject_type}/{key}` | Comparison screen with component/supplier selector |
+| 8 | `POST /reports` (scope, date range; SHA-256, Ed25519-signed when a key is configured) | Reports → Organisation report (hash, signature state, JSON download) |
+| 9 | `GET /users/{id}/sessions` | Users screen |
+
+New in M7 (API only, no screen yet): `GET/PUT /integrations/ai-extraction` (opt-in with data-processing notice,
+ADR 0016) and `GET/PUT /security/detection-settings` (ADR 0015).

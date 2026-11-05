@@ -1,6 +1,6 @@
 # Build status
 
-Updated: 2026-11-05 (end of M6, integrated `main`). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local),
+Updated: 2026-11-05 (M7 on `main`). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local),
 Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI workflow written but never executed.
 
 **Not production-ready.** Synthetic data only; pilot-readiness needs the founder decisions below.
@@ -14,9 +14,17 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | M3 | done | sandboxed Python extraction (CSV, XLSX, PDF text/tables, scanned-PDF OCR, images, DXF title blocks; bubblewrap + prlimit), `mfg-map@1`, blocked entity resolution with human-confirmed aliases, 9 conflict kinds (`mfg-rules@1`), review workflow with four-eyes |
 | M4 | done | decisions with derivation hashes, typed dependencies with materiality, selective invalidation incl. earlier claim versions and decision chains, traces, reconfirm/revoke, signed verification reports |
 | M5 | done | 10 detection rules, incidents, pre-authorised vs approval-gated containment, guards, revert/resolve, emergency unlock, Ed25519 audit checkpoints, security monitoring screen |
+| M7 | done | opt-in AI-assisted label mapping with free models (ADR 0016), saved import settings consumed by the worker, per-tenant + adaptive detection thresholds (ADR 0015), web API gaps 2–8 switched to real endpoints, WebAuthn-optional decision recorded (ADR 0006) |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
-## Commands run and results (2026-11-05, this host, final `main`)
+## M7 results (2026-11-05, this host)
+| Command | Result |
+|---|---|
+| `scripts/check.sh` | **pass**: fmt, clippy `-D warnings`, **176 Rust tests** (+20; 1 ignored live test), cargo/pnpm/pip audit 0, ruff + **59 pytest** (+11), tsc + **35 vitest** (+6), gitleaks 0. The 8 GB guard removed `target/debug` (8.2 GB); disk 43 GB free |
+| `cargo test -p kizuna-api --test m7_ai_settings` | 7/7 against real PostgreSQL + local mock OpenAI server: off by default, no request for tenants without opt-in, notice + admin-MFA opt-in, redaction (no e-mail/part number sent), `ai_suggested` + not decision evidence until four-eyes review, DB trigger, injection corpus (7 labels × 7 hijacked answers → fallback, only `unreviewed` claims), 500/timeout/budget fallback, import settings drive worker + long-table mapping, per-tenant/adaptive thresholds |
+| live free model (ignored test, `gemma4:cloud` via local Ollama `127.0.0.1:11434/v1`) | pass, 1.1 s, 374+174 tokens: Werkstoff→material, Breite (mm)→width (mm), Härte→hardness; an injected label was mapped to `approval status` → stays `ai_suggested` (residual risk, ADR 0016). OmniRoute :20128 was down |
+
+## M6 commands run and results (2026-11-05, this host)
 | Command | Result |
 |---|---|
 | `scripts/check.sh` | **pass**: fmt; clippy `-D warnings`; **156 Rust tests** (unit + property + integration against real PostgreSQL incl. the real bubblewrap-sandboxed worker); cargo audit 0 vulnerabilities (1 documented ignore of an uncompiled crate); pnpm audit 0; pip-audit 0; ruff + **48 pytest**; tsc + **29 vitest** (incl. axe a11y); gitleaks 0 (35 exact fingerprints allowlisted: invalid tokens of dropped E2E DBs, see `.gitleaksignore`) |
@@ -58,18 +66,22 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 - No seccomp filter in the extraction sandbox; process limit only when the server runs as a non-root user.
 - Static upload scan is not antivirus; `/ObjStm` PDFs are quarantined conservatively (expect false positives).
 - Extraction accuracy, ER and conflict rules measured only on synthetic data (E2E); no real supplier documents yet.
-- Detection thresholds are static; address blocks are per tenant and login-only; no cross-tenant (platform) correlation.
-- Notifications are in-app only. Import settings are stored/versioned but not yet consumed by the extraction worker.
-  Web API gaps 2–8 have endpoints; the UI still uses its earlier client-side workarounds for them.
+- Detection thresholds: per tenant (bounded) with optional adaptive mode, still untuned on real traffic; address
+  blocks are per tenant and login-only; no cross-tenant (platform) correlation.
+- AI-assisted extraction: free providers may log/train on what is sent (stated in the opt-in notice); redaction is
+  heuristic (names in free text are not detected); an injected label can steer its own field choice (result stays
+  `ai_suggested`). AI opt-in and detection settings are API-only (no screen yet). Re-extracting an artifact after
+  changing import settings is refused (`already_extracted`, one run per mapping version).
+- Notifications are in-app only.
 - Benchmarks ran on a busy shared host (upper bounds). CI workflow never executed (no remote).
 - Rate limiter is per process (single instance only). Dependency major upgrades pending (sqlx 0.9, rand 0.10, ...).
 
-## Founder decisions needed
-1. Make WebAuthn mandatory for tenant administrators (today: optional; once enrolled it is required for that admin).
-2. KIZUNA trademark/patent/FTO checks before any public demo (`docs/research/unverified-claims.md`).
-3. Pilot hosting, TLS domain, off-host backup/checkpoint storage, and whether e-mail/webhook alerts are allowed.
-4. Any external AI provider for extraction (none used; would need customer authorisation + data-processing policy).
+## Founder decisions (2026-11-05)
+1. WebAuthn stays optional for admins (recorded in ADR 0006).
+2. No trademark/patent work.
+3. Pilot hosted on this server (deployment, seccomp, AV, backups, alerts: `ops-pilot` lane).
+4. External AI = yes, free models only (ADR 0016; off by default, per-tenant opt-in).
 
 ## Next step
-`scripts/check.sh && scripts/e2e.sh --seed 7`, then on pilot hardware: run as the dedicated `kizuna` user per
+Screens for AI opt-in and detection settings; merge the `ops-pilot` lane; then `scripts/check.sh && scripts/e2e.sh --seed 7`, and on the pilot host: run as the dedicated `kizuna` user per
 `docs/deploy/DEPLOYMENT.md`, add a seccomp profile for the worker, and re-run `scripts/bench.sh` on an idle host.
