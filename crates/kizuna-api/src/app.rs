@@ -154,6 +154,24 @@ pub fn router(st: AppState) -> Router {
             "/evidence-requests/{id}/document",
             get(crate::evidence_requests::document),
         )
+        .route(
+            "/evidence-requests/{id}/portal-uploads",
+            get(crate::portal::request_uploads),
+        )
+        .route(
+            "/portal-users",
+            get(crate::portal::list_users).post(crate::portal::invite),
+        )
+        .route("/portal-users/{id}/revoke", post(crate::portal::revoke))
+        // Supplier portal (ADR 0023): a separate principal; these routes accept only `kzp.` sessions.
+        .route("/portal/invite/start", post(crate::portal::invite_start))
+        .route("/portal/invite/finish", post(crate::portal::invite_finish))
+        .route("/portal/login", post(crate::portal::login))
+        .route("/portal/logout", post(crate::portal::logout))
+        .route("/portal/me", get(crate::portal::me))
+        .route("/portal/requests", get(crate::portal::list_requests))
+        .route("/portal/requests/{id}", get(crate::portal::get_request))
+        .route("/portal/requests/{id}/uploads", get(crate::portal::list_uploads))
         .route("/security/summary", get(incidents::summary))
         .route("/security/status", get(crate::ops::status))
         .route("/dashboard/summary", get(insights::dashboard))
@@ -202,6 +220,7 @@ pub fn router(st: AppState) -> Router {
         .layer(RequestBodyLimitLayer::new(body_limit));
     let upload_api = Router::new()
         .route("/artifacts", post(artifacts::upload))
+        .route("/portal/requests/{id}/uploads", post(crate::portal::upload))
         .layer(DefaultBodyLimit::max(upload_limit))
         .layer(RequestBodyLimitLayer::new(upload_limit));
 

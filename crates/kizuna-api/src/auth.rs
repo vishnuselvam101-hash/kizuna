@@ -119,7 +119,7 @@ impl Principal {
     }
 }
 
-fn bearer(headers: &HeaderMap) -> Option<&str> {
+pub(crate) fn bearer(headers: &HeaderMap) -> Option<&str> {
     headers
         .get(header::AUTHORIZATION)?
         .to_str()
@@ -132,6 +132,11 @@ impl FromRequestParts<AppState> for Principal {
     async fn from_request_parts(parts: &mut Parts, st: &AppState) -> Result<Self, ApiError> {
         let ClientIp(ip) = ClientIp::from_request_parts(parts, st).await?;
         let token = bearer(&parts.headers).ok_or(ApiError::Unauthorized("missing_token"))?;
+        // A supplier portal session is a different principal: it never authenticates on the tenant API.
+        if let Some((tenant, _)) = crypto::parse_token(TokenKind::Portal, token) {
+            crate::portal::deny(st, tenant, None, &ip, "supplier_token_on_tenant_api", parts.uri.path()).await;
+            return Err(ApiError::Forbidden("supplier_scope"));
+        }
         let Some((tenant, hash)) = crypto::parse_token(TokenKind::Access, token) else {
             return Err(ApiError::Unauthorized("invalid_token"));
         };
@@ -198,7 +203,7 @@ pub struct TokenResp {
 }
 
 /// Runs argon2 off the async runtime, bounded by `hash_permits`; `None` hash burns a dummy verification.
-async fn verify_pw_blocking(st: &AppState, pw: String, hash: Option<String>) -> ApiResult<bool> {
+pub(crate) async fn verify_pw_blocking(st: &AppState, pw: String, hash: Option<String>) -> ApiResult<bool> {
     let permit = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         st.hash_permits.clone().acquire_owned(),

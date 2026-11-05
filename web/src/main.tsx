@@ -9,4 +9,10 @@ import "./style.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 
-createRoot(document.getElementById("root")!).render(<App />);
+const root = createRoot(document.getElementById("root")!);
+// The supplier portal is a separate entry for external supplier users (ADR 0023), loaded only on /portal.
+if (window.location.pathname === "/portal" || window.location.pathname.startsWith("/portal/")) {
+  import("./PortalApp").then(({ PortalApp }) => root.render(<PortalApp />));
+} else {
+  root.render(<App />);
+}

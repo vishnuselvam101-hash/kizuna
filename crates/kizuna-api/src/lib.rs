@@ -22,6 +22,7 @@ pub mod integrity;
 pub mod keyring;
 pub mod matching;
 pub mod ops;
+pub mod portal;
 pub mod ratelimit;
 pub mod review_batches;
 pub mod seccomp;
