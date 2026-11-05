@@ -164,6 +164,7 @@ pub async fn create(
     )
     .await?;
     let out = fetch(&mut tx, id).await?;
+    crate::decisions::on_claim_change(&mut tx, p.tenant_id, p.user_id, crate::decisions::new_evidence(&out)).await?;
     tx.commit().await?;
     Ok(Json(out))
 }
@@ -229,6 +230,17 @@ pub async fn supersede(
     )
     .await?;
     let out = fetch(&mut tx, id).await?;
+    crate::decisions::on_claim_change(
+        &mut tx,
+        p.tenant_id,
+        p.user_id,
+        dependency_engine::Change::Superseded {
+            old_claim: old.to_string(),
+            new_claim: id.to_string(),
+            new: crate::decisions::snapshot_of(&out),
+        },
+    )
+    .await?;
     tx.commit().await?;
     Ok(Json(out))
 }

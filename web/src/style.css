@@ -14,3 +14,5 @@ th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e3
 .clickable { cursor: pointer; }
 .muted { color: #5c6670; font-size: 0.85rem; }
 textarea { width: 100%; min-height: 4rem; }
+.inline-form { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.report { white-space: pre-wrap; background: #f8f9fa; padding: 0.8rem; border: 1px solid #e3e6e9; }

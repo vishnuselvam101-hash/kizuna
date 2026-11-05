@@ -1,7 +1,7 @@
 # Evidence and claim data model (v1)
 
-Status: designed in M0; tables created in M2 (artifacts, claims, provenance), M3 (entities, conflicts, reviews),
-M4 (decisions, dependencies). Version: `claim_model_version = 1`.
+Status: implemented — migrations 0002 (artifacts, claims), 0003 (extraction runs, entities, conflicts, reviews),
+0004 (decisions, dependencies, invalidation events). See ADR 0014 for the decision model as built. Version: `claim_model_version = 1`.
 
 ## Principles
 - Original artifacts are immutable and content-addressed (SHA-256). Derived data never overwrites the original.

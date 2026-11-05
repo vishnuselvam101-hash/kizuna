@@ -16,7 +16,7 @@ use tower_http::timeout::TimeoutLayer;
 use crate::config::Config;
 use crate::ratelimit::RateLimiter;
 use crate::storage::{FsStore, ObjectStore};
-use crate::{artifacts, audit, auth, claims, security_events, users, verification};
+use crate::{artifacts, audit, auth, claims, decisions, security_events, users, verification};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -94,6 +94,12 @@ pub fn router(st: AppState) -> Router {
         .route("/entities/candidates", get(verification::entity_candidates))
         .route("/entities/decisions", post(verification::entity_decision))
         .route("/compare/part/{key}", get(verification::compare))
+        .route("/decisions", get(decisions::list).post(decisions::create))
+        .route("/decisions/{id}", get(decisions::get))
+        .route("/decisions/{id}/trace", get(decisions::trace))
+        .route("/decisions/{id}/report", get(decisions::report))
+        .route("/decisions/{id}/reconfirm", post(decisions::reconfirm))
+        .route("/decisions/{id}/revoke", post(decisions::revoke))
         .layer(DefaultBodyLimit::max(body_limit))
         .layer(RequestBodyLimitLayer::new(body_limit));
     let upload_api = Router::new()

@@ -1,6 +1,6 @@
 # Build status
 
-Updated: 2026-11-05 (end of M3). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local), Node 24.22.2,
+Updated: 2026-11-05 (end of M4). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local), Node 24.22.2,
 pnpm 12.15.0, Python 3.14.4 + uv.
 
 ## Milestones
@@ -10,6 +10,7 @@ pnpm 12.15.0, Python 3.14.4 + uv.
 | M1 | done | auth (argon2id, TOTP, rotating refresh + reuse detection, revocation), tenants, RBAC/ABAC, RLS FORCE, audit chain, security events, rate limits, headers, CI, check.sh; independent review: 9 findings, 8 fixed with regression tests |
 | M2 | done | artifacts (content-typed, static scan, quarantine/release, content-addressed FS store, capture provenance, integrity verify on every read), claims v1 (append-only, supersession, transaction-time `known_at` and valid-time `valid_at` queries), evidence explorer API, React UI (login+MFA, documents, evidence explorer) |
 | M3 | done | sandboxed extraction worker (CSV, XLSX, PDF text, tesseract OCR; bubblewrap + prlimit), `mfg-map@1` record→claim mapping, entity resolution (safe normalisation + human-confirmed aliases), 9 conflict kinds (`mfg-rules@1`), findings with sources/limitations, review workflow (approve/reject/request evidence, four-eyes on manual claims), revision comparison, UI for findings/review/revisions |
+| M4 | done | decisions with derivation snapshots + SHA-256, typed dependencies (claim/decision, applicability, materiality), selective invalidation hook on supersession/rejection/new evidence incl. earlier claim versions, propagation through decision edges, invalidation events, traces (known-at/changed-since/reproducibility), reconfirm/revoke, verification report (JSON/Markdown), decisions UI |
 
 ## Commands run and results (2026-11-05, this machine)
 | Command | Result |
@@ -22,6 +23,15 @@ pnpm 12.15.0, Python 3.14.4 + uv.
 `scripts/check.sh` → pass: fmt, clippy -D warnings, **72 Rust tests** (audit-engine 6, evidence-core 9, policy-engine 5,
 kizuna-api unit 15, integration m1_audit 6 / m1_auth 12 / m1_authz_tenancy 6 / m1_review_regressions 6 /
 m2_evidence 7), cargo audit (1 documented ignore), pnpm audit 0, ruff + pytest 1, tsc + vitest 4, gitleaks 0.
+
+## Run at end of M4
+`scripts/check.sh` → pass. Rust **103 tests** (adds dependency-engine 5 incl. proptest flagged-set = ground truth on
+random DAGs, `m4_decisions` 6 integration tests), Python 11, web 6, audits 0 open, gitleaks 0.
+
+## M4 self-review notes
+Hooks run inside the evidence-changing transaction (no lost flags); propagation loads all decision→decision edges of
+a tenant; markdown report escapes `|`, `<` and newlines in user text; decisions/dependencies/invalidation events are
+immutable at DB level (trigger + grants).
 
 ## Run at end of M3
 `scripts/check.sh` → pass. Rust **92 tests** (adds entity-resolution, conflict-engine, domain-manufacturing unit tests
@@ -61,5 +71,6 @@ can be orphaned on rollback (content-addressed, harmless, no GC yet); static sca
 - CI workflow written but never executed (no remote, by instruction).
 
 ## Next step
-M4: decision records with typed evidence dependencies, materiality rules, selective invalidation, temporal
-(valid/transaction time) decision traces, verification report.
+M5: security event pipeline with detection rules, automated containment (session/credential revocation, quarantine,
+rate restrictions) with approval/pre-authorised policies, incident dashboard, recovery workflows, signed audit
+checkpoints.

@@ -14,6 +14,7 @@ evidence-core = { path = "../evidence-core" }
 entity-resolution = { path = "../entity-resolution" }
 conflict-engine = { path = "../conflict-engine" }
 domain-manufacturing = { path = "../domain-manufacturing" }
+dependency-engine = { path = "../dependency-engine" }
 rust_decimal.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "macros", "multipart"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "fs", "io-util", "process", "sync"] }

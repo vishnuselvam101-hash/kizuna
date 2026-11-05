@@ -8,6 +8,7 @@ pub mod claims;
 pub mod config;
 pub mod crypto;
 pub mod db;
+pub mod decisions;
 pub mod error;
 pub mod extraction;
 pub mod ratelimit;

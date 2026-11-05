@@ -22,7 +22,7 @@ web (React/TS) ──HTTPS/JSON──► kizuna-api (axum)
 | authentication & identity, tenant management | `kizuna-api/src/{auth,users}.rs`, `kizuna-admin` | M1 done |
 | evidence-core (file types, scan, claim validation), claim-model, provenance, integrity | `crates/evidence-core`, `kizuna-api/src/{artifacts,claims,storage}.rs` | M2 done |
 | entity-resolution, conflict-engine, manufacturing domain pack, extraction, review workflows | `crates/{entity-resolution,conflict-engine,domain-manufacturing}`, `services/extraction`, `kizuna-api/src/{extraction,verification}.rs` | M3 done |
-| temporal-engine, dependency-engine, decision-engine | planned M4 | not started |
+| temporal (bitemporal claim queries), dependency-engine, decision-engine, reports | `crates/dependency-engine`, `kizuna-api/src/{claims,decisions}.rs` | M4 done |
 | notification service, connectors (ERP/PLM/QMS/MES) | interfaces only, later | not started |
 
 ## Request path

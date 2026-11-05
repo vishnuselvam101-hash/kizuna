@@ -6,8 +6,8 @@
 | M1 | structure, migrations, auth, tenants, authz, audit, config, CI, tests | done (see BUILD_STATUS) |
 | M2 | artifact ingestion, object store, hashing/integrity, claims, provenance, evidence APIs + viewer | done |
 | M3 | PDF/spreadsheet extraction, identity matching, spec comparison, revisions, conflicts, review | done |
-| M4 | valid/transaction time, decisions, typed dependencies, materiality, selective invalidation, traces | next |
-| M5 | detection rules, containment, quarantine, revocation, incident dashboard, recovery | |
+| M4 | valid/transaction time, decisions, typed dependencies, materiality, selective invalidation, traces | done |
+| M5 | detection rules, containment, quarantine, revocation, incident dashboard, recovery | next |
 | M6 | E2E, security review, benchmarks, backup/restore, deployment docs, demo | |
 
 Backlog: WebAuthn; breached-password check; key rotation; signed audit checkpoints; shared rate-limit store;

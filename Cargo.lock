@@ -399,6 +399,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dependency-engine"
+version = "0.1.0"
+dependencies = [
+ "conflict-engine",
+ "proptest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1003,6 +1014,7 @@ dependencies = [
  "axum",
  "base64",
  "conflict-engine",
+ "dependency-engine",
  "domain-manufacturing",
  "entity-resolution",
  "evidence-core",

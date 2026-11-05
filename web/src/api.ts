@@ -40,6 +40,14 @@ export class Api {
     return data as T;
   }
 
+  async text(path: string): Promise<string> {
+    const headers: Record<string, string> = {};
+    if (this.tokens) headers.authorization = `Bearer ${this.tokens.access_token}`;
+    const res = await this.fetchFn(this.base + path, { method: "GET", headers });
+    if (!res.ok) throw new ApiError(res.status, "request_failed");
+    return res.text();
+  }
+
   private async refresh(): Promise<boolean> {
     const rt = this.tokens?.refresh_token;
     this.tokens = null;

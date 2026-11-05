@@ -182,6 +182,9 @@ pub async fn extract(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
             },
         )
         .await?;
+        let fresh = claims::fetch(&mut tx, cid).await?;
+        crate::decisions::on_claim_change(&mut tx, p.tenant_id, p.user_id, crate::decisions::new_evidence(&fresh))
+            .await?;
         claim_ids.push(cid);
         created += 1;
     }
@@ -452,6 +455,11 @@ pub async fn get_conflict(State(st): State<AppState>, p: Principal, Path(id): Pa
     .bind(id)
     .fetch_all(&mut *tx)
     .await?;
+    let affected = crate::decisions::affected_by_claims(
+        &mut tx,
+        &std::iter::once(c.claim_a).chain(c.claim_b).collect::<Vec<_>>(),
+    )
+    .await?;
     tx.commit().await?;
     let min_conf = std::iter::once(&a)
         .chain(b.as_ref())
@@ -466,6 +474,7 @@ pub async fn get_conflict(State(st): State<AppState>, p: Principal, Path(id): Pa
         "sources": sources,
         "reviews": reviews,
         "requires_human_review": needs_review,
+        "potentially_affected_decisions": affected,
         "limitations": format!("Deterministic rule {}; extracted values may contain extraction errors (lowest source confidence {} bps); a matching hash proves only that a document is unchanged since capture.", RULE_VERSION, min_conf),
     })))
 }
@@ -618,6 +627,18 @@ pub async fn review_claim(
     )
     .await?;
     let out = claims::fetch(&mut tx, id).await?;
+    if status == "rejected" {
+        crate::decisions::on_claim_change(
+            &mut tx,
+            p.tenant_id,
+            p.user_id,
+            dependency_engine::Change::Withdrawn {
+                old_claim: id.to_string(),
+                reason: "rejected in review".into(),
+            },
+        )
+        .await?;
+    }
     tx.commit().await?;
     Ok(Json(out))
 }
