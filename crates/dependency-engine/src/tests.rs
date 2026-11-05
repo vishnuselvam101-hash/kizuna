@@ -230,3 +230,73 @@ proptest! {
         prop_assert_eq!(got, truth);
     }
 }
+
+// Mutation-testing kills (docs/testing/CHAOS_SOAK_2026-11-05.md).
+
+/// Withdrawing evidence behind an informational dependency is reported but never material.
+#[test]
+fn withdrawal_of_informational_evidence_is_not_material() {
+    let deps = [claim_dep(
+        "D",
+        "c1",
+        Materiality::Informational,
+        snap(Some("10"), Some("mm"), None),
+    )];
+    let out = assess(
+        &deps,
+        &Change::Withdrawn {
+            old_claim: "c1".into(),
+            reason: "r".into(),
+        },
+    );
+    assert_eq!(out.len(), 1);
+    assert!(!out[0].material);
+}
+
+/// A change exactly equal to the threshold is within it (strictly greater is material).
+#[test]
+fn change_equal_to_threshold_is_not_material() {
+    let m = Materiality::NumericAbs {
+        threshold: "0.05".into(),
+    };
+    let (mat, _) = materiality(
+        &m,
+        &snap(Some("10.00"), Some("mm"), None),
+        &snap(Some("10.05"), Some("mm"), None),
+    );
+    assert!(!mat);
+    let (mat, _) = materiality(
+        &m,
+        &snap(Some("10.00"), Some("mm"), None),
+        &snap(Some("10.06"), Some("mm"), None),
+    );
+    assert!(mat);
+}
+
+/// One decision with a material and an immaterial dependency hit by the same change: material wins, whichever
+/// order the dependencies are listed in.
+#[test]
+fn material_impact_wins_over_immaterial_for_the_same_decision() {
+    let old = snap(Some("10"), Some("mm"), None);
+    for order in [false, true] {
+        let mut deps = vec![
+            claim_dep("D", "c1", Materiality::Informational, old.clone()),
+            claim_dep("D", "c1", Materiality::AnyChange, old.clone()),
+        ];
+        if order {
+            deps.reverse();
+        }
+        let mut new = snap(Some("11"), Some("mm"), None);
+        new.revision = Some("C".into());
+        let out = assess(
+            &deps,
+            &Change::Superseded {
+                old_claim: "c1".into(),
+                new_claim: "c2".into(),
+                new,
+            },
+        );
+        assert_eq!(out.len(), 1);
+        assert!(out[0].material, "order {order}: {out:?}");
+    }
+}
