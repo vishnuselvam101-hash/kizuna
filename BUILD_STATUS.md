@@ -17,6 +17,16 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | M7 | done | opt-in AI-assisted label mapping with free models (ADR 0018), saved import settings consumed by the worker, per-tenant + adaptive detection thresholds (ADR 0015), web API gaps 2–8 switched to real endpoints, WebAuthn-optional decision recorded (ADR 0006) |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
+## Integration results (2026-11-05, main after ops-pilot, bughunt, ui-polish merges + two security reviews)
+| Command | Result |
+|---|---|
+| `scripts/check.sh` / `scripts/ci-local.sh` | **pass** (ci-local green in 89 s on 7ba20fe): **226 Rust tests** (1 ignored live-AI test), cargo audit 0, **cargo deny** ok, pnpm audit 0, pip-audit 0 (pinned 2.10.1), ruff + **63 pytest**, tsc + **50 vitest** (axe), shellcheck, ops script tests incl. supply-chain pins, gitleaks 0 |
+| Security reviews | `REVIEW_M5_M7.md` (2 M, 8 L, 4 I) and `REVIEW_DEEP_2026-11-05.md` (4 M, 9 L, 7 I): all fixed with regression tests (KZ-I3 accepted) |
+| Bughunt | 6 fixes merged + 7 more fixed on main (`bughunt2_regressions.rs`, worker tests) |
+
+Known: each extraction holds one pooled connection for its advisory lock while it opens transactions, so with a
+very small pool concurrent extractions can starve the pool (tests use 3 connections; production pool is larger).
+
 ## M7 results (2026-11-05, this host)
 | Command | Result |
 |---|---|
