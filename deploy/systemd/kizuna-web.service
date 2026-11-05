@@ -1,0 +1,36 @@
+[Unit]
+Description=KIZUNA web UI + API front (local Caddy on @WEB_BIND@, published by Tailscale Serve)
+After=network.target kizuna.service
+
+[Service]
+User=kizuna
+Group=kizuna
+Environment=XDG_DATA_HOME=/var/lib/kizuna/caddy XDG_CONFIG_HOME=/var/lib/kizuna/caddy HOME=/var/lib/kizuna/caddy
+ExecStart=/usr/bin/caddy run --config /etc/kizuna/Caddyfile --adapter caddyfile
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/kizuna/caddy
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0077
+MemoryMax=256M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

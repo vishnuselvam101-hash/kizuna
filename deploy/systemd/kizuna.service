@@ -1,0 +1,40 @@
+[Unit]
+Description=KIZUNA Verify API (pilot)
+After=network-online.target postgresql.service clamav-daemon.service
+Wants=network-online.target clamav-daemon.service
+Requires=postgresql.service
+OnFailure=kizuna-alert@%n.service
+
+[Service]
+User=kizuna
+Group=kizuna
+EnvironmentFile=/etc/kizuna/kizuna.env
+EnvironmentFile=-/etc/kizuna/alerts.env
+WorkingDirectory=/var/lib/kizuna
+ExecStart=/opt/kizuna/bin/kizuna-server
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/kizuna
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+# Not set on purpose: ProtectKernelTunables, ProtectKernelLogs and ProtectHostname over-mount parts of /proc, after
+# which the kernel refuses bubblewrap's fresh procfs mount (tested with systemd 259; ADR 0016). RestrictNamespaces
+# and PrivateUsers would break bubblewrap's user namespace.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0077
+MemoryMax=2G
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target

@@ -31,14 +31,18 @@ STAGE=$(mktemp -d "${TMPDIR:-/tmp}/kizuna-backup.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 NAME=kizuna-$DB-$TS
+# runuser when root (works under systemd NoNewPrivileges=yes, which makes sudo refuse); sudo otherwise.
+as_postgres() {
+  if ((EUID == 0)) && command -v runuser >/dev/null; then runuser -u postgres -- "$@"; else sudo -u postgres "$@"; fi
+}
 
 # postgres writes into a pre-created 600 file it owns; the directory only needs traverse permission.
 chmod 711 "$STAGE"
 touch "$STAGE/db.dump"; chown postgres "$STAGE/db.dump"
-sudo -u postgres pg_dump -Fc --no-password -d "$DB" -f "$STAGE/db.dump"
+as_postgres pg_dump -Fc --no-password -d "$DB" -f "$STAGE/db.dump"
 chown "$(id -u):$(id -g)" "$STAGE/db.dump"
 tar -C "$STORAGE" -cf "$STAGE/objects.tar" .
-MIG=$(sudo -u postgres psql -qAt -d "$DB" -c "SELECT coalesce(max(version),0) FROM _sqlx_migrations WHERE success")
+MIG=$(as_postgres psql -qAt -d "$DB" -c "SELECT coalesce(max(version),0) FROM _sqlx_migrations WHERE success")
 python3 -I - "$STAGE" "$DB" "$MIG" "$TS" <<'PY'
 import hashlib, json, sys, pathlib
 d = pathlib.Path(sys.argv[1])

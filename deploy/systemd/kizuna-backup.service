@@ -1,0 +1,30 @@
+[Unit]
+Description=KIZUNA encrypted backup + off-host copy (rclone)
+After=postgresql.service network-online.target
+Wants=network-online.target
+OnFailure=kizuna-alert@%n.service
+
+[Service]
+Type=oneshot
+# root: pg_dump runs as postgres (FORCE RLS), the passphrase file is root-only.
+EnvironmentFile=/etc/kizuna/backup.env
+StateDirectory=kizuna-backup
+StateDirectoryMode=0700
+Environment=HOME=/var/lib/kizuna-backup GNUPGHOME=/var/lib/kizuna-backup/gnupg XDG_CACHE_HOME=/var/lib/kizuna-backup/cache
+WorkingDirectory=/opt/kizuna
+ExecStart=/opt/kizuna/scripts/offsite-backup.sh --db @DB@ --storage /var/lib/kizuna/objects --out /var/backups/kizuna
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/backups/kizuna /etc/kizuna/rclone
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+SystemCallArchitectures=native
+MemoryMax=1G
+Nice=10
+IOSchedulingClass=idle
