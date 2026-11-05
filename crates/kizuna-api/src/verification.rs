@@ -8,7 +8,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use conflict_engine::{Ctx, Fact, Rule};
 use domain_manufacturing::{MAPPING_VERSION, RULE_VERSION, all_rules, compare_revisions, map_records};
-use entity_resolution::{Outcome, candidates, safe_normalize};
+use entity_resolution::{ErVersion, Outcome, candidates, safe_normalize};
 use policy_engine::{AttributeRule, Permission, Resource, Subject};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -1191,6 +1191,8 @@ pub async fn review_claim(
 #[derive(Deserialize)]
 pub struct EntityQuery {
     pub subject_type: Option<String>,
+    /// "v1" or "v2"; defaults to the server's KIZUNA_ER_VERSION.
+    pub version: Option<String>,
 }
 
 pub async fn entity_candidates(
@@ -1213,18 +1215,48 @@ pub async fn entity_candidates(
             .fetch_all(&mut *tx)
             .await?;
     tx.commit().await?;
-    let pending: Vec<_> = candidates(&keys)
-        .into_iter()
-        .filter(|c| c.outcome != Outcome::Match)
-        .filter(|c| {
-            !decided
-                .iter()
-                .any(|(l, r)| (l == &c.left && r == &c.right) || (l == &c.right && r == &c.left))
-        })
-        .collect();
-    Ok(Json(
-        json!({ "subject_type": stype, "candidates": pending, "note": "Possible matches are never merged automatically." }),
-    ))
+    let version = match q.version.as_deref() {
+        None => st.cfg.er_version,
+        Some(v) => ErVersion::parse(v).ok_or(ApiError::BadRequest("invalid_version"))?,
+    };
+    let undecided = |l: &str, r: &str| !decided.iter().any(|(a, b)| (a == l && b == r) || (a == r && b == l));
+    let (pending, stats) = match version {
+        // v1: rule outcomes; automatic `Match` pairs (safe normalisation) are not listed for review.
+        ErVersion::V1 => {
+            let c: Vec<Value> = candidates(&keys)
+                .into_iter()
+                .filter(|c| c.outcome != Outcome::Match && undecided(&c.left, &c.right))
+                .map(|c| json!(c))
+                .collect();
+            (c, Value::Null)
+        }
+        // v2: every non-safe pair is listed, including FS `match` (strong evidence still needs a human decision).
+        ErVersion::V2 => {
+            let res = entity_resolution::v2::resolve(
+                entity_resolution::v2::Kind::for_subject_type(&stype),
+                &keys,
+                &entity_resolution::v2::Config::default(),
+            );
+            let c: Vec<Value> = res
+                .candidates
+                .into_iter()
+                .filter(|c| !c.safe && undecided(&c.left, &c.right))
+                .map(|c| json!(c))
+                .collect();
+            let s = &res.stats;
+            (
+                c,
+                json!({ "pairs_compared": s.pairs_compared, "em": s.em, "t_match": s.t_match, "t_possible": s.t_possible }),
+            )
+        }
+    };
+    Ok(Json(json!({
+        "subject_type": stype,
+        "version": version,
+        "candidates": pending,
+        "stats": stats,
+        "note": "Possible matches are never merged automatically.",
+    })))
 }
 
 #[derive(Deserialize)]

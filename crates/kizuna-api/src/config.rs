@@ -70,6 +70,8 @@ pub struct Config {
     pub extraction_timeout_secs: u64,
     /// Address-space limit per extraction worker in MiB (`KIZUNA_WORKER_MEMORY_MB`, default 1024).
     pub worker_memory_mb: u64,
+    /// Entity-resolution matcher (KIZUNA_ER_VERSION=v1|v2, default v2); a request may override it with ?version=.
+    pub er_version: entity_resolution::ErVersion,
     /// Ed25519 seed for signed audit checkpoints (keep outside the database).
     pub audit_signing_key: Option<Secret<[u8; 32]>>,
     /// Retired audit signing keys (comma-separated in `KIZUNA_AUDIT_SIGNING_KEYS_PREVIOUS`): old checkpoints stay
@@ -211,6 +213,10 @@ impl Config {
                 .collect::<Result<_, _>>()?,
             extraction_timeout_secs: num("KIZUNA_EXTRACTION_TIMEOUT_SECS", 45, 5, 50)? as u64,
             worker_memory_mb: num("KIZUNA_WORKER_MEMORY_MB", 1024, 256, 4096)? as u64,
+            er_version: match get("KIZUNA_ER_VERSION") {
+                None => entity_resolution::ErVersion::default(),
+                Some(v) => entity_resolution::ErVersion::parse(&v).ok_or(ConfigError::Invalid("KIZUNA_ER_VERSION"))?,
+            },
             ai: match (
                 get("KIZUNA_AI_BASE_URL").filter(|v| !v.is_empty()),
                 get("KIZUNA_AI_MODEL"),

@@ -1,6 +1,8 @@
 //! Shared pieces for the M6 operator tools: latency statistics, a minimal HTTP/1.1 keep-alive client (so API
 //! benchmarks go through the real TCP + HTTP stack without adding an HTTP-client dependency) and environment capture.
 
+pub mod er_eval;
+
 use std::time::Duration;
 
 use serde_json::{Value, json};

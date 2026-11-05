@@ -249,9 +249,23 @@ async fn superseding_or_merging_makes_findings_obsolete_not_deleted() {
         "BRK100 has no spec evidence yet"
     );
 
+    let v1 = c.get("/api/v1/entities/candidates?version=v1", &tok).await;
+    assert_eq!(v1.body["candidates"][0]["outcome"], "possible_match", "{:?}", v1.body);
+    // v2 (default): the separator difference is strong evidence ("match"), but it is listed for a human decision.
     let cand = c.get("/api/v1/entities/candidates", &tok).await;
+    assert_eq!(cand.body["version"], "v2", "{:?}", cand.body);
     let pair = &cand.body["candidates"][0];
-    assert_eq!(pair["outcome"], "possible_match", "{:?}", cand.body);
+    assert!(
+        matches!(pair["outcome"].as_str(), Some("match" | "possible_match")),
+        "{:?}",
+        cand.body
+    );
+    assert_eq!(
+        (pair["safe"].as_bool(), pair["reasons"][0].as_str()),
+        (Some(false), Some("separator_difference"))
+    );
+    let bad = c.get("/api/v1/entities/candidates?version=v9", &tok).await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST, "{:?}", bad.body);
     let d = c
         .post(
             "/api/v1/entities/decisions",
@@ -269,10 +283,10 @@ async fn superseding_or_merging_makes_findings_obsolete_not_deleted() {
     );
     let all = c.get("/api/v1/conflicts?status=obsolete", &tok).await;
     assert!(!all.body.as_array().unwrap().is_empty(), "history kept");
-    assert_eq!(
-        c.get("/api/v1/entities/candidates", &tok).await.body["candidates"],
-        json!([])
-    );
+    for v in ["v1", "v2"] {
+        let path = format!("/api/v1/entities/candidates?version={v}");
+        assert_eq!(c.get(&path, &tok).await.body["candidates"], json!([]), "{v}");
+    }
 }
 
 #[tokio::test]
