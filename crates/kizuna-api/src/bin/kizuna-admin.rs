@@ -6,6 +6,7 @@
 //! kizuna-admin reset-mfa <tenant-slug> <email>      (emergency recovery; revokes sessions)
 //! kizuna-admin unlock <tenant-slug> <email>
 //! kizuna-admin verify-audit <tenant-slug>
+//! kizuna-admin emergency-unlock <tenant-slug>   (re-enable admins, lift IP blocks/restrictions; audited)
 
 use std::io::BufRead;
 
@@ -126,6 +127,13 @@ async fn main() -> R<()> {
             tx.commit().await?;
             println!("unlocked");
         }
+        ["emergency-unlock", slug] => {
+            let t = tenant_id(&pool, slug).await?;
+            let out = kizuna_api::incidents::emergency_unlock(&pool, t)
+                .await
+                .map_err(|e| e.to_string())?;
+            println!("{out}");
+        }
         ["verify-audit", slug] => {
             let t = tenant_id(&pool, slug).await?;
             let mut tx = db::tenant_snapshot_tx(&pool, t).await?;
@@ -139,7 +147,7 @@ async fn main() -> R<()> {
         _ => {
             eprintln!(
                 "usage: kizuna-admin migrate | create-tenant <slug> <name> | create-user <slug> <email> <role> <name> \
-                       | reset-mfa <slug> <email> | unlock <slug> <email> | verify-audit <slug>"
+                       | reset-mfa <slug> <email> | unlock <slug> <email> | verify-audit <slug> | emergency-unlock <slug>"
             );
             std::process::exit(64);
         }

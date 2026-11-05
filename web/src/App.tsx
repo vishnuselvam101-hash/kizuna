@@ -5,9 +5,10 @@ import { CompareView, ConflictsView } from "./ConflictsView";
 import { DecisionsView } from "./DecisionsView";
 import { EvidenceView } from "./EvidenceView";
 import { LoginView } from "./LoginView";
+import { SecurityView } from "./SecurityView";
 
 const api = new Api();
-const TABS = ["Documents", "Evidence", "Findings", "Revisions", "Decisions"] as const;
+const TABS = ["Documents", "Evidence", "Findings", "Revisions", "Decisions", "Security"] as const;
 type Tab = (typeof TABS)[number];
 
 export function App() {
@@ -30,6 +31,7 @@ export function App() {
         {tab === "Findings" && <ConflictsView api={api} />}
         {tab === "Revisions" && <CompareView api={api} />}
         {tab === "Decisions" && <DecisionsView api={api} />}
+        {tab === "Security" && <SecurityView api={api} />}
       </main>
     </div>
   );

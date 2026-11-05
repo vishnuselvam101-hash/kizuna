@@ -37,6 +37,8 @@ pub enum Kind {
     QuarantineReleased,
     ExtractionFailed,
     ContainmentApplied,
+    ExportReport,
+    BlockedRequest,
 }
 
 impl Kind {
@@ -62,12 +64,14 @@ impl Kind {
             Kind::QuarantineReleased => "response.quarantine_released",
             Kind::ExtractionFailed => "ingest.extraction_failed",
             Kind::ContainmentApplied => "response.containment_applied",
+            Kind::ExportReport => "export.report",
+            Kind::BlockedRequest => "response.blocked_request",
         }
     }
 
     pub fn severity(self) -> &'static str {
         match self {
-            Kind::LoginSucceeded | Kind::MfaEnrolled | Kind::PasswordChanged => "info",
+            Kind::LoginSucceeded | Kind::MfaEnrolled | Kind::PasswordChanged | Kind::ExportReport => "info",
             Kind::LoginFailed | Kind::InvalidToken | Kind::SessionsRevoked | Kind::ExtractionFailed => "low",
             Kind::AccountLocked
             | Kind::RateLimited
@@ -78,7 +82,8 @@ impl Kind {
             | Kind::UploadRejected
             | Kind::ArtifactQuarantined
             | Kind::QuarantineReleased
-            | Kind::ContainmentApplied => "medium",
+            | Kind::ContainmentApplied
+            | Kind::BlockedRequest => "medium",
             Kind::RefreshTokenReuse => "high",
             Kind::AuditChainBroken | Kind::ArtifactIntegrityFailure => "critical",
         }
@@ -96,6 +101,35 @@ pub async fn record(
 ) {
     if let Err(e) = try_record(pool, tenant, kind, user, ip, details).await {
         tracing::error!(kind = kind.code(), error = %e, "failed to record security event");
+        return;
+    }
+    // High-signal events trigger detection immediately; a periodic sweep covers the rest.
+    if let Some(t) = tenant
+        && kind.triggers_detection()
+        && let Err(e) = crate::incidents::run_detection(pool, t).await
+    {
+        tracing::error!(error = %e, "detection failed");
+    }
+}
+
+impl Kind {
+    pub fn triggers_detection(self) -> bool {
+        matches!(
+            self,
+            Kind::LoginFailed
+                | Kind::RefreshTokenReuse
+                | Kind::AuthzDenied
+                | Kind::RoleChanged
+                | Kind::UserDisabled
+                | Kind::MfaReset
+                | Kind::SessionsRevoked
+                | Kind::ArtifactIntegrityFailure
+                | Kind::AuditChainBroken
+                | Kind::UploadRejected
+                | Kind::ArtifactQuarantined
+                | Kind::ExtractionFailed
+                | Kind::ExportReport
+        )
     }
 }
 

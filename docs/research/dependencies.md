@@ -17,6 +17,7 @@ review is manual (this table).
 | subtle | 2 | BSD-3-Clause | constant-time compare | |
 | base64, hex | 0.22, 0.4 | MIT/Apache-2.0 | encodings | |
 | uuid, time, serde, serde_json, thiserror, tracing(-subscriber) | current | MIT/Apache-2.0 | basics | |
+| ed25519-dalek | 2 | BSD-3-Clause | signed audit checkpoints | RUSTSEC-2022-0093 fixed in 2.0 |
 | rust_decimal | 1 | MIT | exact decimal unit conversion / tolerance checks | no floats in rules |
 | proptest (dev) | 1 | MIT/Apache-2.0 | property tests | |
 | http-body-util (dev) | 0.1 | MIT | test body reads | |

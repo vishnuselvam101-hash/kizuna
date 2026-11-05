@@ -61,6 +61,8 @@ pub struct Config {
     /// `bwrap` (default: no network, read-only minimal filesystem) or `none` (rlimits only; development only).
     pub extraction_sandbox: String,
     pub extraction_timeout_secs: u64,
+    /// Ed25519 seed for signed audit checkpoints (keep outside the database).
+    pub audit_signing_key: Option<Secret<[u8; 32]>>,
 }
 
 pub fn parse_data_key(b64: &str) -> Result<[u8; 32], ConfigError> {
@@ -132,6 +134,12 @@ impl Config {
                 None | Some("bwrap") => "bwrap".into(),
                 Some("none") => "none".into(),
                 Some(_) => return Err(ConfigError::Invalid("KIZUNA_EXTRACTION_SANDBOX")),
+            },
+            audit_signing_key: match get("KIZUNA_AUDIT_SIGNING_KEY").filter(|v| !v.is_empty()) {
+                None => None,
+                Some(v) => Some(Secret::new(
+                    parse_data_key(&v).map_err(|_| ConfigError::Invalid("KIZUNA_AUDIT_SIGNING_KEY"))?,
+                )),
             },
             extraction_timeout_secs: num("KIZUNA_EXTRACTION_TIMEOUT_SECS", 45, 5, 50)? as u64,
         })

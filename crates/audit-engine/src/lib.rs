@@ -252,5 +252,57 @@ pub fn verify_chain(tenant_id: Uuid, events: &[StoredEvent]) -> VerifyReport {
     v.report()
 }
 
+/// Signed checkpoints: an Ed25519 signature over (tenant, seq, head hash, time). Exported outside the database they
+/// make a full re-chaining by a database owner detectable, as long as the signing key is not in the database.
+pub mod checkpoint {
+    use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+    use uuid::Uuid;
+
+    pub fn message(tenant: Uuid, seq: i64, head: &[u8], signed_at_us: i64) -> Vec<u8> {
+        let mut m = b"KZCP1".to_vec();
+        m.extend_from_slice(tenant.as_bytes());
+        m.extend_from_slice(&seq.to_be_bytes());
+        m.extend_from_slice(&(head.len() as u32).to_be_bytes());
+        m.extend_from_slice(head);
+        m.extend_from_slice(&signed_at_us.to_be_bytes());
+        m
+    }
+
+    pub fn public_key(seed: &[u8; 32]) -> [u8; 32] {
+        SigningKey::from_bytes(seed).verifying_key().to_bytes()
+    }
+
+    pub fn sign(seed: &[u8; 32], msg: &[u8]) -> [u8; 64] {
+        SigningKey::from_bytes(seed).sign(msg).to_bytes()
+    }
+
+    pub fn verify(public: &[u8; 32], msg: &[u8], sig: &[u8]) -> bool {
+        let Ok(vk) = VerifyingKey::from_bytes(public) else {
+            return false;
+        };
+        let Ok(sig) = <[u8; 64]>::try_from(sig) else {
+            return false;
+        };
+        vk.verify(msg, &Signature::from_bytes(&sig)).is_ok()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn sign_verify_and_tamper() {
+            let seed = [7u8; 32];
+            let t = Uuid::from_u128(3);
+            let m = message(t, 10, &[1u8; 32], 99);
+            let s = sign(&seed, &m);
+            assert!(verify(&public_key(&seed), &m, &s));
+            assert!(!verify(&public_key(&seed), &message(t, 11, &[1u8; 32], 99), &s));
+            assert!(!verify(&public_key(&[8u8; 32]), &m, &s));
+            assert!(!verify(&public_key(&seed), &m, &s[..63]));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

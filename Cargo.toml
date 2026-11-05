@@ -8,6 +8,7 @@ members = [
     "crates/conflict-engine",
     "crates/domain-manufacturing",
     "crates/dependency-engine",
+    "crates/security-detection",
     "crates/kizuna-api",
 ]
 

@@ -11,6 +11,7 @@ pub mod db;
 pub mod decisions;
 pub mod error;
 pub mod extraction;
+pub mod incidents;
 pub mod ratelimit;
 pub mod security_events;
 pub mod storage;

@@ -14,6 +14,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = db::connect(cfg.database_url.expose(), 16).await?;
     db::assert_runtime_role(&pool).await?;
     let bind = cfg.bind;
+    let sweep_pool = pool.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            tick.tick().await;
+            if let Err(e) = kizuna_api::incidents::sweep_all(&sweep_pool).await {
+                tracing::error!(error = %e, "incident sweep failed");
+            }
+        }
+    });
     let app = router(AppState::new(pool, cfg));
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(%bind, "kizuna-server listening");

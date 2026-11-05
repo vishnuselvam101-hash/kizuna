@@ -124,7 +124,8 @@ async fn stored_artifact_tampering_is_detected() {
     );
     assert_eq!(
         c.get(&format!("/api/v1/artifacts/{id}/content"), &tok).await.body["error"],
-        "integrity_check_failed"
+        "artifact_not_released",
+        "M5: integrity failure auto-quarantines the artifact"
     );
     assert!(
         c.security_kinds(t)

@@ -16,7 +16,7 @@ use tower_http::timeout::TimeoutLayer;
 use crate::config::Config;
 use crate::ratelimit::RateLimiter;
 use crate::storage::{FsStore, ObjectStore};
-use crate::{artifacts, audit, auth, claims, decisions, security_events, users, verification};
+use crate::{artifacts, audit, auth, claims, decisions, incidents, security_events, users, verification};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -100,6 +100,18 @@ pub fn router(st: AppState) -> Router {
         .route("/decisions/{id}/report", get(decisions::report))
         .route("/decisions/{id}/reconfirm", post(decisions::reconfirm))
         .route("/decisions/{id}/revoke", post(decisions::revoke))
+        .route("/security/summary", get(incidents::summary))
+        .route("/security/incidents", get(incidents::list))
+        .route("/security/incidents/{id}", get(incidents::get))
+        .route("/security/incidents/{id}/resolve", post(incidents::resolve))
+        .route(
+            "/security/incidents/{id}/actions/{action}/{verb}",
+            post(incidents::decide_action),
+        )
+        .route("/security/detect", post(incidents::trigger))
+        .route("/audit/checkpoints", post(audit::create_checkpoint))
+        .route("/audit/checkpoints/verify", get(audit::verify_checkpoints))
+        .route("/audit/checkpoints/verify-external", post(audit::verify_external))
         .layer(DefaultBodyLimit::max(body_limit))
         .layer(RequestBodyLimitLayer::new(body_limit));
     let upload_api = Router::new()

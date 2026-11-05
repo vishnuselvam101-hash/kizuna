@@ -1,0 +1,15 @@
+[package]
+name = "security-detection"
+version = "0.1.0"
+description = "Deterministic security detection rules and response policy (pure, defensive only)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

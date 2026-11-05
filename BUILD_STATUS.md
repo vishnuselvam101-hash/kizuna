@@ -1,6 +1,6 @@
 # Build status
 
-Updated: 2026-11-05 (end of M4). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local), Node 24.22.2,
+Updated: 2026-11-05 (end of M5). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local), Node 24.22.2,
 pnpm 12.15.0, Python 3.14.4 + uv.
 
 ## Milestones
@@ -11,6 +11,7 @@ pnpm 12.15.0, Python 3.14.4 + uv.
 | M2 | done | artifacts (content-typed, static scan, quarantine/release, content-addressed FS store, capture provenance, integrity verify on every read), claims v1 (append-only, supersession, transaction-time `known_at` and valid-time `valid_at` queries), evidence explorer API, React UI (login+MFA, documents, evidence explorer) |
 | M3 | done | sandboxed extraction worker (CSV, XLSX, PDF text, tesseract OCR; bubblewrap + prlimit), `mfg-map@1` record→claim mapping, entity resolution (safe normalisation + human-confirmed aliases), 9 conflict kinds (`mfg-rules@1`), findings with sources/limitations, review workflow (approve/reject/request evidence, four-eyes on manual claims), revision comparison, UI for findings/review/revisions |
 | M4 | done | decisions with derivation snapshots + SHA-256, typed dependencies (claim/decision, applicability, materiality), selective invalidation hook on supersession/rejection/new evidence incl. earlier claim versions, propagation through decision edges, invalidation events, traces (known-at/changed-since/reproducibility), reconfirm/revoke, verification report (JSON/Markdown), decisions UI |
+| M5 | done | detection rules (10), incidents, pre-authorised vs approval-gated containment (sessions, account, address, artifact quarantine, uploads, extraction), guards (last admin, admin address), revert/resolve, emergency unlock CLI, enforcement at login/upload/extraction, signed Ed25519 audit checkpoints (closes M1 #6 when exported), artifact self-repair on re-upload, security dashboard UI |
 
 ## Commands run and results (2026-11-05, this machine)
 | Command | Result |
@@ -23,6 +24,11 @@ pnpm 12.15.0, Python 3.14.4 + uv.
 `scripts/check.sh` → pass: fmt, clippy -D warnings, **72 Rust tests** (audit-engine 6, evidence-core 9, policy-engine 5,
 kizuna-api unit 15, integration m1_audit 6 / m1_auth 12 / m1_authz_tenancy 6 / m1_review_regressions 6 /
 m2_evidence 7), cargo audit (1 documented ignore), pnpm audit 0, ruff + pytest 1, tsc + vitest 4, gitleaks 0.
+
+## Run at end of M5
+`scripts/check.sh` → pass: Rust all green incl. `m5_defense` 8 tests (token theft, spraying block + revert, admin
+address guard, last-admin refusal + emergency unlock, integrity quarantine + recovery, upload/authz containment,
+checkpoint detects full re-chain by DB owner, RBAC/isolation), Python 11, web 7, audits 0 open, gitleaks 0.
 
 ## Run at end of M4
 `scripts/check.sh` → pass. Rust **103 tests** (adds dependency-engine 5 incl. proptest flagged-set = ground truth on
@@ -53,7 +59,7 @@ static PDF markers can be obfuscated (sandbox is the second line); scanned PDFs 
 | 3 | Med | TOTP enrolment by a password-only session yielded an MFA-verified session | fixed: setup requires password; enrolment never upgrades the session; test `regression_m1r3_*`, `totp_mfa_flow_and_replay` |
 | 4 | Med | `change_password` unlimited password oracle | fixed: re-auth failures count to lockout, lock revokes sessions; test `regression_m1r4_*` |
 | 5 | Med | Audit verify race → false `audit_chain_broken`; whole chain in memory | fixed: REPEATABLE READ snapshot, batched verification (1000/batch); test `regression_m1r5_*` |
-| 6 | Med | Unkeyed chain + head in same DB: DB owner can rewrite and re-chain | open → M5 signed checkpoints exported outside the DB |
+| 6 | Med | Unkeyed chain + head in same DB: DB owner can rewrite and re-chain | fixed in M5: signed checkpoints; test `signed_checkpoints_detect_full_rechain_by_db_owner` (requires exporting checkpoints and keeping the key out of the DB) |
 | 7 | Low | Tenant enumeration via 429 vs 401 | fixed: account limiter keyed by slug+email before lookup; test `regression_m1r7_*` |
 | 8 | Low | No admin unlock path | fixed: PATCH `status: active` clears lockout; test `regression_m1r8_*` |
 | 9 | Low | Limiter O(n) prune under key flood | fixed: key cap 100k, prune throttled, fail closed for new keys; unit test |
@@ -71,6 +77,5 @@ can be orphaned on rollback (content-addressed, harmless, no GC yet); static sca
 - CI workflow written but never executed (no remote, by instruction).
 
 ## Next step
-M5: security event pipeline with detection rules, automated containment (session/credential revocation, quarantine,
-rate restrictions) with approval/pre-authorised policies, incident dashboard, recovery workflows, signed audit
-checkpoints.
+M6: integrate parallel lanes (m6-prep, lane-python, lane-web, lane-auth), E2E, benchmarks, backup/restore,
+fuzzing, final security review.

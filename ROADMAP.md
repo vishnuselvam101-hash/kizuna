@@ -7,8 +7,8 @@
 | M2 | artifact ingestion, object store, hashing/integrity, claims, provenance, evidence APIs + viewer | done |
 | M3 | PDF/spreadsheet extraction, identity matching, spec comparison, revisions, conflicts, review | done |
 | M4 | valid/transaction time, decisions, typed dependencies, materiality, selective invalidation, traces | done |
-| M5 | detection rules, containment, quarantine, revocation, incident dashboard, recovery | next |
-| M6 | E2E, security review, benchmarks, backup/restore, deployment docs, demo | |
+| M5 | detection rules, containment, quarantine, revocation, incident dashboard, recovery | done |
+| M6 | E2E, security review, benchmarks, backup/restore, deployment docs, demo | next |
 
 Backlog: WebAuthn; breached-password check; key rotation; signed audit checkpoints; shared rate-limit store;
 dependency major upgrades (see dependencies.md).

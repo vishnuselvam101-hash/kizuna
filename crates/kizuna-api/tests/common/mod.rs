@@ -53,6 +53,7 @@ pub fn test_config() -> Config {
     Config::from_lookup(|k| match k {
         "KIZUNA_DATABASE_URL" => Some(url.clone()),
         "KIZUNA_DATA_KEY" => Some(key.clone()),
+        "KIZUNA_AUDIT_SIGNING_KEY" => Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into()),
         "KIZUNA_STORAGE_DIR" => Some(storage.to_string_lossy().into_owned()),
         "KIZUNA_EXTRACTION_DIR" => Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/extraction/src").into()),
         "KIZUNA_EXTRACTION_PYTHON" => Some(
@@ -334,5 +335,26 @@ impl Ctx {
         assert_eq!(x.status, StatusCode::OK, "extract {name}: {:?}", x.body);
         assert!(x.body["claims_created"].as_u64().unwrap() > 0, "{name}: {:?}", x.body);
         id
+    }
+}
+
+impl Ctx {
+    pub async fn login_from(&self, ip: [u8; 4], slug: &str, email: &str, pw: &str) -> Resp {
+        let mut req = Request::post("/api/v1/auth/login")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({ "tenant": slug, "email": email, "password": pw }).to_string(),
+            ))
+            .unwrap();
+        req.extensions_mut().insert(ConnectInfo(SocketAddr::from((ip, 4000))));
+        let res = self.app.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        Resp {
+            status,
+            body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+            headers,
+        }
     }
 }

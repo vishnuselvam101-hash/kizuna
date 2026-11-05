@@ -882,6 +882,15 @@ pub async fn report(
     .await?;
     let chain = crate::audit::verify_tenant(&mut tx, p.tenant_id).await?;
     tx.commit().await?;
+    crate::security_events::record(
+        &st.pool,
+        Some(p.tenant_id),
+        crate::security_events::Kind::ExportReport,
+        Some(p.user_id),
+        Some(&p.ip),
+        json!({ "decision_id": id, "format": q.format.as_deref().unwrap_or("json") }),
+    )
+    .await;
     let mut body = json!({
         "report_version": "kizuna-verification-report@1",
         "generated_at": rfc3339(OffsetDateTime::now_utc()),

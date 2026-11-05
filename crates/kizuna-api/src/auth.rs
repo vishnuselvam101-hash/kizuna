@@ -334,6 +334,19 @@ pub async fn login(
         return Err(fail());
     };
 
+    if crate::incidents::ip_blocked(&st.pool, tenant_id, &ip).await? {
+        sec::try_record(
+            &st.pool,
+            Some(tenant_id),
+            Kind::BlockedRequest,
+            None,
+            Some(&ip),
+            json!({ "endpoint": "login" }),
+        )
+        .await
+        .ok();
+        return Err(ApiError::Forbidden("blocked"));
+    }
     // Read without holding a row lock during the (slow) password hash.
     let mut tx = db::tenant_tx(&st.pool, tenant_id).await?;
     let user: Option<LoginUser> = sqlx::query_as(

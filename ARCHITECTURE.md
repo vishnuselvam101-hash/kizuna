@@ -18,7 +18,7 @@ web (React/TS) ──HTTPS/JSON──► kizuna-api (axum)
 |---|---|---|
 | audit-engine | `crates/audit-engine` | M1 done |
 | policy-engine | `crates/policy-engine` | M1 done |
-| security-events | `kizuna-api/src/security_events.rs` | M1 recording; detection M5 |
+| security-events (recording, detection, response) | `kizuna-api/src/{security_events,incidents}.rs`, `crates/security-detection` | M5 done |
 | authentication & identity, tenant management | `kizuna-api/src/{auth,users}.rs`, `kizuna-admin` | M1 done |
 | evidence-core (file types, scan, claim validation), claim-model, provenance, integrity | `crates/evidence-core`, `kizuna-api/src/{artifacts,claims,storage}.rs` | M2 done |
 | entity-resolution, conflict-engine, manufacturing domain pack, extraction, review workflows | `crates/{entity-resolution,conflict-engine,domain-manufacturing}`, `services/extraction`, `kizuna-api/src/{extraction,verification}.rs` | M3 done |

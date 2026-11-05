@@ -126,6 +126,14 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         .await;
         return Err(ApiError::TooManyRequests);
     }
+    {
+        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        let blocked = crate::incidents::uploads_blocked(&mut tx, p.user_id).await?;
+        tx.commit().await?;
+        if blocked {
+            return Err(ApiError::Forbidden("uploads_restricted"));
+        }
+    }
     let (data, name, declared, kind) = read_upload(mp, st.cfg.max_upload_bytes).await?;
     let report = scan::scan(&data, &Limits::default());
     let sha = crypto::sha256(&data);
@@ -159,19 +167,20 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
         .bind(sha.to_vec())
         .fetch_optional(&mut *tx)
         .await?;
+    // Always (re)store: content-addressed, so a re-upload of the original repairs a damaged stored copy.
+    let key = ObjectKey {
+        tenant: p.tenant_id,
+        sha256: sha,
+    };
+    let store = Arc::clone(&st.store);
+    let bytes = data.clone();
+    tokio::task::spawn_blocking(move || store.put(&key, &bytes))
+        .await
+        .map_err(ApiError::internal)?
+        .map_err(ApiError::internal)?;
     let (id, duplicate) = match existing {
         Some(id) => (id, true),
         None => {
-            let key = ObjectKey {
-                tenant: p.tenant_id,
-                sha256: sha,
-            };
-            let store = Arc::clone(&st.store);
-            let bytes = data.clone();
-            tokio::task::spawn_blocking(move || store.put(&key, &bytes))
-                .await
-                .map_err(ApiError::internal)?
-                .map_err(ApiError::internal)?;
             let id = Uuid::now_v7();
             sqlx::query(
                 "INSERT INTO artifacts (id, tenant_id, sha256, size_bytes, media_type, kind, status, scan_result, \

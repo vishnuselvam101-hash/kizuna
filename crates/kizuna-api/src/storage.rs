@@ -45,9 +45,14 @@ impl FsStore {
 impl ObjectStore for FsStore {
     fn put(&self, key: &ObjectKey, data: &[u8]) -> io::Result<()> {
         let path = self.path(key);
-        if path.exists() {
-            return Ok(()); // content-addressed: same key, same bytes
+        if path.exists()
+            && fs::read(&path)
+                .map(|b| crate::crypto::sha256(&b) == key.sha256)
+                .unwrap_or(false)
+        {
+            return Ok(()); // content-addressed: intact copy already stored
         }
+        // Missing or corrupted copy: (re)write atomically. Re-uploading the original restores a damaged object.
         let dir = path.parent().ok_or_else(|| io::Error::other("no parent"))?;
         fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
         let tmp = dir.join(format!(".tmp-{}", Uuid::new_v4()));

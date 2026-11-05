@@ -123,6 +123,14 @@ pub async fn extract(State(st): State<AppState>, p: Principal, Path(id): Path<Uu
             return Err(ApiError::Conflict("already_extracted"));
         }
     }
+    {
+        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        let suspended = crate::incidents::extraction_suspended(&mut tx).await?;
+        tx.commit().await?;
+        if suspended {
+            return Err(ApiError::Conflict("extraction_suspended"));
+        }
+    }
     let _permit = st.worker_permits.acquire().await.map_err(ApiError::internal)?;
     let started = OffsetDateTime::now_utc();
     let (out, out_hash) = match extraction::run_worker(&st.cfg, &art.media_type, &bytes).await {
