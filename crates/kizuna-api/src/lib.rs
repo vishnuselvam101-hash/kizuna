@@ -22,6 +22,7 @@ pub mod ops;
 pub mod ratelimit;
 pub mod seccomp;
 pub mod security_events;
+pub mod serve;
 pub mod storage;
 pub mod tenant_settings;
 pub mod users;

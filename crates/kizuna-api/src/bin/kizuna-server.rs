@@ -1,7 +1,5 @@
 //! KIZUNA Verify API server. Configuration: environment variables (see .env.example).
 
-use std::net::SocketAddr;
-
 use kizuna_api::config::Config;
 use kizuna_api::{AppState, db, router};
 
@@ -53,12 +51,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::time::Duration::from_secs(60),
     );
     let app = router(state);
+    let limits = kizuna_api::serve::ServeLimits::from_lookup(|k| std::env::var(k).ok())?;
     let listener = tokio::net::TcpListener::bind(bind).await?;
-    tracing::info!(%bind, "kizuna-server listening");
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+    tracing::info!(%bind, header_read_timeout = ?limits.header_read_timeout, max_connections = limits.max_connections,
+        "kizuna-server listening");
+    // Own accept loop: header-read deadline + connection cap (red-team 2026-11-05 F3).
+    kizuna_api::serve::serve(listener, app, limits, async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await?;
     Ok(())
 }

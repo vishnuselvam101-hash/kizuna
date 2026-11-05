@@ -35,6 +35,13 @@ impl ApiError {
 
 impl From<sqlx::Error> for ApiError {
     fn from(e: sqlx::Error) -> Self {
+        // Text PostgreSQL cannot store (a NUL byte in text, or `\u0000` in jsonb) is a client error, not a 500
+        // (red-team 2026-11-05 F1).
+        if let sqlx::Error::Database(d) = &e
+            && matches!(d.code().as_deref(), Some("22021" | "22P05"))
+        {
+            return ApiError::BadRequest("invalid_text");
+        }
         ApiError::Internal(format!("db: {e}"))
     }
 }

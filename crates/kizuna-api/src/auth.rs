@@ -611,8 +611,11 @@ pub async fn refresh(
         String,
         OffsetDateTime,
     ) = sqlx::query_as(
-        "SELECT s.user_id, s.mfa_verified, s.revoked_at, s.expires_at, u.status, s.last_activity_at FROM sessions s \
-         JOIN users u ON u.tenant_id = s.tenant_id AND u.id = s.user_id WHERE s.id = $1 FOR UPDATE OF s",
+        // A suspended tenant's refresh tokens are dead too (red-team 2026-11-05 F2), as its access tokens are.
+        "SELECT s.user_id, s.mfa_verified, s.revoked_at, s.expires_at, \
+                CASE WHEN t.status = 'active' THEN u.status ELSE 'tenant_' || t.status END, s.last_activity_at \
+         FROM sessions s JOIN users u ON u.tenant_id = s.tenant_id AND u.id = s.user_id \
+         JOIN tenants t ON t.id = s.tenant_id WHERE s.id = $1 FOR UPDATE OF s",
     )
     .bind(sid)
     .fetch_one(&mut *tx)
