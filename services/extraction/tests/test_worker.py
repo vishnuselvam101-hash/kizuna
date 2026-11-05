@@ -197,3 +197,18 @@ def test_import_settings_ocr_off_skips_ocr():
 def test_import_settings_are_whitelisted(bad):
     req = {"media_type": "text/csv", "data_b64": base64.b64encode(b"a,b\n1,2\n").decode(), "options": bad}
     assert handle(json.dumps(req).encode()) == {"ok": False, "error": "bad_request"}
+
+
+def test_utf16_csv_is_decoded_not_garbled_as_cp932():
+    # Excel "Unicode Text" writes UTF-16 with a BOM; cp932 accepts those bytes and garbles every label.
+    for enc in ("utf-16", "utf-16-be"):
+        data = "Part Number,Material\nBRK-100,SUS304\n".encode(enc)
+        if enc == "utf-16-be":
+            data = b"\xfe\xff" + data
+        r = run("text/csv", data)
+        assert r["ok"], r
+        got = {(x["label"], x["value"]) for x in r["records"]}
+        assert got == {("Part Number", "BRK-100"), ("Material", "SUS304")}
+    # BOM-less UTF-16 (NUL bytes everywhere) must be refused, not decoded as cp932 garbage.
+    r = run("text/csv", "Part Number,Material\nBRK-100,SUS304\n".encode("utf-16-le"))
+    assert r == {"ok": False, "error": "csv_bad_encoding"}

@@ -61,12 +61,15 @@ def csv_records(data: bytes, limits: dict, sink: Sink, opts: dict | None = None)
     opts = opts or {}
     warnings: list[str] = []
     encodings = ("cp932",) if opts.get("csv_encoding") == "shift_jis" else ("utf-8-sig", "cp932")
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        encodings = ("utf-16",)  # BOM-marked UTF-16 (Excel "Unicode Text"); cp932 would garble every label
     for enc in encodings:
         try:
             text = data.decode(enc)
-            break
         except UnicodeDecodeError:
             continue
+        if "\x00" not in text:  # NULs mean a wrong guess (e.g. BOM-less UTF-16), never real CSV text
+            break
     else:
         raise ExtractionError("csv_bad_encoding")
     if enc != "utf-8-sig":
