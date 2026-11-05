@@ -94,36 +94,99 @@ pub struct Candidate {
     pub reasons: Vec<&'static str>,
 }
 
+/// Blocking keys: two identifiers can only be a (possible) match if they share one of these keys, so candidate
+/// search is near-linear instead of all-pairs. Covers every rule in `compare`: safe-normalised equality, loose-key
+/// equality, revision suffix stripped, and one-character edits (shared single-deletion variants, ids >= 6 chars).
+fn block_keys(k: &str) -> Vec<String> {
+    let loose = loose_key(k);
+    let mut out = vec![format!("S:{}", safe_normalize(k)), format!("L:{loose}")];
+    if let Some(r) = strip_revision(k) {
+        out.push(format!("L:{}", loose_key(&r)));
+    }
+    let chars: Vec<char> = loose.chars().collect();
+    if chars.len() >= 5 {
+        out.push(format!("D:{loose}"));
+        if chars.len() >= 6 {
+            for i in 0..chars.len() {
+                let v: String = chars
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(_, c)| c)
+                    .collect();
+                out.push(format!("D:{v}"));
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Candidate pairs among distinct identifiers. Automatic `Match` pairs are reported too (for transparency).
 /// A key with possible matches to two or more different keys is ambiguous: its pairs become `RequiresHumanReview`.
 pub fn candidates(keys: &[String]) -> Vec<Candidate> {
     let mut ks: Vec<&String> = keys.iter().collect();
     ks.sort();
     ks.dedup();
-    let mut out = Vec::new();
-    for i in 0..ks.len() {
-        for j in i + 1..ks.len() {
-            let (o, r) = compare(ks[i], ks[j]);
-            if o != Outcome::NoMatch {
-                out.push(Candidate {
-                    left: ks[i].clone(),
-                    right: ks[j].clone(),
-                    outcome: o,
-                    reasons: r,
-                });
+    let mut blocks: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
+    for (i, k) in ks.iter().enumerate() {
+        for b in block_keys(k) {
+            blocks.entry(b).or_default().push(i);
+        }
+    }
+    let mut pairs: std::collections::BTreeSet<(usize, usize)> = std::collections::BTreeSet::new();
+    for members in blocks.values() {
+        for x in 0..members.len() {
+            for y in x + 1..members.len() {
+                pairs.insert((members[x].min(members[y]), members[x].max(members[y])));
             }
         }
     }
-    let possible = |k: &str, c: &Candidate| c.outcome == Outcome::PossibleMatch && (c.left == k || c.right == k);
-    let ambiguous: Vec<String> = ks
-        .iter()
-        .filter(|k| out.iter().filter(|c| possible(k, c)).count() >= 2)
-        .map(|k| k.to_string())
+    let mut out = Vec::new();
+    for (i, j) in pairs {
+        let (o, r) = compare(ks[i], ks[j]);
+        if o != Outcome::NoMatch {
+            out.push(Candidate {
+                left: ks[i].clone(),
+                right: ks[j].clone(),
+                outcome: o,
+                reasons: r,
+            });
+        }
+    }
+    let mut possible_count: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for c in out.iter().filter(|c| c.outcome == Outcome::PossibleMatch) {
+        *possible_count.entry(c.left.as_str()).or_default() += 1;
+        *possible_count.entry(c.right.as_str()).or_default() += 1;
+    }
+    let ambiguous: std::collections::HashSet<String> = possible_count
+        .into_iter()
+        .filter(|(_, n)| *n >= 2)
+        .map(|(k, _)| k.to_string())
         .collect();
     for c in &mut out {
         if c.outcome == Outcome::PossibleMatch && (ambiguous.contains(&c.left) || ambiguous.contains(&c.right)) {
             c.outcome = Outcome::RequiresHumanReview;
             c.reasons.push("ambiguous_cluster");
+        }
+    }
+    out
+}
+
+/// Reference all-pairs implementation (tests only): the blocked search must return exactly the same pairs.
+#[cfg(test)]
+fn candidates_all_pairs(keys: &[String]) -> Vec<(String, String, Outcome)> {
+    let mut ks: Vec<&String> = keys.iter().collect();
+    ks.sort();
+    ks.dedup();
+    let mut out = Vec::new();
+    for i in 0..ks.len() {
+        for j in i + 1..ks.len() {
+            let (o, _) = compare(ks[i], ks[j]);
+            if o != Outcome::NoMatch {
+                out.push((ks[i].clone(), ks[j].clone(), o));
+            }
         }
     }
     out
@@ -166,7 +229,28 @@ mod tests {
         assert_eq!(candidates(&keys).len(), 1);
     }
 
+    #[test]
+    fn blocked_search_is_fast_on_5000_keys() {
+        let keys: Vec<String> = (0..5000)
+            .map(|i| format!("PN-{:05}-{}", i * 7919 % 100_000, ["A", "B", "C"][i % 3]))
+            .collect();
+        let t = std::time::Instant::now();
+        let _ = candidates(&keys);
+        // Debug build bound; release timings are recorded by kizuna-bench (BUILD_STATUS).
+        assert!(t.elapsed() < std::time::Duration::from_secs(5), "{:?}", t.elapsed());
+    }
+
     proptest! {
+        #[test]
+        fn blocking_finds_exactly_the_all_pairs_candidates(keys in proptest::collection::vec("[A-Ca-c0-2 \\-]{1,9}( REV [A-C])?", 0..40)) {
+            let blocked: Vec<(String, String)> = candidates(&keys).into_iter().map(|c| (c.left, c.right)).collect();
+            let all: Vec<(String, String)> = candidates_all_pairs(&keys).into_iter().map(|(l, r, _)| (l, r)).collect();
+            let (mut b, mut a) = (blocked, all);
+            b.sort();
+            a.sort();
+            prop_assert_eq!(b, a);
+        }
+
         #[test]
         fn normalize_is_idempotent_and_compare_symmetric(a in "\\PC{0,20}", b in "\\PC{0,20}") {
             prop_assert_eq!(safe_normalize(&safe_normalize(&a)), safe_normalize(&a));

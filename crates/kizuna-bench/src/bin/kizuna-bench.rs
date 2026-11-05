@@ -270,7 +270,7 @@ async fn main() -> R<()> {
     let mut mem = serde_json::Map::new();
 
     eprintln!("[1/9] entity resolution");
-    res.insert("entity_resolution".into(), bench_er(&mut rng, &[500, 2000]));
+    res.insert("entity_resolution".into(), bench_er(&mut rng, &[500, 2000, 5000]));
     eprintln!("[2/9] conflict detection (library)");
     res.insert(
         "conflict_detection_library".into(),

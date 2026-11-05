@@ -3,8 +3,8 @@
  "documents": 52,
  "malicious_files": 3,
  "timings_s": {
-  "ingest_and_extract": 13.784,
-  "verification_run": 0.043
+  "ingest_and_extract": 19.211,
+  "verification_run": 0.037
  },
  "verification_run": {
   "rule_version": "mfg-rules@1",
@@ -160,6 +160,7 @@
  "security_event_kinds": [
   "auth.login_succeeded",
   "authz.denied",
+  "export.report",
   "ingest.artifact_quarantined",
   "ingest.upload_rejected"
  ],
@@ -168,8 +169,8 @@
    "check": "login auditor",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac179e4e734d9d54881af74eef74.502y-pbBuPfsJ5jV9dxzCP46VuPyaorcVa7xTmedUsQ",
-    "refresh_token": "kzr.01a1ac179e4e734d9d54881af74eef74.fqsqYmoyra-Pve_pXyEGPs3GXgT3SQ4kEXolZQ2zSD4",
+    "access_token": "kza.01a1ac1dd12075cda29a0098a95ebd6c.rbk7xmk2xC7-80TdCpNT2goFa-kUChj24bM3aOYq_mY",
+    "refresh_token": "kzr.01a1ac1dd12075cda29a0098a95ebd6c.zLfXwpHCvsTGysGX2Clll1umJk78DVSpdZss0hdEmCE",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -179,8 +180,8 @@
    "check": "login analyst",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac179e4e734d9d54881af74eef74.K3wySLFQ80J8j9kT-q5alszLog7VUEYnXnfMJ19n6Gs",
-    "refresh_token": "kzr.01a1ac179e4e734d9d54881af74eef74.2iTjF9RFOyIk8Y203TfPFj7oz7vo5IOQL8EPAhP3x3k",
+    "access_token": "kza.01a1ac1dd12075cda29a0098a95ebd6c.0NMP3hBitVgzaOg4JAMN5zexNJypP8AGp9so-UNtrT0",
+    "refresh_token": "kzr.01a1ac1dd12075cda29a0098a95ebd6c.FEmQVZvKKvNnNfQEoMvqCiJiWK1ENl6J2np8niO67Sk",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -190,8 +191,8 @@
    "check": "login reviewer",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac179e4e734d9d54881af74eef74.fVosTO5RHPlI5nLQ5TwfTzUvqyIzL6sSMRxsUru5Kt0",
-    "refresh_token": "kzr.01a1ac179e4e734d9d54881af74eef74.6FxA_HO5IPtooYRiG_6rL2PdHkgkHG2ED13py2JybZI",
+    "access_token": "kza.01a1ac1dd12075cda29a0098a95ebd6c.SzvmRilQZxXkn8Eo0rbcw6jArFtc7Dq0U4_SUX5MppI",
+    "refresh_token": "kzr.01a1ac1dd12075cda29a0098a95ebd6c.sH_CVahpSs6uBL5fJ4Nq9VDd9YwysC9NvLGwfB9A9DM",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -201,8 +202,8 @@
    "check": "login reviewer2",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac179e4e734d9d54881af74eef74._OZ6v5apkuEo1y7HMcj4KFSGZw8kzInCAjD6OkLYzl8",
-    "refresh_token": "kzr.01a1ac179e4e734d9d54881af74eef74.KwAadp2K440w8OOF6PGGLssiGGGU27vO72Tzx3StMIU",
+    "access_token": "kza.01a1ac1dd12075cda29a0098a95ebd6c.7YPM0uFtGXXCzKbdTiZ6uyoFBbuAnJIEbkBbEcPtFRY",
+    "refresh_token": "kzr.01a1ac1dd12075cda29a0098a95ebd6c.HolkkRR7HUcTtGf29HRuZcHiABqV8KsuPTGgcHx1eHg",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -212,8 +213,8 @@
    "check": "login viewer",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac179e4e734d9d54881af74eef74.Sx5Qj837H7LSGJLeahfPnIMUCxjpUKQRnOLCoP7icMk",
-    "refresh_token": "kzr.01a1ac179e4e734d9d54881af74eef74.awwoMJmBDbpi0O5dLF-AxSBQgOcaCXyU2X5mrcf5h1w",
+    "access_token": "kza.01a1ac1dd12075cda29a0098a95ebd6c.M9Wb_s2_CvzBO6yEBt6QX10F61E0emcvlC8QLsysb_A",
+    "refresh_token": "kzr.01a1ac1dd12075cda29a0098a95ebd6c.JvNfRw-DNwr26Y5JPew0m-RXsSdLHjAZIv9V4GJ1voI",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -223,8 +224,8 @@
    "check": "login outsider",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac179e92715c80e11c2bec6148ba.OYRROAf8Nie3DsaR_u5MAtm5bJdgBP5ESih01Zolpik",
-    "refresh_token": "kzr.01a1ac179e92715c80e11c2bec6148ba.GjrhnYb4PJXmDiwHEInGj1ldFX-G0QTFpv_NCEBPBBc",
+    "access_token": "kza.01a1ac1dd1697426912415d4bc310971.339nVOJNb_XC_Kir4DBmC1-cNPl9tBHZP_vtTPFbjLY",
+    "refresh_token": "kzr.01a1ac1dd1697426912415d4bc310971.mS03YUF6c4-7HddLSwex4OuUrO1pU6_nC4N2JUOZ-8g",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -269,7 +270,7 @@
    "check": "reviewer records a decision on clean evidence",
    "ok": true,
    "detail": {
-    "id": "01a1ac17-dc2c-777f-b4b1-6159219d399d",
+    "id": "01a1ac1e-2393-768e-822b-530d023ba106",
     "kind": "supplier_part_release",
     "title": "Release SHF-6991 rev E",
     "subject_type": "part",
@@ -277,10 +278,10 @@
     "outcome": "approved",
     "rationale": "Synthetic E2E: spec, drawing, PO and inspection agree",
     "effective_from": null,
-    "decided_by": "01a1ac17-a047-7757-aaed-77ad4d87435d",
-    "decided_at": "2026-11-05T14:23:27.276144Z",
+    "decided_by": "01a1ac1d-d354-768c-928c-cd51d41ca7ec",
+    "decided_at": "2026-11-05T14:30:18.771683Z",
     "status": "valid",
-    "derivation_sha256": "5907e8f007a6a0ca4b8993dd239d853890cc03a5baf3cd0f443d17c2b96a7fca",
+    "derivation_sha256": "1a98103501b21391eb1405100f6beff00e9c8bcc6131555316b17ff1ea4e3952",
     "supersedes": null
    }
   },
@@ -310,15 +311,15 @@
     "events_checked": 122,
     "problem": null,
     "head_seq": 122,
-    "head_hash": "ef6c8ceebded7444858feec8c009c146a66785193a6c6f8b69ac8e104ced62bf"
+    "head_hash": "9f5f8cc1d7a0019e22a38d239029fcabccf8c8c7dffc4b4466d885d5625e111b"
    }
   }
  ],
  "provenance": {
   "command": "scripts/e2e.sh --seed 7 --parts 24",
-  "commit": "8308073",
+  "commit": "ef076bc",
   "dirty": false,
-  "utc": "2026-11-05T14:23:27+00:00",
+  "utc": "2026-11-05T14:30:19+00:00",
   "host": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
   "build": "debug"
  }
