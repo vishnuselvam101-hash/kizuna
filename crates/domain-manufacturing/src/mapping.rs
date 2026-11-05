@@ -1,4 +1,4 @@
-//! Deterministic record → claim mapping (`mfg-map@3`: @2 added heat number, certificate type, property bounds and
+//! Deterministic record → claim mapping (`mfg-map@4`: @4 adds Japanese dimension/tolerance tokens from QA; @2 added heat number, certificate type, property bounds and
 //! side-specific drawing references for the quality three-way match; @3 adds Japanese documents, see `ja`).
 //! Document text is data: labels are matched against a fixed
 //! vocabulary and nothing in a document can add predicates, change rules or trigger actions.
@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use crate::ja;
 
-pub const MAPPING_VERSION: &str = "mfg-map@3";
+pub const MAPPING_VERSION: &str = "mfg-map@4";
 
 /// One label/value pair produced by the extraction worker. `group` ties values of one row/document together.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -866,6 +866,41 @@ mod tests {
 
     fn find<'a>(m: &'a Mapped, pred: &str) -> Vec<&'a ClaimInput> {
         m.claims.iter().filter(|c| c.predicate == pred).collect()
+    }
+
+    #[test]
+    fn regression_qa_japanese_dimension_property_and_tolerance_labels() {
+        // A Japanese spec sheet / mill sheet: these labels were reported as unrecognised and the values lost.
+        let r = vec![
+            rec("品番", "JA-BRK-1001", "doc"),
+            rec("長さ (mm)", "120.0", "doc"),
+            rec("外径 (mm)", "40", "doc"),
+            rec("板厚 (mm)", "3.2", "doc"),
+            rec("引張強さ (MPa)", "580", "doc"),
+            rec("硬さ (HV)", "175", "doc"),
+            rec("長さ公差", "±0.2", "doc"),
+        ];
+        let m = map_records("spec_document", &r, 8000);
+        assert!(m.unmapped_labels.is_empty(), "{:?}", m.unmapped_labels);
+        let len = find(&m, "mfg.dimension.length");
+        assert_eq!(
+            (len[0].value_num.as_deref(), len[0].value_unit.as_deref()),
+            (Some("120"), Some("mm"))
+        );
+        assert_eq!(
+            find(&m, "mfg.dimension.outer_diameter")[0].value_num.as_deref(),
+            Some("40")
+        );
+        assert_eq!(find(&m, "mfg.dimension.thickness")[0].value_num.as_deref(), Some("3.2"));
+        assert_eq!(
+            find(&m, "mfg.property.tensile_strength")[0].value_unit.as_deref(),
+            Some("MPa")
+        );
+        assert_eq!(find(&m, "mfg.property.hardness")[0].value_num.as_deref(), Some("175"));
+        assert_eq!(
+            find(&m, "mfg.tolerance.length.plus")[0].value_num.as_deref(),
+            Some("0.2")
+        );
     }
 
     #[test]

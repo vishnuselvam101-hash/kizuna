@@ -161,6 +161,7 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 }
 @media (max-width: 600px) {
   .topbar { flex-wrap: wrap; height: auto; }
+  .topbar-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 0; }
   .primary-nav { order: 3; width: 100%; mask-image: linear-gradient(90deg, #000 85%, transparent); }
   .sub-nav { mask-image: linear-gradient(90deg, #000 85%, transparent); }
 }
@@ -387,3 +388,9 @@ tr[aria-current="true"] td { background: var(--info-bg); }
 .whatif-diff { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
 .whatif-diff ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }
 @media (max-width: 640px) { .whatif-sbs { grid-template-columns: 1fr; } }
+/* QA additions: claim IDs wrap instead of widening tables; reject needs a named faulty claim; TOTP secret */
+.claim-id { display: block; font-size: var(--t-xs); word-break: break-all; max-width: 22ch; }
+fieldset.faulty { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s2) var(--s3); margin: var(--s2) 0; }
+.secret, .wrap-any { word-break: break-all; }
+ol.codes { columns: 2; font-size: var(--t-sm); }
+fieldset.faulty label.check { display: flex; align-items: center; gap: var(--s2); min-height: 32px; }

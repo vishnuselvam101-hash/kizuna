@@ -76,7 +76,7 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
       )}
       <GraphScene g={g} label={tr("trace.graphLabel", { n: t.evidence.length })} onPick={() => {}} height={280} highlight={hl.size ? hl : undefined} />
       <h3>{tr("trace.evidence")}</h3>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("trace.evidence")}>
         <table>
           <thead>
             <tr>

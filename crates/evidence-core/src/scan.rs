@@ -106,6 +106,15 @@ fn contains(h: &[u8], n: &[u8]) -> bool {
     h.windows(n.len()).any(|w| w == n)
 }
 
+/// A PDF name token `n` (e.g. `/AA`) is present: the match must end at a delimiter, whitespace or EOF, so that
+/// longer names such as font subset tags (`/AAAAAA+Font`) do not count (ISO 32000-1 §7.2.2, §7.3.5).
+fn has_pdf_name(h: &[u8], n: &[u8]) -> bool {
+    let regular = |c: u8| !c.is_ascii_whitespace() && c != 0 && !b"()<>[]{}/%".contains(&c);
+    h.windows(n.len())
+        .enumerate()
+        .any(|(i, w)| w == n && h.get(i + n.len()).is_none_or(|&c| !regular(c)))
+}
+
 pub fn scan(bytes: &[u8], limits: &Limits) -> ScanReport {
     let mut findings = Vec::new();
     let Some(ft) = detect(bytes) else {
@@ -123,7 +132,7 @@ pub fn scan(bytes: &[u8], limits: &Limits) -> ScanReport {
             // too until a human releases the document (review finding M5).
             let decoded = decode_pdf_names(bytes);
             for k in PDF_ACTIVE {
-                if contains(&decoded, k) {
+                if has_pdf_name(&decoded, k) {
                     findings.push(format!("pdf_active_content:{}", String::from_utf8_lossy(&k[1..])));
                 }
             }
@@ -314,6 +323,63 @@ mod tests {
         assert!(r.findings.iter().any(|f| f.contains("JavaScript")));
         let r = scan(b"%PDF-1.7\n1 0 obj << /Type /Page >>\n%%EOF", &Limits::default());
         assert_eq!(r.verdict, Verdict::Clean);
+    }
+
+    #[test]
+    fn precise_name_match_still_catches_escaped_and_boundary_cases() {
+        // Escaped names are decoded before matching; delimiters, whitespace, NUL and EOF all end a name.
+        for pdf in [
+            &b"%PDF-1.4\n<</J#53 (x)>>\n%%EOF"[..],
+            b"%PDF-1.4\n<</#41A<</O 2 0 R>>>>\n%%EOF",
+            b"%PDF-1.4\n<</AA\n<</O 2 0 R>>>>\n%%EOF",
+            b"%PDF-1.4\n<</JS\x00(x)>>\n%%EOF",
+            b"%PDF-1.4\n<</Launch/F(x.exe)>>\n/JS",
+        ] {
+            assert_eq!(
+                scan(pdf, &Limits::default()).verdict,
+                Verdict::Quarantine,
+                "{}",
+                String::from_utf8_lossy(pdf)
+            );
+        }
+    }
+
+    #[test]
+    fn regression_qa_font_subset_tags_are_not_active_content() {
+        // Subset font names carry a six-letter tag ("/AAAAAA+NotoSansCJKjp", "/JSQZRT+Arial"): every PDF printed
+        // from Chromium/Office has one, and a substring match on "/AA" or "/JS" quarantined them all.
+        for name in [
+            &b"/AAAAAA+NotoSansCJKjp-Regular"[..],
+            b"/JSQZRT+Arial",
+            b"/AAX",
+            b"/OpenActionX",
+        ] {
+            let mut pdf = b"%PDF-1.4\n1 0 obj << /Type /Font /BaseFont ".to_vec();
+            pdf.extend_from_slice(name);
+            pdf.extend_from_slice(b" >> endobj\n%%EOF");
+            let r = scan(&pdf, &Limits::default());
+            assert_eq!(
+                r.verdict,
+                Verdict::Clean,
+                "{}: {:?}",
+                String::from_utf8_lossy(name),
+                r.findings
+            );
+        }
+        // Real keys still count wherever a PDF delimiter ends the name.
+        for pdf in [
+            &b"%PDF-1.4\n<</AA<</O 2 0 R>>>>\n%%EOF"[..],
+            b"%PDF-1.4\n<</JS(x)>>\n%%EOF",
+            b"%PDF-1.4\n<</OpenAction[3 0 R]>>\n%%EOF",
+            b"%PDF-1.4\n<</S/JavaScript/JS 4 0 R>>\n%%EOF",
+        ] {
+            assert_eq!(
+                scan(pdf, &Limits::default()).verdict,
+                Verdict::Quarantine,
+                "{}",
+                String::from_utf8_lossy(pdf)
+            );
+        }
     }
 
     #[test]

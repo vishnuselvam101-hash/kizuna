@@ -172,6 +172,26 @@ function AuditTrail() {
     return r;
   }, []);
   const [chain, setChain] = useState<ChainStatus | null>(null);
+  const [cp, setCp] = useState<{ seq: number; key_id: string } | null>(null);
+  const [cpCheck, setCpCheck] = useState<{ intact: boolean; checkpoints: unknown[] } | null>(null);
+  async function checkpoint() {
+    setErr(null);
+    try {
+      const c = await api.request<{ seq: number; key_id: string }>("POST", "/audit/checkpoints", {});
+      setCp(c);
+      download(`kizuna-checkpoint-${c.seq}.json`, JSON.stringify(c, null, 2), "application/json");
+    } catch (x) {
+      setErr(x);
+    }
+  }
+  async function verifyCheckpoints() {
+    setErr(null);
+    try {
+      setCpCheck(await api.request("GET", "/audit/checkpoints/verify"));
+    } catch (x) {
+      setErr(x);
+    }
+  }
   const [err, setErr] = useState<unknown>(null);
   async function more() {
     const last = events[events.length - 1]?.seq ?? 0;
@@ -197,6 +217,8 @@ function AuditTrail() {
       actions={
         <>
           {can("audit_verify") && <button onClick={verify}>{t("reports.verifyChain")}</button>}
+          {can("audit_verify") && <button onClick={checkpoint}>{t("reports.checkpoint")}</button>}
+          {can("audit_verify") && <button onClick={verifyCheckpoints}>{t("reports.verifyCheckpoints")}</button>}
           <button disabled={!events.length} onClick={() => download("kizuna-audit-events.json", JSON.stringify(events, null, 2), "application/json")}>
             {t("reports.export")}
           </button>
@@ -209,6 +231,16 @@ function AuditTrail() {
           {chain.intact
             ? t("reports.chainOk", { n: fmtNum(chain.events_checked), seq: chain.head_seq, hash: chain.head_hash.slice(0, 16) })
             : t("reports.chainBroken", { problem: chain.problem ?? "" })}
+        </p>
+      )}
+      {cp && (
+        <p className="callout ok" role="status">
+          {t("reports.checkpointDone", { seq: cp.seq, kid: cp.key_id })}
+        </p>
+      )}
+      {cpCheck && (
+        <p className={cpCheck.intact ? "callout ok" : "callout crit"} role="status">
+          {cpCheck.intact ? t("reports.checkpointsOk", { n: fmtNum(cpCheck.checkpoints.length) }) : t("reports.checkpointsBad")}
         </p>
       )}
       <Loading on={page.loading} />

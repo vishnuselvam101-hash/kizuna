@@ -95,6 +95,16 @@ JA_TOKENS = {
     "基準寸法": "nominal",
     "図面寸法": "nominal",
     "公称値": "nominal",
+    "長さ": "length",
+    "板厚": "thickness",
+    "長さ公差": "length tolerance",
+    "幅公差": "width tolerance",
+    "高さ公差": "height tolerance",
+    "厚さ公差": "thickness tolerance",
+    "板厚公差": "thickness tolerance",
+    "外径公差": "outer diameter tolerance",
+    "内径公差": "inner diameter tolerance",
+    "直径公差": "diameter tolerance",
 }
 SEAL_LABEL = "印影"
 # 承認: a name → approved_by + mark, a status word → approval_status, a date → approval_date

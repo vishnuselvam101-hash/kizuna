@@ -243,7 +243,7 @@ async fn suggestions_are_redacted_marked_and_never_evidence_until_reviewed() {
         s["extraction_method"]
             .as_str()
             .unwrap()
-            .starts_with("ai:mock-model+ai-map@2")
+            .starts_with("ai:mock-model+ai-map@3")
     );
     assert!(s["confidence_bps"].as_i64().unwrap() <= 7000);
     assert_eq!(s["provenance"]["ai"]["prompt_sha256"].as_str().unwrap().len(), 64);

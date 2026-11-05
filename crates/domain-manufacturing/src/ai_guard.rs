@@ -1,4 +1,4 @@
-//! Deterministic guards around AI label mapping (ADR 0018, `ai-map@2`). Nothing here calls a model.
+//! Deterministic guards around AI label mapping (ADR 0018, `ai-map@3`). Nothing here calls a model.
 //!
 //! 1. Governance denylist: fields and predicates that carry approval, review, validity or revision authority are
 //!    never offered to, nor accepted from, the model, and claims with such predicates are never AI-attributed.
@@ -201,6 +201,8 @@ const CONCEPTS: &[(&str, &[&str])] = &[
             "仕入",
             "取引先",
             "メーカー",
+            "製造者",
+            "製造元",
             "供給",
             "供应商",
             "厂商",
@@ -501,6 +503,8 @@ mod tests {
             ("toleranz breite", "width tolerance"),
             ("材質", "material"),
             ("lieferant", "supplier"),
+            ("製造者", "supplier"),
+            ("製造元", "supplier"),
             ("sachnummer", "part number"),
             ("menge", "quantity"),
             ("zugfestigkeit", "tensile strength"),

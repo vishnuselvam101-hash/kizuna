@@ -6,7 +6,17 @@ import { AiBadge, ClaimId, ClaimReview } from "./claims";
 import type { Claim, EntityCandidate, PredicateEvidence, Subject } from "./types";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, short, useLoad } from "./ui";
 
-export function EvidenceTable({ groups, onReview, reviewing }: { groups: PredicateEvidence[]; onReview?: (c: Claim) => void; reviewing?: string }) {
+export function EvidenceTable({
+  groups,
+  onReview,
+  reviewing,
+  onSupersede,
+}: {
+  groups: PredicateEvidence[];
+  onReview?: (c: Claim) => void;
+  reviewing?: string;
+  onSupersede?: (c: Claim) => void;
+}) {
   const { t, tv } = useI18n();
   if (!groups.length) return <Empty text={t("evidence.none")} />;
   return (
@@ -57,6 +67,15 @@ export function EvidenceTable({ groups, onReview, reviewing }: { groups: Predica
                     <button onClick={() => onReview(c)} aria-label={t("claim.reviewFor", { predicate: c.predicate, value: claimValue(c) })}>
                       {t(c.review_status === "ai_suggested" ? "claim.reviewAi" : "claim.review")}
                     </button>
+                    {onSupersede && (
+                      <button
+                        className="link"
+                        aria-label={t("evidence.supersedeFor", { predicate: c.predicate, value: claimValue(c) })}
+                        onClick={() => onSupersede(c)}
+                      >
+                        {t("evidence.supersede")}
+                      </button>
+                    )}
                   </td>
                 )}
               </tr>
@@ -73,8 +92,69 @@ export function EvidenceTable({ groups, onReview, reviewing }: { groups: Predica
 type RecordType = "supplier" | "part";
 const PAGE = 200;
 
-export function RecordsView() {
+function SupersedeForm({ c, onDone }: { c: Claim; onDone: (ok: boolean) => void }) {
   const { api } = useSession();
+  const { t } = useI18n();
+  const [f, setF] = useState({ value: "", unit: c.value_unit ?? "", reason: "" });
+  const [err, setErr] = useState<unknown>(null);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const v = f.value.trim();
+    const numeric = c.value_num !== null && /^-?\d+(\.\d+)?$/.test(v);
+    try {
+      await api.request("POST", `/claims/${c.id}/supersede`, {
+        reason: f.reason.trim(),
+        subject_type: c.subject_type,
+          subject_key: c.subject_key,
+          predicate: c.predicate,
+          value_text: numeric ? null : v,
+          value_num: numeric ? v : null,
+          value_unit: numeric ? f.unit.trim() || null : null,
+          revision: c.revision,
+          artifact_id: c.artifact_id,
+          source_location: c.source_location,
+      });
+      onDone(true);
+    } catch (x) {
+      setErr(x);
+    }
+  }
+  return (
+    <form onSubmit={submit} className="review-box" aria-labelledby="sup-h">
+      <h3 id="sup-h">{t("evidence.supersedeFor", { predicate: c.predicate, value: claimValue(c) })}</h3>
+      <div className="form-grid">
+        <label>
+          {t("evidence.newValue")}
+          <input required value={f.value} onChange={(e) => setF({ ...f, value: e.target.value })} />
+        </label>
+        {c.value_num !== null && (
+          <label>
+            {t("evidence.newUnit")}
+            <input value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} />
+          </label>
+        )}
+        <label>
+          {t("evidence.reason")}
+          <input required maxLength={500} value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} />
+        </label>
+      </div>
+      <Notice error={err} />
+      <div className="actions">
+        <button className="primary">{t("evidence.supersedeBtn")}</button>
+        <button type="button" onClick={() => onDone(false)}>
+          {t("common.cancel")}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+
+export function RecordsView() {
+  const { api, can } = useSession();
+  const [sup, setSup] = useState<Claim | null>(null);
+  const [supMsg, setSupMsg] = useState("");
   const { t } = useI18n();
   const [type, setType] = useState<RecordType>("part");
   const [filter, setFilter] = useState("");
@@ -162,7 +242,27 @@ export function RecordsView() {
         <Panel title={selected ? t("records.evidenceFor", { key: selected }) : t("records.selectPrompt")} id="rec-ev">
           <Loading on={!!selected && evidence.loading} />
           <Notice error={evidence.error} />
-          {evidence.data && <EvidenceTable groups={evidence.data} onReview={setReviewing} reviewing={reviewing?.id} />}
+          <Notice msg={supMsg} />
+          {evidence.data && (
+            <EvidenceTable
+              groups={evidence.data}
+              onReview={setReviewing}
+              reviewing={reviewing?.id}
+              onSupersede={can("claim_write") ? (c) => (setSupMsg(""), setSup(c)) : undefined}
+            />
+          )}
+          {sup && sup.subject_key === selected && (
+            <SupersedeForm
+              c={sup}
+              onDone={(ok) => {
+                setSup(null);
+                if (ok) {
+                  setSupMsg(t("evidence.supersededMsg"));
+                  evidence.reload();
+                }
+              }}
+            />
+          )}
           {reviewing && reviewing.subject_key === selected && (
             <ClaimReview
               claim={reviewing}

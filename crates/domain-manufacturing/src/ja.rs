@@ -7,7 +7,7 @@ use entity_resolution::safe_normalize;
 
 /// Whole-token label translations (same table as `JA_TOKENS` in claims.py): `外径 規格値` reads as
 /// `outer diameter nominal`, `外径 測定値` as `outer diameter measured`, `外径 公差` as `outer diameter tolerance`.
-pub(crate) const JA_TOKENS: [(&str, &str); 25] = [
+pub(crate) const JA_TOKENS: [(&str, &str); 35] = [
     ("外径", "outer diameter"),
     ("内径", "inner diameter"),
     ("全長", "length"),
@@ -33,6 +33,16 @@ pub(crate) const JA_TOKENS: [(&str, &str); 25] = [
     ("基準寸法", "nominal"),
     ("図面寸法", "nominal"),
     ("公称値", "nominal"),
+    ("長さ", "length"),
+    ("板厚", "thickness"),
+    ("長さ公差", "length tolerance"),
+    ("幅公差", "width tolerance"),
+    ("高さ公差", "height tolerance"),
+    ("厚さ公差", "thickness tolerance"),
+    ("板厚公差", "thickness tolerance"),
+    ("外径公差", "outer diameter tolerance"),
+    ("内径公差", "inner diameter tolerance"),
+    ("直径公差", "diameter tolerance"),
 ];
 
 pub(crate) fn translate_token(t: &str) -> &str {

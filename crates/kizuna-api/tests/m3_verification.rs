@@ -103,7 +103,7 @@ async fn end_to_end_injected_faults_are_detected_with_sources() {
         "{names:?}"
     );
     assert!(d.body["sources"][0]["location"].is_object());
-    assert!(d.body["limitations"].as_str().unwrap().contains("mfg-rules@1"));
+    assert!(d.body["limitations"].as_str().unwrap().contains("mfg-rules@2"));
 
     // Prompt-injection text in the spec did not create claims or change outcomes.
     let claims = c.get(&format!("/api/v1/claims?artifact_id={spec}"), &tok).await;

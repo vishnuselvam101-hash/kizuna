@@ -10,3 +10,4 @@
 web/dist
 /.claude
 **/.hypothesis
+web/e2e/results

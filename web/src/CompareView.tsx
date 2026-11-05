@@ -53,7 +53,7 @@ export function CompareView() {
           {rows.length === 0 ? (
             <Empty text={t("compare.noDiff")} />
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0} role="region" aria-label={t("compare.query")}>
               <table>
                 <thead>
                   <tr>

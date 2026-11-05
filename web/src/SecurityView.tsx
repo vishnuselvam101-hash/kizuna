@@ -121,7 +121,7 @@ export function SecurityView() {
           ))}
         </ul>
       )}
-      <Panel title={t("sec.incidents")}>
+      <Panel title={t("sec.incidents")} id="s-inc">
         <DataTable
           rows={list.data ?? []}
           rowKey={(i) => i.id}
@@ -139,15 +139,30 @@ export function SecurityView() {
         />
       </Panel>
       {sel && (
-        <Panel title={tv("sec.rule", sel.incident.rule)}>
+        <Panel title={tv("sec.rule", sel.incident.rule)} id="s-detail">
           <p>{sel.incident.summary}</p>
+          <div className="table-wrap" tabIndex={0} role="region" aria-label={t("sec.col.action")}>
           <table className="table">
+            <caption className="sr-only">{tv("sec.rule", sel.incident.rule)}</caption>
+            <thead>
+              <tr>
+                <th scope="col">{t("sec.col.action")}</th>
+                <th scope="col">{t("sec.col.target")}</th>
+                <th scope="col">{t("sec.col.policy")}</th>
+                <th scope="col">{t("sec.col.status")}</th>
+                <th scope="col">{t("sec.col.detail")}</th>
+                <th scope="col">
+                  <span className="sr-only">{t("common.actions")}</span>
+                </th>
+              </tr>
+            </thead>
             <tbody>
               {sel.actions.map((a) => (
                 <ActionRow key={a.id} a={a} canManage={manage} onDecide={decide} />
               ))}
             </tbody>
           </table>
+          </div>
           {manage && (sel.incident.status === "open" || sel.incident.status === "contained") && (
             <div>
               <label className="stack">

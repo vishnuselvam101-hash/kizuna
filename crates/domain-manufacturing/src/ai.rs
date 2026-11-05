@@ -15,7 +15,7 @@ use crate::ai_guard::{is_governance_field, is_governance_predicate, looks_like_i
 use crate::mapping::{Record, field, map_records, normalize_label};
 use evidence_core::claim::ClaimInput;
 
-pub const AI_MAPPER_VERSION: &str = "ai-map@2";
+pub const AI_MAPPER_VERSION: &str = "ai-map@3";
 /// Highest confidence an AI-suggested claim can carry (below every deterministic extractor).
 pub const MAX_AI_CONFIDENCE_BPS: i32 = 7000;
 pub const MAX_LABELS: usize = 100;
