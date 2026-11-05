@@ -19,6 +19,24 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | I2/I3 | done (synthetic eval only) | certificate integrity signals (9 kinds) + revision drift radar, ADR 0019, migration 0016, `/integrity/*` API, "Integrity signals" and "Revision drift" views; eval docs/testing/INTEGRITY_SIGNALS_EVAL.md |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
+## Integration results (2026-11-05 late, main 5009a60)
+Further merged: feat-evidence-pack (mig 0022, ADR 0023), feat-whatif (0023), qa (ADR 0024: mfg-rules@2, mfg-map@4,
+ai-map@3), er-tuning (0024), ja-v2 (0025, mfg-map@5), perf-verify (0026), feat-supplier-portal (0027, ADR 0025),
+feat-8d (0028, ADR 0026); integration: 8D requests published to the supplier portal and portal 8D responses linked as
+supplier evidence (0029, portal deny-by-default for later tables), CAPA overdue in tenant time zone + alerts.
+Portal security review (`docs/security/REVIEW_PORTAL_2026-11-05.md`): High 0, Medium 0, Low 3 — all fixed with tests.
+
+| Command | Result |
+|---|---|
+| `scripts/ci-local.sh` | **green in 228 s** on 5009a60: **530 Rust tests**, 123 pytest, 101 vitest, audits/deny/gitleaks clean |
+| `scripts/e2e.sh --seed 7` / `--seed 11 --parts 48` | pass (precision 1.00, fault recall 1.00) |
+| restore drill `--tamper-test` | pass: restore 1.22 s, verify 0.09 s, tamper detected (`reports/drill/drill-20261105T220156Z.json`) |
+| `scripts/e2e-browser.sh` (Playwright, from qa) | last full run before selector updates: 11 passed / 18 failed (selectors written for the qa UI); update in progress on a separate branch |
+
+Notes: the what-if 100k-edge test can exceed the 60 s request timeout on a heavily loaded host (passes alone in 7 s);
+release builds once reused stale fingerprints after merges — `restore-drill.sh` can take a prebuilt
+`KIZUNA_RESTORE_VERIFY_BIN`.
+
 ## Integration results (2026-11-05, main c215db0 + this commit: all lanes merged)
 Merged: ops-pilot, bughunt, ui-polish, docs-manual, redteam, algo-stats, algo-tolerance, innov-match, innov-signals,
 web-gaps, ja-extraction, chaos, algo-er2, algo-invalidation. Renumbered: migrations 0018 match, 0019 signals,

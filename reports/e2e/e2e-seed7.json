@@ -3,8 +3,8 @@
  "documents": 141,
  "malicious_files": 3,
  "timings_s": {
-  "ingest_and_extract": 35.82,
-  "verification_run": 0.084
+  "ingest_and_extract": 34.56,
+  "verification_run": 0.077
  },
  "verification_run": {
   "rule_version": "mfg-rules@2",
@@ -397,7 +397,7 @@
    "check": "reviewer records a decision on clean evidence",
    "ok": true,
    "detail": {
-    "id": "01a1ada4-fd40-745c-a6ce-ac5301417971",
+    "id": "01a1adbb-824a-7320-86c7-9b4a82366f5f",
     "kind": "supplier_part_release",
     "title": "Release SHF-6991 rev E",
     "subject_type": "part",
@@ -405,14 +405,14 @@
     "outcome": "approved",
     "rationale": "Synthetic E2E: spec, drawing, PO and inspection agree",
     "effective_from": null,
-    "decided_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
-    "decided_at": "2026-11-05T21:37:13.536544Z",
+    "decided_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
+    "decided_at": "2026-11-05T22:01:49.386434Z",
     "status": "valid",
-    "derivation_sha256": "de3dc7d5aa7ecee16125456ea23949544bea7c7fab9d1ea4a21670195371dde3",
+    "derivation_sha256": "c6d3bafcd0e1951bbf87037583a70af7c57db3fa93e0edb195f80184a0d6dccc",
     "supersedes": null,
     "evidence_claim_ids": [
-     "01a1ada4-7746-75ef-8ac9-d43bd0309cba",
-     "01a1ada4-7754-71f2-a047-ce0e0e4c9328"
+     "01a1adbb-021d-72df-bf7f-60ddfa7ed781",
+     "01a1adbb-0228-763c-b516-39f1798c4681"
     ]
    }
   },
@@ -470,7 +470,7 @@
    "check": "scenario tolerance_tightened: evidence corrected",
    "ok": true,
    "detail": {
-    "id": "01a1ada5-0330-7489-940a-c0218e4445af",
+    "id": "01a1adbb-87b2-7168-aa74-34f708651f96",
     "model_version": 1,
     "subject_type": "part",
     "subject_key": "MX-16524",
@@ -488,13 +488,13 @@
     "confidence_bps": 10000,
     "review_status": "unreviewed",
     "provenance": {
-     "entered_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
+     "entered_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
      "reason": "e2e scenario tolerance_tightened",
-     "supersedes": "01a1ada4-aff6-7439-b1ab-bd1174e69ae5",
+     "supersedes": "01a1adbb-3c35-748b-97f8-60ce36c23ac5",
      "via": "api"
     },
-    "recorded_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
-    "recorded_at": "2026-11-05T21:37:15.054764Z",
+    "recorded_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
+    "recorded_at": "2026-11-05T22:01:50.768454Z",
     "superseded_at": null,
     "superseded_by": null,
     "artifact_display_name": null
@@ -509,7 +509,7 @@
    "check": "scenario material_changed: evidence corrected",
    "ok": true,
    "detail": {
-    "id": "01a1ada5-035c-7442-989d-50bc9eaefe2d",
+    "id": "01a1adbb-87cd-74d5-8b90-29a0fbfbc887",
     "model_version": 1,
     "subject_type": "part",
     "subject_key": "MX-50245",
@@ -527,13 +527,13 @@
     "confidence_bps": 10000,
     "review_status": "unreviewed",
     "provenance": {
-     "entered_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
+     "entered_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
      "reason": "e2e scenario material_changed",
-     "supersedes": "01a1ada4-ba5e-70c8-b4d9-4bda66aa3c27",
+     "supersedes": "01a1adbb-4636-706c-ba53-db0671a8aabf",
      "via": "api"
     },
-    "recorded_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
-    "recorded_at": "2026-11-05T21:37:15.099566Z",
+    "recorded_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
+    "recorded_at": "2026-11-05T22:01:50.796442Z",
     "superseded_at": null,
     "superseded_by": null,
     "artifact_display_name": null
@@ -548,7 +548,7 @@
    "check": "scenario property_limit_raised: evidence corrected",
    "ok": true,
    "detail": {
-    "id": "01a1ada5-0386-75fe-a6b6-8c14f1dd5a20",
+    "id": "01a1adbb-87f4-77ad-ab1c-5e1c26536afc",
     "model_version": 1,
     "subject_type": "part",
     "subject_key": "MX-18415",
@@ -566,13 +566,13 @@
     "confidence_bps": 10000,
     "review_status": "unreviewed",
     "provenance": {
-     "entered_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
+     "entered_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
      "reason": "e2e scenario property_limit_raised",
-     "supersedes": "01a1ada4-c2ea-72d7-b227-70d81305a8a0",
+     "supersedes": "01a1adbb-4eac-774c-bd1f-e451be8ba5e7",
      "via": "api"
     },
-    "recorded_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
-    "recorded_at": "2026-11-05T21:37:15.139719Z",
+    "recorded_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
+    "recorded_at": "2026-11-05T22:01:50.834356Z",
     "superseded_at": null,
     "superseded_by": null,
     "artifact_display_name": null
@@ -587,7 +587,7 @@
    "check": "scenario approval_withdrawn: evidence corrected",
    "ok": true,
    "detail": {
-    "id": "01a1ada5-03a9-75c1-bf25-30d999639bec",
+    "id": "01a1adbb-8817-7677-ad87-b0b57e7ebf19",
     "model_version": 1,
     "subject_type": "part",
     "subject_key": "MX-10865",
@@ -605,13 +605,13 @@
     "confidence_bps": 10000,
     "review_status": "unreviewed",
     "provenance": {
-     "entered_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
+     "entered_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
      "reason": "e2e scenario approval_withdrawn",
-     "supersedes": "01a1ada4-c594-7012-9ccf-e6979a2d3525",
+     "supersedes": "01a1adbb-5178-7394-82eb-7922101cc7f7",
      "via": "api"
     },
-    "recorded_by": "01a1ada4-6c6a-731f-ae32-9fd204879898",
-    "recorded_at": "2026-11-05T21:37:15.175215Z",
+    "recorded_by": "01a1adba-f627-7692-993f-f8c60f6240e1",
+    "recorded_at": "2026-11-05T22:01:50.869957Z",
     "superseded_at": null,
     "superseded_by": null,
     "artifact_display_name": null
@@ -640,14 +640,14 @@
      "changed_predicates": [
       "mfg.dimension.length"
      ],
-     "decision_id": "01a1ada4-fd40-745c-a6ce-ac5301417971",
+     "decision_id": "01a1adbb-824a-7320-86c7-9b4a82366f5f",
      "why": "the material changes do not concern any supplier statement this decision relies on"
     },
     {
      "changed_predicates": [
       "mfg.approval.status"
      ],
-     "decision_id": "01a1ada5-00bc-7118-9460-7ddcd6c48731",
+     "decision_id": "01a1adbb-8555-767b-984d-d5655a2575b8",
      "why": "the material changes do not concern any supplier statement this decision relies on"
     }
    ]
@@ -675,15 +675,15 @@
     "events_checked": 327,
     "problem": null,
     "head_seq": 327,
-    "head_hash": "6ac3c202cce2e99b0379956b0be00b26e39b030e420568778c5e07109557e5f7"
+    "head_hash": "7f2418b6cc68f8fdda62772543adcf34a1be93b959fb940223250fc817e584c4"
    }
   }
  ],
  "provenance": {
   "command": "scripts/e2e.sh --seed 7 --parts 24",
-  "commit": "d7b67c7",
+  "commit": "5009a60",
   "dirty": true,
-  "utc": "2026-11-05T21:37:16+00:00",
+  "utc": "2026-11-05T22:01:51+00:00",
   "host": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
   "build": "debug"
  }
