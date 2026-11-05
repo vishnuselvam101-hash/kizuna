@@ -1,0 +1,10 @@
+/target
+**/node_modules
+**/.venv
+**/__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+/var
+web/dist
