@@ -158,6 +158,17 @@ pub async fn upload(State(st): State<AppState>, p: Principal, mp: Multipart) -> 
     let scan_json = serde_json::to_value(&report).map_err(ApiError::internal)?;
 
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    // The body may have streamed for a long time: a session revoked meanwhile must not finish the upload.
+    // FOR SHARE also holds off a concurrent revocation until this transaction ends.
+    let live: Option<i32> =
+        sqlx::query_scalar("SELECT 1 FROM sessions WHERE id = $1 AND revoked_at IS NULL AND expires_at > $2 FOR SHARE")
+            .bind(p.session_id)
+            .bind(st.clock.now())
+            .fetch_optional(&mut *tx)
+            .await?;
+    if live.is_none() {
+        return Err(ApiError::Unauthorized("invalid_token"));
+    }
     // Serialise uploads of identical content in this tenant.
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 11))")
         .bind(format!("{}:{}", p.tenant_id, hex::encode(sha)))
