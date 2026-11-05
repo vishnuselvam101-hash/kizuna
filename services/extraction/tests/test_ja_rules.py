@@ -12,8 +12,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from ja_corpus import build, cjk_pdf  # noqa: E402
-from ja_eval import evaluate, worker_run  # noqa: E402
+from ja_corpus import cjk_pdf  # noqa: E402
+from ja_eval import corpus, evaluate, worker_run  # noqa: E402
 
 from kizuna_extraction import ja  # noqa: E402
 from kizuna_extraction.claims import RuleBasedClaimExtractor, lookup, normalize_label  # noqa: E402
@@ -326,8 +326,8 @@ def test_japanese_pdf_end_to_end():
 
 def test_corpus_regression_floor():
     """Measured numbers are in docs/testing/JA_EXTRACTION_2026-11-05.md; this keeps them from regressing."""
-    res = evaluate(build(scans=False))["results"]
-    train, hold = res["worker/strict/train"]["micro"], res["worker/strict/holdout"]["micro"]
+    res = evaluate(corpus(scans=False))["results"]
+    train, hold = res["worker/strict/train"]["micro"], res["worker/strict/dev"]["micro"]
     assert train["precision"] >= 0.98 and train["recall"] >= 0.98, train
     assert hold["precision"] >= 0.95 and hold["recall"] >= 0.5, hold
 
@@ -342,3 +342,42 @@ def test_scanned_drawing_seals_detected():
     r = worker_run(d)
     marks = [c for c in r["claims"] if c["field"].startswith("stamp.")]
     assert len(marks) >= 3 and all(c["location"]["bbox_px"] for c in marks)
+
+
+def test_label_like_accepts_unknown_label_words_only():
+    from kizuna_extraction.claims import label_like
+
+    for lab in ("製品番号", "図面No.", "使用材料", "納入業者", "品番"):
+        assert label_like(lab), lab
+    for val in ("DW-58376", "フランジ", "S45C", "2025/04/01", "1:1"):
+        assert not label_like(val), val
+
+
+def test_ocr_upsampling_and_coordinates_back_in_base_pixels():
+    from kizuna_extraction.ocr import parse_tsv, upsample_factor
+
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + (1654).to_bytes(4, "big") + (2339).to_bytes(4, "big")
+    assert upsample_factor(png) == 1.5  # A4 at ~200 dpi → ~300 dpi
+    assert upsample_factor(b"not an image") == 1.0
+    hdr = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext"
+    (ln,) = parse_tsv(hdr + "\n5\t1\t1\t1\t1\t1\t300\t150\t60\t30\t91\tABC", 1, scale=1.5)
+    assert (ln.cells[0].x0, ln.cells[0].x1, ln.extra["px_bbox"]) == (200.0, 240.0, [200, 100, 240, 120])
+
+
+@pytest.mark.skipif(not shutil.which("magick"), reason="needs ImageMagick 7")
+def test_preprocess_masks_and_binarises():
+    import subprocess
+
+    from kizuna_extraction.ocr import preprocess
+
+    exe = shutil.which("magick") or "magick"
+    seal = ["-fill", "#d02020", "-draw", "circle 50,50 70,50"]
+    argv = [exe, "-size", "200x100", "xc:white", *seal, "png:-"]
+    img = subprocess.run(argv, capture_output=True, check=True).stdout
+    out = preprocess(img, "png", 1.0, [[25, 25, 75, 75]])
+    assert out is not None and out[:4] == b"\x89PNG"
+    mean = subprocess.run(
+        [exe, "png:-", "-format", "%[fx:mean]", "info:"], input=out, capture_output=True, check=True
+    ).stdout
+    assert float(mean) > 0.99  # the masked seal is gone, the page is white
+    assert preprocess(img, "gif", 1.0) is None  # only fixed png/jpeg coders

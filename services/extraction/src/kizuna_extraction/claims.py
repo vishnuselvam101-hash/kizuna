@@ -289,3 +289,20 @@ def get_claim_extractor(name: str) -> ClaimExtractor:
     if cls is None:
         raise ExtractionError("claim_extractor_not_allowed")
     return cls()
+
+
+# Endings of label words (製品番号, 図面No., 使用材料, 納入業者): a title-block or CSV header cell with
+# one of these reads as a label even when the vocabulary does not know it; the Rust mapper then maps it with
+# a fallback (mfg-map@5).
+LABEL_ENDINGS = (
+    "番号", "no", "名", "日", "材料", "材質", "記号", "規格", "業者", "処理", "仕上げ", "スケール", "尺度",
+    "縮尺", "期日", "ロット", "コード", "型式", "型番",
+)  # fmt: skip
+
+
+def label_like(text: str) -> bool:
+    """In the vocabulary, or a short word with a label ending."""
+    if lookup(normalize_label(text)[0]) is not None:
+        return True
+    t = normalize_label(text, translate=False)[0]
+    return 0 < len(t) <= 8 and not any(c.isdigit() for c in t) and t.endswith(LABEL_ENDINGS)

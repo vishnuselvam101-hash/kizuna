@@ -27,7 +27,15 @@ from .claims import get_claim_extractor
 from .documents import pdf_extract
 from .drawing import STAMP_LABELS, dxf_records, pdf_metadata, title_block
 from .errors import ExtractionError
-from .ocr import TesseractOcr, image_pixels, rasterize_pdf
+from .ocr import (
+    BASE_DPI,
+    TesseractOcr,
+    image_pixels,
+    page_dpi,
+    preprocess,
+    rasterize_page,
+    upsample_factor,
+)
 from .records import Sink, _rec, records_from_lines
 from .stamps import assign_roles, jpeg_as_pdf, png_as_pdf, render_small, seal_regions
 from .tabular import csv_records, xlsx_records
@@ -123,11 +131,19 @@ def extract(
             # Scanned PDF: render pages and OCR them (bounded page count), still inside the sandbox.
             ocr = TesseractOcr(opts["ocr_language"])
             if ocr.available():
-                for pno, png in enumerate(
-                    rasterize_pdf(data, min(limits["max_pages"], limits["max_ocr_pages"])), 1
-                ):
-                    page_lines = ocr.recognize(png, page=pno)
-                    seals(data, pno, 50, page_lines, sink)
+                for pno in range(1, min(limits["max_pages"], limits["max_ocr_pages"]) + 1):
+                    small = render_small(data, pno, SEAL_DPI)  # also gives the page size
+                    if small is None:
+                        break
+                    dpi = page_dpi(max(small[0], small[1]) / SEAL_DPI)
+                    png = rasterize_page(data, pno, dpi)
+                    if png is None:
+                        break
+                    k = dpi / BASE_DPI
+                    regions = seal_regions(*small)
+                    masks = [[round(v * k) for v in r["bbox_px"]] for r in regions]
+                    page_lines = _ocr(ocr, png, "png", 1.0, masks, pno, k, warnings)
+                    seals(regions, pno, page_lines, sink)
                     lines += page_lines
                 method = "ocr"
                 warnings.append("pdf_without_text_layer_ocr_applied")
@@ -149,14 +165,17 @@ def extract(
         ocr = TesseractOcr(opts["ocr_language"])
         if not ocr.available():
             return "ocr-none@1", [], ["ocr_unavailable"]
-        lines = ocr.recognize(data)
-        records_from_lines(lines, "ocr", sink)
-        title_block(lines, sink, "ocr")
         wrapped = png_as_pdf(data) or jpeg_as_pdf(data)
+        small = render_small(wrapped, 1, 18) if wrapped is not None else None
+        regions = seal_regions(*small) if small is not None else []
         if wrapped is None:
             warnings.append("stamp_detection_skipped:image_format")
-        else:
-            seals(wrapped, 1, 18, lines, sink)
+        fmt = "png" if data[:4] == b"\x89PNG" else "jpeg" if data[:2] == b"\xff\xd8" else ""
+        f = upsample_factor(data)
+        lines = _ocr(ocr, data, fmt, f, [r["bbox_px"] for r in regions], 1, f, warnings)
+        records_from_lines(lines, "ocr", sink)
+        title_block(lines, sink, "ocr")
+        seals(regions, 1, lines, sink)
         name = "ocr-tesseract@2"
     else:
         raise ExtractionError("unsupported_media_type")
@@ -165,12 +184,32 @@ def extract(
     return name, sink.items, warnings
 
 
-def seals(pdf: bytes, page: int, dpi: float, lines: list, sink: Sink) -> None:
+SEAL_DPI = 50  # seal detection resolution for scanned PDF pages (stamps.SCALE = 200 / 50)
+
+
+def _ocr(
+    ocr: TesseractOcr,
+    raster: bytes,
+    fmt: str,
+    factor: float,
+    masks: list,
+    page: int,
+    scale: float,
+    warnings: list[str],
+) -> list:
+    """OCR of one page, prepared by `preprocess` when ImageMagick is available. `masks` are in `raster`
+    pixels; `scale` maps the OCR'd raster back to base pixels."""
+    pre = preprocess(raster, fmt, factor, masks)
+    if pre is None:
+        if "ocr_preprocess_unavailable" not in warnings:
+            warnings.append("ocr_preprocess_unavailable")
+        return ocr.recognize(raster, page=page, scale=scale / factor if factor else scale)
+    return ocr.recognize(pre, page=page, scale=scale)
+
+
+def seals(regions: list[dict], page: int, lines: list, sink: Sink) -> None:
     """印影 regions on one scanned page as records (label 印影, value = approval role or 'unassigned')."""
-    small = render_small(pdf, page, dpi)
-    if small is None:
-        return
-    for region, role in assign_roles(seal_regions(*small), lines, STAMP_LABELS):
+    for region, role in assign_roles(regions, lines, STAMP_LABELS):
         loc = {
             "page": page,
             "bbox_px": region["bbox_px"],

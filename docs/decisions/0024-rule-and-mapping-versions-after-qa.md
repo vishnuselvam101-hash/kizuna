@@ -20,3 +20,7 @@ two runs with the same tag disagree.
 
 ## Consequences
 Version tags change whenever behaviour changes; reviews should reject rule/vocabulary edits without a bump.
+
+## Addendum: `mfg-map@5` (ja-v2)
+The ja-v2 lane also used `mfg-map@4` on its branch for its fallback label inference (`infer.rs`) and tenant label
+synonyms (migration 0025 on main). Merged after the QA bump, it becomes `mfg-map@5`.

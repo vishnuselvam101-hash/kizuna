@@ -7,7 +7,7 @@ use std::str::FromStr;
 use axum::Json;
 use axum::extract::{Path, State};
 use conflict_engine::{Ctx, Fact, Rule};
-use domain_manufacturing::{MAPPING_VERSION, RULE_VERSION, all_rules, compare_revisions, map_records};
+use domain_manufacturing::{MAPPING_VERSION, RULE_VERSION, all_rules, compare_revisions, map_records_with};
 use entity_resolution::v2::{PartContext, TypoReview};
 use entity_resolution::{ErVersion, Outcome, candidates, safe_normalize};
 use policy_engine::{AttributeRule, Permission, Resource, Subject};
@@ -336,15 +336,17 @@ async fn extract_locked(
     let permit = st.worker_permits.acquire().await.map_err(ApiError::internal)?;
     let started = OffsetDateTime::now_utc();
     // The tenant's saved import settings (latest version) drive the worker and the long-table mapping.
-    let import = {
+    // The tenant's learnt label synonyms (accepted fallback mappings) apply to this tenant only.
+    let (import, synonyms) = {
         let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
         let row: Option<(i32, Value)> =
             sqlx::query_as("SELECT version, settings FROM import_settings ORDER BY version DESC LIMIT 1")
                 .fetch_optional(&mut *tx)
                 .await?;
+        let synonyms = crate::label_synonyms::load(&mut tx).await?;
         tx.commit().await?;
         let (v, s) = row.unwrap_or((0, json!({})));
-        extraction::import_options(v, &s, &art.media_type)
+        (extraction::import_options(v, &s, &art.media_type), synonyms)
     };
     let (out, out_hash) = match extraction::run_worker(&st.cfg, &art.media_type, &bytes, &import).await {
         Ok(r) => r,
@@ -374,7 +376,7 @@ async fn extract_locked(
     if let Some(m) = &import.mapping {
         records = domain_manufacturing::apply_column_mapping(&records, m);
     }
-    let mapped = map_records(&art.kind, &records, confidence_for(&extractor));
+    let mapped = map_records_with(&art.kind, &records, confidence_for(&extractor), &synonyms);
     let method = format!("worker:{extractor}+{MAPPING_VERSION}");
     let run = Uuid::now_v7();
     let mut warnings: Vec<String> = out
@@ -1187,6 +1189,10 @@ pub async fn review_claim(
     )
     .await?;
     let out = claims::fetch(&mut tx, id).await?;
+    // Accepting a fallback-mapped worker claim teaches this tenant the label (migration 0022).
+    if status == "accepted" && current != "accepted" {
+        crate::label_synonyms::learn(&mut tx, &p, id, &method, &out.source_location).await?;
+    }
     // AI-origin claims are evidence only while accepted: entering `accepted` notifies dependents as new evidence,
     // leaving it (request evidence) withdraws it.
     if ai_origin && status == "accepted" && current != "accepted" {

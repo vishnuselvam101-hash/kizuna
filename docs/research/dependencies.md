@@ -63,7 +63,7 @@ sqlx 0.9, rand 0.10, sha2 0.11, argon2 0.6, aes-gcm 0.11 (new majors; API change
 | bubblewrap (`/usr/bin/bwrap`) | LGPL-2.0-or-later | extraction sandbox (ADR 0012) |
 | prlimit (util-linux) | GPL-2.0 | worker resource limits |
 | tesseract 5.5 | Apache-2.0 | OCR of image uploads, when installed |
-| ImageMagick (tests only) | ImageMagick licence | renders an OCR test image |
+| ImageMagick 7 (optional) | ImageMagick licence (Apache-2.0-style) | OCR preparation of scans: 300 dpi resample, seal masks, deskew, Otsu binarisation (fixed png:/jpeg: input coder); test corpus rendering |
 
 Python pins: `services/extraction/uv.lock` (hashes); `scripts/check.sh` runs `uv lock --check` and `uv run --locked`.
 

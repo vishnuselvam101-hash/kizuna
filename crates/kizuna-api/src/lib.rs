@@ -21,6 +21,7 @@ pub mod incidents;
 pub mod insights;
 pub mod integrity;
 pub mod keyring;
+pub mod label_synonyms;
 pub mod matching;
 pub mod ops;
 pub mod ratelimit;
