@@ -347,9 +347,46 @@ impl Rule for RecordConsistencyRule {
     }
 }
 
+/// The material an inspection certificate or mill sheet certifies differs from the specified material of the
+/// same revision (a supplier shipping another grade is the classic ミルシート finding).
+pub struct CertifiedMaterialRule;
+
+impl Rule for CertifiedMaterialRule {
+    fn name(&self) -> &'static str {
+        "certified_material"
+    }
+    fn detect(&self, _s: &str, facts: &[&Fact], _c: &Ctx) -> Vec<Finding> {
+        let rev = |f: &Fact| f.revision.as_ref().map(|r| r.to_uppercase());
+        let norm = |f: &Fact| f.text_norm().map(|t| t.replace(' ', ""));
+        let specs: Vec<&Fact> = facts
+            .iter()
+            .copied()
+            .filter(|f| f.predicate == "mfg.material")
+            .collect();
+        let mut out = Vec::new();
+        for q in facts.iter().copied().filter(|f| f.predicate == "qa.material") {
+            let same_rev: Vec<&Fact> = specs.iter().copied().filter(|s| rev(s) == rev(q)).collect();
+            // Only when every specification of that revision disagrees (one agreeing spec means the
+            // disagreement is between specifications, which SpecValueRule reports).
+            if !same_rev.is_empty() && same_rev.iter().all(|s| norm(s) != norm(q)) {
+                let s = same_rev[0];
+                out.push(finding(
+                    "value_mismatch",
+                    s,
+                    Some(q),
+                    json!({ "rule": "certified_material", "why": "certified material differs from the specification",
+                            "detail": { "specified": s.display_value(), "certified": q.display_value(), "revision": rev(q) } }),
+                ));
+            }
+        }
+        out
+    }
+}
+
 pub fn all_rules() -> Vec<Box<dyn Rule>> {
     vec![
         Box::new(SpecValueRule),
+        Box::new(CertifiedMaterialRule),
         Box::new(RevisionRule),
         Box::new(ApprovalRule),
         Box::new(ExpiryRule),
@@ -512,6 +549,47 @@ mod tests {
                 &[("supplier", "ACME")],
             ),
         ]
+    }
+
+    #[test]
+    fn regression_qa_mill_sheet_material_differs_from_specification() {
+        let mut f = clean_spec();
+        f.push(fact(
+            "m0",
+            "mfg.material",
+            Some("SUS304"),
+            None,
+            None,
+            Some("C"),
+            "spec_document",
+            &[],
+        ));
+        // A mill sheet certifying the specified material (case/space differences only) is consistent.
+        f.push(fact(
+            "q0",
+            "qa.material",
+            Some("sus 304"),
+            None,
+            None,
+            Some("C"),
+            "inspection_report",
+            &[],
+        ));
+        assert_eq!(kinds(&run(&f)), Vec::<&str>::new());
+        // One certifying another grade is a finding naming both documents' claims.
+        f.push(fact(
+            "q1",
+            "qa.material",
+            Some("SUS316"),
+            None,
+            None,
+            Some("C"),
+            "inspection_report",
+            &[],
+        ));
+        let r = run(&f);
+        assert_eq!(kinds(&r), vec!["value_mismatch"]);
+        assert_eq!(r[0].explanation["rule"], "certified_material");
     }
 
     #[test]
