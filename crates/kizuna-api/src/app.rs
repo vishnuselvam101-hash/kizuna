@@ -23,6 +23,8 @@ pub struct AppState {
     pub cfg: Arc<Config>,
     pub limiter: Arc<RateLimiter>,
     pub policy: Arc<Policy>,
+    /// Caps concurrent argon2 computations (CPU/RAM bound) so login floods cannot exhaust the host.
+    pub hash_permits: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {
@@ -32,6 +34,9 @@ impl AppState {
             cfg: Arc::new(cfg),
             limiter: Arc::new(RateLimiter::new(Duration::from_secs(60))),
             policy: Arc::new(Policy::new()),
+            hash_permits: Arc::new(tokio::sync::Semaphore::new(
+                std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+            )),
         }
     }
 }
@@ -39,16 +44,10 @@ impl AppState {
 const SECURITY_HEADERS: [(&str, &str); 7] = [
     ("x-content-type-options", "nosniff"),
     ("x-frame-options", "DENY"),
-    (
-        "content-security-policy",
-        "default-src 'none'; frame-ancestors 'none'",
-    ),
+    ("content-security-policy", "default-src 'none'; frame-ancestors 'none'"),
     ("referrer-policy", "no-referrer"),
     ("cache-control", "no-store"),
-    (
-        "strict-transport-security",
-        "max-age=63072000; includeSubDomains",
-    ),
+    ("strict-transport-security", "max-age=63072000; includeSubDomains"),
     ("cross-origin-opener-policy", "same-origin"),
 ];
 

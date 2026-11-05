@@ -19,10 +19,10 @@ async fn actions_are_audited_and_chain_verifies() {
         .iter()
         .map(|e| e["action"].as_str().unwrap())
         .collect();
-    assert_eq!(actions, ["auth.login", "auth.mfa_enrolled"]);
+    assert_eq!(actions, ["auth.login", "auth.mfa_enrolled", "auth.login"]);
     let v = c.get("/api/v1/audit/verify", &tok).await;
     assert_eq!(v.body["intact"], true, "{:?}", v.body);
-    assert_eq!(v.body["events_checked"], 2);
+    assert_eq!(v.body["events_checked"], 3);
 }
 
 #[tokio::test]
@@ -35,13 +35,11 @@ async fn tampering_is_detected() {
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::query(
-        "UPDATE audit_events SET details = '{\"mfa\": false}' WHERE tenant_id = $1 AND seq = 1",
-    )
-    .bind(t)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE audit_events SET details = '{\"mfa\": false}' WHERE tenant_id = $1 AND seq = 1")
+        .bind(t)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     sqlx::query("ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only")
         .execute(&mut *tx)
         .await
@@ -71,7 +69,7 @@ async fn tail_truncation_is_detected_via_head() {
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::query("DELETE FROM audit_events WHERE tenant_id = $1 AND seq = 2")
+    sqlx::query("DELETE FROM audit_events WHERE tenant_id = $1 AND seq = 3")
         .bind(t)
         .execute(&mut *tx)
         .await

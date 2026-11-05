@@ -52,8 +52,7 @@ async fn user_id(tx: &mut db::Tx, email: &str) -> R<Uuid> {
 #[tokio::main]
 async fn main() -> R<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let url = std::env::var("KIZUNA_OWNER_DATABASE_URL")
-        .map_err(|_| "KIZUNA_OWNER_DATABASE_URL not set")?;
+    let url = std::env::var("KIZUNA_OWNER_DATABASE_URL").map_err(|_| "KIZUNA_OWNER_DATABASE_URL not set")?;
     let pool = db::connect(&url, 2).await?;
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
     match a.as_slice() {
@@ -70,13 +69,9 @@ async fn main() -> R<()> {
                 .bind(name)
                 .execute(&mut *tx)
                 .await?;
-            audit::append(
-                &mut tx,
-                id,
-                op("tenant.created", "tenant", id, json!({ "slug": slug })),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
+            audit::append(&mut tx, id, op("tenant.created", "tenant", id, json!({ "slug": slug })))
+                .await
+                .map_err(|e| e.to_string())?;
             tx.commit().await?;
             println!("{id}");
         }
@@ -110,12 +105,7 @@ async fn main() -> R<()> {
             audit::append(
                 &mut tx,
                 t,
-                op(
-                    "user.mfa_reset",
-                    "user",
-                    u,
-                    json!({ "sessions_revoked": n }),
-                ),
+                op("user.mfa_reset", "user", u, json!({ "sessions_revoked": n })),
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -126,7 +116,10 @@ async fn main() -> R<()> {
             let t = tenant_id(&pool, slug).await?;
             let mut tx = db::tenant_tx(&pool, t).await?;
             let u = user_id(&mut tx, email).await?;
-            sqlx::query("UPDATE users SET failed_logins = 0, locked_until = NULL, status = 'active' WHERE id = $1").bind(u).execute(&mut *tx).await?;
+            sqlx::query("UPDATE users SET failed_logins = 0, locked_until = NULL, status = 'active' WHERE id = $1")
+                .bind(u)
+                .execute(&mut *tx)
+                .await?;
             audit::append(&mut tx, t, op("user.unlocked", "user", u, json!({})))
                 .await
                 .map_err(|e| e.to_string())?;
@@ -135,10 +128,8 @@ async fn main() -> R<()> {
         }
         ["verify-audit", slug] => {
             let t = tenant_id(&pool, slug).await?;
-            let mut tx = db::tenant_tx(&pool, t).await?;
-            let s = audit::verify_tenant(&mut tx, t)
-                .await
-                .map_err(|e| e.to_string())?;
+            let mut tx = db::tenant_snapshot_tx(&pool, t).await?;
+            let s = audit::verify_tenant(&mut tx, t).await.map_err(|e| e.to_string())?;
             tx.commit().await?;
             println!("{}", serde_json::to_string_pretty(&s)?);
             if !s.intact {

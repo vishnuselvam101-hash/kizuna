@@ -21,16 +21,8 @@ async fn rbac_denies_by_default_and_logs() {
         "/api/v1/audit/verify",
         "/api/v1/security-events",
     ] {
-        assert_eq!(
-            c.get(path, &v).await.status,
-            StatusCode::FORBIDDEN,
-            "viewer {path}"
-        );
-        assert_eq!(
-            c.get(path, &a).await.status,
-            StatusCode::OK,
-            "auditor {path}"
-        );
+        assert_eq!(c.get(path, &v).await.status, StatusCode::FORBIDDEN, "viewer {path}");
+        assert_eq!(c.get(path, &a).await.status, StatusCode::OK, "auditor {path}");
     }
     let r = c
         .post(
@@ -43,11 +35,7 @@ async fn rbac_denies_by_default_and_logs() {
         (r.status, r.body["error"].as_str()),
         (StatusCode::FORBIDDEN, Some("role_lacks_permission"))
     );
-    assert!(
-        c.security_kinds(t)
-            .await
-            .contains(&"authz.denied".to_string())
-    );
+    assert!(c.security_kinds(t).await.contains(&"authz.denied".to_string()));
 }
 
 #[tokio::test]
@@ -66,23 +54,15 @@ async fn admin_cannot_touch_other_tenant() {
         .await;
     assert_eq!(r.status, StatusCode::NOT_FOUND);
     assert_eq!(
-        c.post(
-            &format!("/api/v1/users/{ub}/revoke-sessions"),
-            Some(&tok_a),
-            json!({})
-        )
-        .await
-        .status,
+        c.post(&format!("/api/v1/users/{ub}/revoke-sessions"), Some(&tok_a), json!({}))
+            .await
+            .status,
         StatusCode::NOT_FOUND
     );
     assert_eq!(
-        c.post(
-            &format!("/api/v1/users/{ub}/reset-mfa"),
-            Some(&tok_a),
-            json!({})
-        )
-        .await
-        .status,
+        c.post(&format!("/api/v1/users/{ub}/reset-mfa"), Some(&tok_a), json!({}))
+            .await
+            .status,
         StatusCode::NOT_FOUND
     );
     let list = c.get("/api/v1/users", &tok_a).await;
@@ -227,15 +207,9 @@ async fn last_admin_guard_and_role_change_revokes_sessions() {
         )
         .await;
     assert_eq!(r.status, StatusCode::OK);
-    assert_eq!(
-        c.login(&slug, &email, PW, None).await.status,
-        StatusCode::UNAUTHORIZED
-    );
+    assert_eq!(c.login(&slug, &email, PW, None).await.status, StatusCode::UNAUTHORIZED);
     let kinds = c.security_kinds(t).await;
-    assert!(
-        kinds.contains(&"admin.role_changed".to_string())
-            && kinds.contains(&"admin.user_disabled".to_string())
-    );
+    assert!(kinds.contains(&"admin.role_changed".to_string()) && kinds.contains(&"admin.user_disabled".to_string()));
 }
 
 #[tokio::test]
@@ -246,35 +220,20 @@ async fn admin_revokes_sessions_and_resets_mfa() {
     let utok = c.token(&slug, &email).await;
     c.enroll_totp(&utok).await;
     let r = c
-        .post(
-            &format!("/api/v1/users/{uid}/revoke-sessions"),
-            Some(&tok),
-            json!({}),
-        )
+        .post(&format!("/api/v1/users/{uid}/revoke-sessions"), Some(&tok), json!({}))
         .await;
     assert_eq!(r.body["revoked"], 1);
+    assert_eq!(c.get("/api/v1/auth/me", &utok).await.status, StatusCode::UNAUTHORIZED);
     assert_eq!(
-        c.get("/api/v1/auth/me", &utok).await.status,
-        StatusCode::UNAUTHORIZED
-    );
-    assert_eq!(
-        c.post(
-            &format!("/api/v1/users/{admin_id}/reset-mfa"),
-            Some(&tok),
-            json!({})
-        )
-        .await
-        .status,
+        c.post(&format!("/api/v1/users/{admin_id}/reset-mfa"), Some(&tok), json!({}))
+            .await
+            .status,
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        c.post(
-            &format!("/api/v1/users/{uid}/reset-mfa"),
-            Some(&tok),
-            json!({})
-        )
-        .await
-        .status,
+        c.post(&format!("/api/v1/users/{uid}/reset-mfa"), Some(&tok), json!({}))
+            .await
+            .status,
         StatusCode::OK
     );
     assert_eq!(

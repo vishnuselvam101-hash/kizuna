@@ -49,7 +49,8 @@ pub struct Config {
     pub session_ttl_secs: i64,
     pub max_body_bytes: usize,
     pub max_upload_bytes: usize,
-    pub trust_proxy: bool,
+    /// Number of trusted reverse proxies in front of the server (0 = ignore X-Forwarded-For).
+    pub trusted_proxy_hops: usize,
     pub lockout_threshold: i32,
     pub lockout_secs: i64,
     pub rate: RateLimits,
@@ -62,8 +63,7 @@ pub fn parse_data_key(b64: &str) -> Result<[u8; 32], ConfigError> {
     let raw = base64::engine::general_purpose::STANDARD
         .decode(b64.trim())
         .map_err(|_| ConfigError::Invalid("KIZUNA_DATA_KEY"))?;
-    raw.try_into()
-        .map_err(|_| ConfigError::Invalid("KIZUNA_DATA_KEY"))
+    raw.try_into().map_err(|_| ConfigError::Invalid("KIZUNA_DATA_KEY"))
 }
 
 impl Config {
@@ -72,11 +72,7 @@ impl Config {
     }
 
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
-        let req = |k: &'static str| {
-            get(k)
-                .filter(|v| !v.is_empty())
-                .ok_or(ConfigError::Missing(k))
-        };
+        let req = |k: &'static str| get(k).filter(|v| !v.is_empty()).ok_or(ConfigError::Missing(k));
         let num = |k: &'static str, d: i64, lo: i64, hi: i64| -> Result<i64, ConfigError> {
             match get(k) {
                 None => Ok(d),
@@ -104,19 +100,13 @@ impl Config {
             access_ttl_secs,
             session_ttl_secs,
             max_body_bytes: num("KIZUNA_MAX_BODY_BYTES", 64 * 1024, 1024, 1024 * 1024)? as usize,
-            max_upload_bytes: num(
-                "KIZUNA_MAX_UPLOAD_BYTES",
-                25 * 1024 * 1024,
-                1024,
-                200 * 1024 * 1024,
-            )? as usize,
-            trust_proxy: get("KIZUNA_TRUST_PROXY").as_deref() == Some("1"),
+            max_upload_bytes: num("KIZUNA_MAX_UPLOAD_BYTES", 25 * 1024 * 1024, 1024, 200 * 1024 * 1024)? as usize,
+            trusted_proxy_hops: num("KIZUNA_TRUSTED_PROXY_HOPS", 0, 0, 5)? as usize,
             lockout_threshold: num("KIZUNA_LOCKOUT_THRESHOLD", 5, 3, 20)? as i32,
             lockout_secs: num("KIZUNA_LOCKOUT_SECS", 900, 60, 86400)?,
             rate: RateLimits {
                 login_per_ip_per_min: num("KIZUNA_LOGIN_PER_IP_PER_MIN", 20, 1, 10_000)? as u32,
-                login_per_account_per_min: num("KIZUNA_LOGIN_PER_ACCOUNT_PER_MIN", 10, 1, 10_000)?
-                    as u32,
+                login_per_account_per_min: num("KIZUNA_LOGIN_PER_ACCOUNT_PER_MIN", 10, 1, 10_000)? as u32,
                 refresh_per_ip_per_min: num("KIZUNA_REFRESH_PER_IP_PER_MIN", 60, 1, 10_000)? as u32,
             },
             storage_dir: get("KIZUNA_STORAGE_DIR")
@@ -137,10 +127,7 @@ mod tests {
 
     fn base() -> HashMap<&'static str, String> {
         HashMap::from([
-            (
-                "KIZUNA_DATABASE_URL",
-                "postgres://u:supersecretpw@h/db".to_string(),
-            ),
+            ("KIZUNA_DATABASE_URL", "postgres://u:supersecretpw@h/db".to_string()),
             (
                 "KIZUNA_DATA_KEY",
                 base64::engine::general_purpose::STANDARD.encode([7u8; 32]),

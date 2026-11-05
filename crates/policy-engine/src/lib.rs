@@ -35,10 +35,7 @@ impl Role {
     }
 
     pub fn parse(s: &str) -> Result<Role, UnknownRole> {
-        Role::ALL
-            .into_iter()
-            .find(|r| r.as_str() == s)
-            .ok_or(UnknownRole)
+        Role::ALL.into_iter().find(|r| r.as_str() == s).ok_or(UnknownRole)
     }
 }
 
@@ -73,30 +70,15 @@ pub fn role_grants(role: Role, p: Permission) -> bool {
         Role::TenantAdmin => true,
         Role::Auditor => matches!(
             p,
-            UserRead
-                | AuditRead
-                | AuditVerify
-                | SecurityEventRead
-                | ArtifactRead
-                | ClaimRead
-                | DecisionRead
+            UserRead | AuditRead | AuditVerify | SecurityEventRead | ArtifactRead | ClaimRead | DecisionRead
         ),
         Role::Reviewer => {
             matches!(
                 p,
-                ArtifactRead
-                    | ArtifactUpload
-                    | ClaimRead
-                    | ClaimWrite
-                    | ReviewDecide
-                    | DecisionRead
-                    | DecisionWrite
+                ArtifactRead | ArtifactUpload | ClaimRead | ClaimWrite | ReviewDecide | DecisionRead | DecisionWrite
             )
         }
-        Role::Analyst => matches!(
-            p,
-            ArtifactRead | ArtifactUpload | ClaimRead | ClaimWrite | DecisionRead
-        ),
+        Role::Analyst => matches!(p, ArtifactRead | ArtifactUpload | ClaimRead | ClaimWrite | DecisionRead),
         Role::Viewer => matches!(p, ArtifactRead | ClaimRead | DecisionRead),
     }
 }

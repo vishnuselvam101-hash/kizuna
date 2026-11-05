@@ -23,6 +23,16 @@ pub async fn tenant_tx(pool: &PgPool, tenant: Uuid) -> Result<Tx, sqlx::Error> {
     Ok(tx)
 }
 
+/// Read-only snapshot transaction (REPEATABLE READ) for consistent multi-statement reads such as audit verification.
+pub async fn tenant_snapshot_tx(pool: &PgPool, tenant: Uuid) -> Result<Tx, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+    set_tenant(&mut tx, tenant).await?;
+    Ok(tx)
+}
+
 pub async fn set_tenant(tx: &mut Tx, tenant: Uuid) -> Result<(), sqlx::Error> {
     sqlx::query("SELECT set_config('kizuna.tenant_id', $1, true)")
         .bind(tenant.to_string())

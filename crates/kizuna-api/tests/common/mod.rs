@@ -37,15 +37,11 @@ fn env(k: &str) -> String {
 static MIGRATED: OnceCell<()> = OnceCell::const_new();
 
 pub async fn owner_pool() -> PgPool {
-    db::connect(&env("KIZUNA_TEST_OWNER_DATABASE_URL"), 2)
-        .await
-        .unwrap()
+    db::connect(&env("KIZUNA_TEST_OWNER_DATABASE_URL"), 2).await.unwrap()
 }
 
 pub async fn runtime_pool() -> PgPool {
-    db::connect(&env("KIZUNA_TEST_DATABASE_URL"), 3)
-        .await
-        .unwrap()
+    db::connect(&env("KIZUNA_TEST_DATABASE_URL"), 3).await.unwrap()
 }
 
 pub fn test_config() -> Config {
@@ -56,9 +52,7 @@ pub fn test_config() -> Config {
         "KIZUNA_DATABASE_URL" => Some(url.clone()),
         "KIZUNA_DATA_KEY" => Some(key.clone()),
         "KIZUNA_STORAGE_DIR" => Some(storage.to_string_lossy().into_owned()),
-        "KIZUNA_EXTRACTION_DIR" => {
-            Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/extraction/src").into())
-        }
+        "KIZUNA_EXTRACTION_DIR" => Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/extraction/src").into()),
         _ => None,
     })
     .unwrap()
@@ -113,22 +107,11 @@ impl Ctx {
         let status = res.status();
         let headers = res.headers().clone();
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
-        let body = serde_json::from_slice(&bytes)
-            .unwrap_or(Value::String(String::from_utf8_lossy(&bytes).into()));
-        Resp {
-            status,
-            body,
-            headers,
-        }
+        let body = serde_json::from_slice(&bytes).unwrap_or(Value::String(String::from_utf8_lossy(&bytes).into()));
+        Resp { status, body, headers }
     }
 
-    pub async fn call(
-        &self,
-        method: Method,
-        path: &str,
-        token: Option<&str>,
-        body: Option<Value>,
-    ) -> Resp {
+    pub async fn call(&self, method: Method, path: &str, token: Option<&str>, body: Option<Value>) -> Resp {
         let mut b = Request::builder().method(method).uri(path);
         if let Some(t) = token {
             b = b.header("authorization", format!("Bearer {t}"));
@@ -199,17 +182,13 @@ impl Ctx {
     /// Enrols TOTP for the session's user; returns the raw secret.
     pub async fn enroll_totp(&self, token: &str) -> Vec<u8> {
         let r = self
-            .post("/api/v1/auth/mfa/totp/setup", Some(token), json!({}))
+            .post("/api/v1/auth/mfa/totp/setup", Some(token), json!({ "password": PW }))
             .await;
         assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
         let secret = base32_decode(r.body["secret_base32"].as_str().unwrap());
         let code = kizuna_api::crypto::totp_now(&secret, now());
         let r = self
-            .post(
-                "/api/v1/auth/mfa/totp/confirm",
-                Some(token),
-                json!({ "code": code }),
-            )
+            .post("/api/v1/auth/mfa/totp/confirm", Some(token), json!({ "code": code }))
             .await;
         assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
         secret
@@ -220,18 +199,26 @@ impl Ctx {
         let (t, slug) = self.tenant().await;
         let (uid, email) = self.user(t, "tenant_admin").await;
         let tok = self.token(&slug, &email).await;
-        self.enroll_totp(&tok).await;
-        (t, slug, uid, tok)
+        let secret = self.enroll_totp(&tok).await;
+        // Enrolment does not upgrade the session; log in again with the next TOTP step.
+        let r = self
+            .login(
+                &slug,
+                &email,
+                PW,
+                Some(kizuna_api::crypto::totp_now(&secret, now() + 30)),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+        (t, slug, uid, r.body["access_token"].as_str().unwrap().to_owned())
     }
 
     pub async fn security_kinds(&self, tenant: Uuid) -> Vec<String> {
-        sqlx::query_scalar(
-            "SELECT kind FROM security_events WHERE tenant_id = $1 ORDER BY occurred_at",
-        )
-        .bind(tenant)
-        .fetch_all(&self.owner)
-        .await
-        .unwrap()
+        sqlx::query_scalar("SELECT kind FROM security_events WHERE tenant_id = $1 ORDER BY occurred_at")
+            .bind(tenant)
+            .fetch_all(&self.owner)
+            .await
+            .unwrap()
     }
 }
 

@@ -20,29 +20,31 @@ use crate::db::{self, Tx};
 use crate::error::{ApiError, ApiJson, ApiResult};
 use crate::security_events::{self as sec, Kind};
 
-/// Client IP from the socket; `X-Forwarded-For` (first hop) only when the deployment trusts its proxy.
+/// Client IP. With `trusted_proxy_hops = N > 0`, each trusted proxy appends the address it saw, so the client is
+/// the N-th entry from the right of `X-Forwarded-For`; entries further left are client-controlled and ignored.
 #[derive(Debug, Clone)]
 pub struct ClientIp(pub String);
+
+pub fn client_ip_from(xff: Option<&str>, socket: Option<IpAddr>, hops: usize) -> String {
+    if hops > 0
+        && let Some(xff) = xff
+    {
+        let parts: Vec<&str> = xff.split(',').map(str::trim).collect();
+        if parts.len() >= hops
+            && let Ok(ip) = parts[parts.len() - hops].parse::<IpAddr>()
+        {
+            return ip.to_string();
+        }
+    }
+    socket.map(|i| i.to_string()).unwrap_or_else(|| "unknown".into())
+}
 
 impl FromRequestParts<AppState> for ClientIp {
     type Rejection = ApiError;
     async fn from_request_parts(parts: &mut Parts, st: &AppState) -> Result<Self, ApiError> {
-        if st.cfg.trust_proxy
-            && let Some(ip) = parts
-                .headers
-                .get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.split(',').next())
-                .and_then(|v| v.trim().parse::<IpAddr>().ok())
-        {
-            return Ok(ClientIp(ip.to_string()));
-        }
-        let ip = parts
-            .extensions
-            .get::<ConnectInfo<SocketAddr>>()
-            .map(|c| c.0.ip().to_string())
-            .unwrap_or_else(|| "unknown".into());
-        Ok(ClientIp(ip))
+        let xff = parts.headers.get("x-forwarded-for").and_then(|v| v.to_str().ok());
+        let socket = parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|c| c.0.ip());
+        Ok(ClientIp(client_ip_from(xff, socket, st.cfg.trusted_proxy_hops)))
     }
 }
 
@@ -81,12 +83,7 @@ impl Principal {
         .await
     }
 
-    pub async fn require_on(
-        &self,
-        st: &AppState,
-        perm: Permission,
-        res: &Resource<'_>,
-    ) -> ApiResult<()> {
+    pub async fn require_on(&self, st: &AppState, perm: Permission, res: &Resource<'_>) -> ApiResult<()> {
         match st.policy.authorize(&self.subject(), perm, res) {
             Decision::Allow => Ok(()),
             Decision::Deny(reason) => {
@@ -165,16 +162,50 @@ pub struct TokenResp {
     pub mfa_verified: bool,
 }
 
-async fn verify_pw_blocking(pw: String, hash: Option<String>) -> bool {
-    tokio::task::spawn_blocking(move || match hash {
-        Some(h) => crypto::verify_password(&pw, &h),
-        None => {
-            crypto::dummy_verify(&pw);
-            false
+/// Runs argon2 off the async runtime, bounded by `hash_permits`; `None` hash burns a dummy verification.
+async fn verify_pw_blocking(st: &AppState, pw: String, hash: Option<String>) -> ApiResult<bool> {
+    let permit = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        st.hash_permits.clone().acquire_owned(),
+    )
+    .await
+    .map_err(|_| ApiError::TooManyRequests)?
+    .map_err(ApiError::internal)?;
+    let ok = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        match hash {
+            Some(h) => crypto::verify_password(&pw, &h),
+            None => {
+                crypto::dummy_verify(&pw);
+                false
+            }
         }
     })
     .await
-    .unwrap_or(false)
+    .map_err(ApiError::internal)?;
+    Ok(ok)
+}
+
+/// Counts a failed credential check atomically; locks the account at the threshold. Returns true if it locked now.
+pub async fn register_failure(st: &AppState, tenant: Uuid, uid: Uuid) -> ApiResult<bool> {
+    let mut tx = db::tenant_tx(&st.pool, tenant).await?;
+    let n: i32 =
+        sqlx::query_scalar("UPDATE users SET failed_logins = failed_logins + 1 WHERE id = $1 RETURNING failed_logins")
+            .bind(uid)
+            .fetch_one(&mut *tx)
+            .await?;
+    let locked = n >= st.cfg.lockout_threshold;
+    if locked {
+        sqlx::query(
+            "UPDATE users SET failed_logins = 0, locked_until = now() + make_interval(secs => $2) WHERE id = $1",
+        )
+        .bind(uid)
+        .bind(st.cfg.lockout_secs as f64)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(locked)
 }
 
 pub fn normalize_email(e: &str) -> String {
@@ -209,24 +240,20 @@ async fn start_session(
     .bind(ip)
     .execute(&mut **tx)
     .await?;
-    sqlx::query("INSERT INTO refresh_tokens (id, tenant_id, session_id, token_hash, expires_at) VALUES ($1,$2,$3,$4,$5)")
-        .bind(Uuid::now_v7())
-        .bind(tenant)
-        .bind(sid)
-        .bind(refresh.hash.to_vec())
-        .bind(exp)
-        .execute(&mut **tx)
-        .await?;
+    sqlx::query(
+        "INSERT INTO refresh_tokens (id, tenant_id, session_id, token_hash, expires_at) VALUES ($1,$2,$3,$4,$5)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(tenant)
+    .bind(sid)
+    .bind(refresh.hash.to_vec())
+    .bind(exp)
+    .execute(&mut **tx)
+    .await?;
     audit::append(
         tx,
         tenant,
-        Record::user(
-            user,
-            "auth.login",
-            "session",
-            sid,
-            json!({ "mfa": mfa, "ip": ip }),
-        ),
+        Record::user(user, "auth.login", "session", sid, json!({ "mfa": mfa, "ip": ip })),
     )
     .await?;
     Ok(TokenResp {
@@ -242,7 +269,6 @@ type LoginUser = (
     Uuid,
     String,
     String,
-    i32,
     Option<OffsetDateTime>,
     bool,
     Option<Vec<u8>>,
@@ -274,13 +300,28 @@ pub async fn login(
     if req.tenant.len() > 64 || email.len() > 254 || req.password.len() > 1024 {
         return Err(ApiError::BadRequest("field_too_long"));
     }
-    let tenant: Option<(Uuid, String)> =
-        sqlx::query_as("SELECT id, status FROM tenants WHERE slug = $1")
-            .bind(&req.tenant)
-            .fetch_optional(&st.pool)
-            .await?;
-    let Some((tenant_id, tstatus)) = tenant.filter(|t| t.1 == "active").map(|t| (t.0, t.1)) else {
-        verify_pw_blocking(req.password, None).await;
+    // Keyed by slug (not tenant id) and checked before the tenant lookup: identical behaviour for unknown tenants.
+    if !st.limiter.check(
+        &format!("login:acct:{}:{email}", req.tenant),
+        st.cfg.rate.login_per_account_per_min,
+    ) {
+        sec::record(
+            &st.pool,
+            None,
+            Kind::RateLimited,
+            None,
+            Some(&ip),
+            json!({ "endpoint": "login", "scope": "account" }),
+        )
+        .await;
+        return Err(ApiError::TooManyRequests);
+    }
+    let tenant: Option<Uuid> = sqlx::query_scalar("SELECT id FROM tenants WHERE slug = $1 AND status = 'active'")
+        .bind(&req.tenant)
+        .fetch_optional(&st.pool)
+        .await?;
+    let Some(tenant_id) = tenant else {
+        verify_pw_blocking(&st, req.password, None).await?;
         sec::record(
             &st.pool,
             None,
@@ -292,35 +333,19 @@ pub async fn login(
         .await;
         return Err(fail());
     };
-    let _ = tstatus;
-    if !st.limiter.check(
-        &format!("login:acct:{tenant_id}:{email}"),
-        st.cfg.rate.login_per_account_per_min,
-    ) {
-        sec::record(
-            &st.pool,
-            Some(tenant_id),
-            Kind::RateLimited,
-            None,
-            Some(&ip),
-            json!({ "endpoint": "login", "scope": "account" }),
-        )
-        .await;
-        return Err(ApiError::TooManyRequests);
-    }
 
+    // Read without holding a row lock during the (slow) password hash.
     let mut tx = db::tenant_tx(&st.pool, tenant_id).await?;
     let user: Option<LoginUser> = sqlx::query_as(
-        "SELECT id, password_hash, status, failed_logins, locked_until, totp_enabled, totp_secret_enc, totp_last_step \
-         FROM users WHERE email = $1 FOR UPDATE",
+        "SELECT id, password_hash, status, locked_until, totp_enabled, totp_secret_enc, totp_last_step \
+         FROM users WHERE email = $1",
     )
     .bind(&email)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((uid, phash, status, failed, locked_until, totp_enabled, totp_enc, last_step)) = user
-    else {
-        tx.commit().await?;
-        verify_pw_blocking(req.password, None).await;
+    tx.commit().await?;
+    let Some((uid, phash, status, locked_until, totp_enabled, totp_enc, last_step)) = user else {
+        verify_pw_blocking(&st, req.password, None).await?;
         sec::record(
             &st.pool,
             Some(tenant_id),
@@ -332,7 +357,7 @@ pub async fn login(
         .await;
         return Err(fail());
     };
-    let pw_ok = verify_pw_blocking(req.password, Some(phash)).await;
+    let pw_ok = verify_pw_blocking(&st, req.password, Some(phash)).await?;
     let now = OffsetDateTime::now_utc();
     let reason = if status != "active" {
         Some("disabled")
@@ -343,23 +368,23 @@ pub async fn login(
     } else {
         None
     };
-    if let Some(reason) = reason {
-        let mut locked = false;
-        if reason == "bad_password" {
-            let n = failed + 1;
-            locked = n >= st.cfg.lockout_threshold;
-            sqlx::query("UPDATE users SET failed_logins = $2, locked_until = $3 WHERE id = $1")
-                .bind(uid)
-                .bind(if locked { 0 } else { n })
-                .bind(
-                    locked
-                        .then(|| now + Duration::seconds(st.cfg.lockout_secs))
-                        .or(locked_until),
-                )
-                .execute(&mut *tx)
-                .await?;
+    let mut totp_step = None;
+    let reason = match reason {
+        Some(r) => Some(r),
+        None if totp_enabled => {
+            let Some(code) = req.totp_code.as_deref() else {
+                return Err(ApiError::Unauthorized("mfa_required"));
+            };
+            let secret = totp_enc
+                .and_then(|enc| crypto::open(st.cfg.data_key.expose(), &enc, &crypto::totp_aad(tenant_id, uid)))
+                .ok_or_else(|| ApiError::internal("totp secret undecryptable"))?;
+            totp_step = crypto::totp_verify(&secret, code, now.unix_timestamp(), last_step);
+            totp_step.is_none().then_some("bad_totp")
         }
-        tx.commit().await?;
+        None => None,
+    };
+    if let Some(reason) = reason {
+        let locked = matches!(reason, "bad_password" | "bad_totp") && register_failure(&st, tenant_id, uid).await?;
         sec::record(
             &st.pool,
             Some(tenant_id),
@@ -383,55 +408,31 @@ pub async fn login(
         return Err(fail());
     }
 
-    if totp_enabled {
-        let Some(code) = req.totp_code.as_deref() else {
-            tx.commit().await?;
-            return Err(ApiError::Unauthorized("mfa_required"));
-        };
-        let secret = totp_enc
-            .and_then(|enc| {
-                crypto::open(
-                    st.cfg.data_key.expose(),
-                    &enc,
-                    &crypto::totp_aad(tenant_id, uid),
-                )
-            })
-            .ok_or_else(|| ApiError::internal("totp secret undecryptable"))?;
-        match crypto::totp_verify(&secret, code, now.unix_timestamp(), last_step) {
-            Some(step) => {
-                sqlx::query("UPDATE users SET totp_last_step = $2 WHERE id = $1")
-                    .bind(uid)
-                    .bind(step)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-            None => {
-                let n = failed + 1;
-                let locked = n >= st.cfg.lockout_threshold;
-                sqlx::query("UPDATE users SET failed_logins = $2, locked_until = $3 WHERE id = $1")
-                    .bind(uid)
-                    .bind(if locked { 0 } else { n })
-                    .bind(locked.then(|| now + Duration::seconds(st.cfg.lockout_secs)))
-                    .execute(&mut *tx)
-                    .await?;
-                tx.commit().await?;
-                sec::record(
-                    &st.pool,
-                    Some(tenant_id),
-                    Kind::LoginFailed,
-                    Some(uid),
-                    Some(&ip),
-                    json!({ "reason": "bad_totp" }),
-                )
-                .await;
-                return Err(fail());
-            }
-        }
+    // Re-check state under lock: status, lock and TOTP step may have changed while hashing.
+    let mut tx = db::tenant_tx(&st.pool, tenant_id).await?;
+    let ok: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE users SET failed_logins = 0, locked_until = NULL, \
+           totp_last_step = CASE WHEN $2::bigint IS NULL THEN totp_last_step ELSE $2 END \
+         WHERE id = $1 AND status = 'active' AND (locked_until IS NULL OR locked_until <= now()) \
+           AND ($2::bigint IS NULL OR totp_last_step IS NULL OR totp_last_step < $2) RETURNING id",
+    )
+    .bind(uid)
+    .bind(totp_step)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if ok.is_none() {
+        tx.rollback().await?;
+        sec::record(
+            &st.pool,
+            Some(tenant_id),
+            Kind::LoginFailed,
+            Some(uid),
+            Some(&ip),
+            json!({ "reason": "state_changed_or_replay" }),
+        )
+        .await;
+        return Err(fail());
     }
-    sqlx::query("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = $1")
-        .bind(uid)
-        .execute(&mut *tx)
-        .await?;
     let resp = start_session(&st, &mut tx, tenant_id, uid, totp_enabled, &ip).await?;
     tx.commit().await?;
     sec::record(
@@ -456,10 +457,10 @@ pub async fn refresh(
     ClientIp(ip): ClientIp,
     ApiJson(req): ApiJson<RefreshReq>,
 ) -> ApiResult<Json<TokenResp>> {
-    if !st.limiter.check(
-        &format!("refresh:ip:{ip}"),
-        st.cfg.rate.refresh_per_ip_per_min,
-    ) {
+    if !st
+        .limiter
+        .check(&format!("refresh:ip:{ip}"), st.cfg.rate.refresh_per_ip_per_min)
+    {
         sec::record(
             &st.pool,
             None,
@@ -472,8 +473,7 @@ pub async fn refresh(
         return Err(ApiError::TooManyRequests);
     }
     let invalid = || ApiError::Unauthorized("invalid_token");
-    let (tenant, hash) =
-        crypto::parse_token(TokenKind::Refresh, &req.refresh_token).ok_or_else(invalid)?;
+    let (tenant, hash) = crypto::parse_token(TokenKind::Refresh, &req.refresh_token).ok_or_else(invalid)?;
     let mut tx = db::tenant_tx(&st.pool, tenant).await?;
     let row: Option<(Uuid, Uuid, Option<OffsetDateTime>, OffsetDateTime)> = sqlx::query_as(
         "SELECT id, session_id, used_at, expires_at FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE",
@@ -534,14 +534,16 @@ pub async fn refresh(
         .bind(rt_id)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO refresh_tokens (id, tenant_id, session_id, token_hash, expires_at) VALUES ($1,$2,$3,$4,$5)")
-        .bind(Uuid::now_v7())
-        .bind(tenant)
-        .bind(sid)
-        .bind(next.hash.to_vec())
-        .bind(s_exp)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "INSERT INTO refresh_tokens (id, tenant_id, session_id, token_hash, expires_at) VALUES ($1,$2,$3,$4,$5)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(tenant)
+    .bind(sid)
+    .bind(next.hash.to_vec())
+    .bind(s_exp)
+    .execute(&mut *tx)
+    .await?;
     let acc_exp = (now + Duration::seconds(st.cfg.access_ttl_secs)).min(s_exp);
     sqlx::query("UPDATE sessions SET access_hash = $2, access_expires_at = $3 WHERE id = $1")
         .bind(sid)
@@ -559,12 +561,7 @@ pub async fn refresh(
     }))
 }
 
-pub async fn revoke_session(
-    tx: &mut Tx,
-    tenant: Uuid,
-    sid: Uuid,
-    reason: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn revoke_session(tx: &mut Tx, tenant: Uuid, sid: Uuid, reason: &str) -> Result<(), sqlx::Error> {
     db::set_tenant(tx, tenant).await?;
     sqlx::query("UPDATE sessions SET revoked_at = now(), revoked_reason = $2 WHERE id = $1 AND revoked_at IS NULL")
         .bind(sid)
@@ -595,10 +592,7 @@ pub async fn revoke_user_sessions(
     Ok(r.rows_affected())
 }
 
-pub async fn logout(
-    State(st): State<AppState>,
-    p: Principal,
-) -> ApiResult<Json<serde_json::Value>> {
+pub async fn logout(State(st): State<AppState>, p: Principal) -> ApiResult<Json<serde_json::Value>> {
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     revoke_session(&mut tx, p.tenant_id, p.session_id, "logout").await?;
     audit::append(
@@ -647,10 +641,59 @@ pub struct TotpSetupResp {
     pub otpauth_uri: String,
 }
 
+#[derive(Deserialize)]
+pub struct PasswordReq {
+    pub password: String,
+}
+
+/// Re-authenticates the session's user with their password; failures count toward lockout and revoke on lock.
+async fn reauthenticate(st: &AppState, p: &Principal, password: String) -> ApiResult<()> {
+    if password.len() > 1024 {
+        return Err(ApiError::BadRequest("field_too_long"));
+    }
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let phash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1")
+        .bind(p.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    if verify_pw_blocking(st, password, Some(phash)).await? {
+        return Ok(());
+    }
+    let locked = register_failure(st, p.tenant_id, p.user_id).await?;
+    sec::record(
+        &st.pool,
+        Some(p.tenant_id),
+        Kind::LoginFailed,
+        Some(p.user_id),
+        Some(&p.ip),
+        json!({ "reason": "reauth_bad_password" }),
+    )
+    .await;
+    if locked {
+        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        revoke_user_sessions(&mut tx, p.tenant_id, p.user_id, None, "locked_after_reauth_failures").await?;
+        tx.commit().await?;
+        sec::record(
+            &st.pool,
+            Some(p.tenant_id),
+            Kind::AccountLocked,
+            Some(p.user_id),
+            Some(&p.ip),
+            json!({ "via": "reauth" }),
+        )
+        .await;
+    }
+    Err(ApiError::Unauthorized("invalid_credentials"))
+}
+
+/// Starts TOTP enrolment. Requires the current password so a stolen access token alone cannot bind an authenticator.
 pub async fn totp_setup(
     State(st): State<AppState>,
     p: Principal,
+    ApiJson(req): ApiJson<PasswordReq>,
 ) -> ApiResult<Json<TotpSetupResp>> {
+    reauthenticate(&st, &p, req.password).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let (email, enabled): (String, bool) =
         sqlx::query_as("SELECT email, totp_enabled FROM users WHERE id = $1 FOR UPDATE")
@@ -705,13 +748,8 @@ pub async fn totp_confirm(
         &crypto::totp_aad(p.tenant_id, p.user_id),
     )
     .ok_or_else(|| ApiError::internal("pending totp undecryptable"))?;
-    let step = crypto::totp_verify(
-        &secret,
-        &req.code,
-        OffsetDateTime::now_utc().unix_timestamp(),
-        None,
-    )
-    .ok_or(ApiError::BadRequest("invalid_code"))?;
+    let step = crypto::totp_verify(&secret, &req.code, OffsetDateTime::now_utc().unix_timestamp(), None)
+        .ok_or(ApiError::BadRequest("invalid_code"))?;
     sqlx::query(
         "UPDATE users SET totp_secret_enc = totp_pending_enc, totp_pending_enc = NULL, totp_enabled = true, \
          totp_last_step = $2, updated_at = now() WHERE id = $1",
@@ -720,10 +758,8 @@ pub async fn totp_confirm(
     .bind(step)
     .execute(&mut *tx)
     .await?;
-    sqlx::query("UPDATE sessions SET mfa_verified = true WHERE id = $1")
-        .bind(p.session_id)
-        .execute(&mut *tx)
-        .await?;
+    // The enrolling session is NOT upgraded: privileged actions need a fresh login with password + TOTP,
+    // so a password-only attacker cannot turn enrolment into an MFA-verified session.
     audit::append(
         &mut tx,
         p.tenant_id,
@@ -746,7 +782,9 @@ pub async fn totp_confirm(
         json!({ "method": "totp" }),
     )
     .await;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(
+        json!({ "ok": true, "relogin_required_for_privileged_actions": true }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -760,48 +798,20 @@ pub async fn change_password(
     p: Principal,
     ApiJson(req): ApiJson<PasswordChangeReq>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    crypto::check_password_policy(&req.new_password)
-        .map_err(|_| ApiError::BadRequest("password_policy"))?;
-    if req.current_password.len() > 1024 {
-        return Err(ApiError::BadRequest("field_too_long"));
-    }
-    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let phash: String =
-        sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1 FOR UPDATE")
-            .bind(p.user_id)
-            .fetch_one(&mut *tx)
-            .await?;
-    if !verify_pw_blocking(req.current_password, Some(phash)).await {
-        tx.commit().await?;
-        sec::record(
-            &st.pool,
-            Some(p.tenant_id),
-            Kind::LoginFailed,
-            Some(p.user_id),
-            Some(&p.ip),
-            json!({ "reason": "password_change_bad_current" }),
-        )
-        .await;
-        return Err(ApiError::Unauthorized("invalid_credentials"));
-    }
+    crypto::check_password_policy(&req.new_password).map_err(|_| ApiError::BadRequest("password_policy"))?;
+    reauthenticate(&st, &p, req.current_password).await?;
     let newpw = req.new_password;
     let h = tokio::task::spawn_blocking(move || crypto::hash_password(&newpw))
         .await
         .map_err(ApiError::internal)?
         .map_err(ApiError::internal)?;
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     sqlx::query("UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1")
         .bind(p.user_id)
         .bind(h)
         .execute(&mut *tx)
         .await?;
-    let n = revoke_user_sessions(
-        &mut tx,
-        p.tenant_id,
-        p.user_id,
-        Some(p.session_id),
-        "password_changed",
-    )
-    .await?;
+    let n = revoke_user_sessions(&mut tx, p.tenant_id, p.user_id, Some(p.session_id), "password_changed").await?;
     audit::append(
         &mut tx,
         p.tenant_id,
@@ -824,5 +834,29 @@ pub async fn change_password(
         json!({}),
     )
     .await;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(
+        json!({ "ok": true, "relogin_required_for_privileged_actions": true }),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::client_ip_from;
+
+    #[test]
+    fn client_ip_uses_rightmost_trusted_hop() {
+        let sock = Some("10.0.0.1".parse().unwrap());
+        assert_eq!(client_ip_from(Some("6.6.6.6, 203.0.113.9"), sock, 1), "203.0.113.9");
+        assert_eq!(
+            client_ip_from(Some("1.1.1.1, 6.6.6.6, 203.0.113.9, 10.1.1.1"), sock, 2),
+            "203.0.113.9"
+        );
+        assert_eq!(
+            client_ip_from(Some("6.6.6.6"), sock, 0),
+            "10.0.0.1",
+            "XFF ignored without trusted proxies"
+        );
+        assert_eq!(client_ip_from(Some("not-an-ip"), sock, 1), "10.0.0.1");
+        assert_eq!(client_ip_from(None, sock, 1), "10.0.0.1");
+    }
 }

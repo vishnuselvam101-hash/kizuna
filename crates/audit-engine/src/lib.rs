@@ -132,10 +132,7 @@ pub fn encode(e: &Event) -> Result<Vec<u8>, AuditError> {
     b.extend_from_slice(e.tenant_id.as_bytes());
     b.extend_from_slice(&e.seq.to_be_bytes());
     b.extend_from_slice(&e.occurred_at_us.to_be_bytes());
-    put_opt(
-        &mut b,
-        e.actor_user_id.as_ref().map(|u| u.as_bytes().as_slice()),
-    );
+    put_opt(&mut b, e.actor_user_id.as_ref().map(|u| u.as_bytes().as_slice()));
     put(&mut b, e.actor_kind.as_bytes());
     put(&mut b, e.action.as_bytes());
     put(&mut b, e.target_type.as_bytes());
@@ -179,42 +176,80 @@ impl VerifyReport {
     }
 }
 
+/// Incremental verifier: feed events in `seq` order (e.g. in database batches) without holding the chain in memory.
+pub struct ChainVerifier {
+    tenant_id: Uuid,
+    prev: [u8; 32],
+    checked: usize,
+    broken: Option<Break>,
+}
+
+impl ChainVerifier {
+    pub fn new(tenant_id: Uuid) -> Self {
+        ChainVerifier {
+            tenant_id,
+            prev: GENESIS,
+            checked: 0,
+            broken: None,
+        }
+    }
+
+    /// Returns false once the chain is broken (further events are ignored).
+    pub fn feed(&mut self, se: &StoredEvent) -> bool {
+        if self.broken.is_some() {
+            return false;
+        }
+        let expected = self.checked as i64 + 1;
+        let b = if se.event.tenant_id != self.tenant_id {
+            Some(Break::WrongTenant { seq: se.event.seq })
+        } else if se.event.seq != expected {
+            Some(Break::SequenceGap {
+                expected,
+                found: se.event.seq,
+            })
+        } else if se.prev_hash.as_slice() != self.prev.as_slice() {
+            Some(Break::BrokenLink { seq: se.event.seq })
+        } else {
+            match chain_hash(&se.event, &self.prev) {
+                Err(_) => Some(Break::Unencodable { seq: se.event.seq }),
+                Ok(h) if se.hash.as_slice() != h.as_slice() => Some(Break::HashMismatch { seq: se.event.seq }),
+                Ok(h) => {
+                    self.prev = h;
+                    None
+                }
+            }
+        };
+        match b {
+            Some(b) => {
+                self.broken = Some(b);
+                false
+            }
+            None => {
+                self.checked += 1;
+                true
+            }
+        }
+    }
+
+    pub fn report(&self) -> VerifyReport {
+        VerifyReport {
+            events_checked: self.checked,
+            first_break: self.broken.clone(),
+            head_hash: self.prev,
+        }
+    }
+}
+
 /// Verifies a full chain for one tenant, ordered by `seq`, starting at seq 1.
 /// Truncation of the tail is only detectable against an externally kept head (checkpoint).
 pub fn verify_chain(tenant_id: Uuid, events: &[StoredEvent]) -> VerifyReport {
-    let mut prev = GENESIS;
-    for (i, se) in events.iter().enumerate() {
-        let expected = i as i64 + 1;
-        let fail = |b| VerifyReport {
-            events_checked: i,
-            first_break: Some(b),
-            head_hash: prev,
-        };
-        if se.event.tenant_id != tenant_id {
-            return fail(Break::WrongTenant { seq: se.event.seq });
+    let mut v = ChainVerifier::new(tenant_id);
+    for e in events {
+        if !v.feed(e) {
+            break;
         }
-        if se.event.seq != expected {
-            return fail(Break::SequenceGap {
-                expected,
-                found: se.event.seq,
-            });
-        }
-        if se.prev_hash.as_slice() != prev.as_slice() {
-            return fail(Break::BrokenLink { seq: se.event.seq });
-        }
-        let Ok(h) = chain_hash(&se.event, &prev) else {
-            return fail(Break::Unencodable { seq: se.event.seq });
-        };
-        if se.hash.as_slice() != h.as_slice() {
-            return fail(Break::HashMismatch { seq: se.event.seq });
-        }
-        prev = h;
     }
-    VerifyReport {
-        events_checked: events.len(),
-        first_break: None,
-        head_hash: prev,
-    }
+    v.report()
 }
 
 #[cfg(test)]

@@ -64,10 +64,7 @@ impl Kind {
     pub fn severity(self) -> &'static str {
         match self {
             Kind::LoginSucceeded | Kind::MfaEnrolled | Kind::PasswordChanged => "info",
-            Kind::LoginFailed
-            | Kind::InvalidToken
-            | Kind::SessionsRevoked
-            | Kind::ExtractionFailed => "low",
+            Kind::LoginFailed | Kind::InvalidToken | Kind::SessionsRevoked | Kind::ExtractionFailed => "low",
             Kind::AccountLocked
             | Kind::RateLimited
             | Kind::AuthzDenied

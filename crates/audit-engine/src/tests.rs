@@ -39,14 +39,8 @@ fn canonical_json_sorts_and_rejects_floats() {
         canonical_json(&json!({"b": 1, "a": [true, null, "x"]})).unwrap(),
         r#"{"a":[true,null,"x"],"b":1}"#
     );
-    assert_eq!(
-        canonical_json(&json!({"x": 1.5})),
-        Err(AuditError::FloatNotAllowed)
-    );
-    assert_eq!(
-        canonical_json(&json!("a\u{0}b")),
-        Err(AuditError::NulNotAllowed)
-    );
+    assert_eq!(canonical_json(&json!({"x": 1.5})), Err(AuditError::FloatNotAllowed));
+    assert_eq!(canonical_json(&json!("a\u{0}b")), Err(AuditError::NulNotAllowed));
 }
 
 #[test]
@@ -64,19 +58,13 @@ fn detects_modification_deletion_reorder_and_relink() {
 
     let mut c = chain.clone();
     c[4].event.details = json!({"n": 999});
-    assert_eq!(
-        verify_chain(t, &c).first_break,
-        Some(Break::HashMismatch { seq: 5 })
-    );
+    assert_eq!(verify_chain(t, &c).first_break, Some(Break::HashMismatch { seq: 5 }));
 
     let mut c = chain.clone();
     c.remove(3);
     assert_eq!(
         verify_chain(t, &c).first_break,
-        Some(Break::SequenceGap {
-            expected: 4,
-            found: 5
-        })
+        Some(Break::SequenceGap { expected: 4, found: 5 })
     );
 
     let mut c = chain.clone();
@@ -87,10 +75,7 @@ fn detects_modification_deletion_reorder_and_relink() {
     let mut c = chain.clone();
     c[4].event.action = "auth.logout".into();
     c[4].hash = chain_hash(&c[4].event, &c[4].prev_hash).unwrap().to_vec();
-    assert_eq!(
-        verify_chain(t, &c).first_break,
-        Some(Break::BrokenLink { seq: 6 })
-    );
+    assert_eq!(verify_chain(t, &c).first_break, Some(Break::BrokenLink { seq: 6 }));
 
     assert_eq!(
         verify_chain(Uuid::from_u128(2), &chain).first_break,

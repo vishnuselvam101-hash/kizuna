@@ -19,9 +19,8 @@ use crate::security_events::{self as sec, Kind};
 pub fn valid_email(e: &str) -> bool {
     let n = e.len();
     (3..=254).contains(&n)
-        && e.split_once('@').is_some_and(|(l, d)| {
-            !l.is_empty() && d.contains('.') && !d.starts_with('.') && !d.ends_with('.')
-        })
+        && e.split_once('@')
+            .is_some_and(|(l, d)| !l.is_empty() && d.contains('.') && !d.starts_with('.') && !d.ends_with('.'))
         && !e.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
@@ -84,10 +83,9 @@ const USER_COLS: &str = "id, email, display_name, role, status, totp_enabled, lo
 pub async fn list(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Vec<UserOut>>> {
     p.require(&st, Permission::UserRead).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let rows =
-        sqlx::query_as::<_, UserOut>(&format!("SELECT {USER_COLS} FROM users ORDER BY email"))
-            .fetch_all(&mut *tx)
-            .await?;
+    let rows = sqlx::query_as::<_, UserOut>(&format!("SELECT {USER_COLS} FROM users ORDER BY email"))
+        .fetch_all(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(Json(rows))
 }
@@ -108,25 +106,11 @@ pub async fn create(
     p.require(&st, Permission::UserManage).await?;
     let role = Role::parse(&req.role).map_err(|_| ApiError::BadRequest("invalid_role"))?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let id = insert_user(
-        &mut tx,
-        p.tenant_id,
-        &req.email,
-        &req.display_name,
-        role,
-        &req.password,
-    )
-    .await?;
+    let id = insert_user(&mut tx, p.tenant_id, &req.email, &req.display_name, role, &req.password).await?;
     audit::append(
         &mut tx,
         p.tenant_id,
-        Record::user(
-            p.user_id,
-            "user.created",
-            "user",
-            id,
-            json!({ "role": role.as_str() }),
-        ),
+        Record::user(p.user_id, "user.created", "user", id, json!({ "role": role.as_str() })),
     )
     .await?;
     let out = sqlx::query_as::<_, UserOut>(&format!("SELECT {USER_COLS} FROM users WHERE id = $1"))
@@ -146,11 +130,10 @@ pub struct PatchReq {
 
 /// Locks all active admins and fails if `user` is the last one and would lose admin status.
 async fn guard_last_admin(tx: &mut Tx, user: Uuid) -> ApiResult<()> {
-    let admins: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM users WHERE role = 'tenant_admin' AND status = 'active' FOR UPDATE",
-    )
-    .fetch_all(&mut **tx)
-    .await?;
+    let admins: Vec<Uuid> =
+        sqlx::query_scalar("SELECT id FROM users WHERE role = 'tenant_admin' AND status = 'active' FOR UPDATE")
+            .fetch_all(&mut **tx)
+            .await?;
     if admins.contains(&user) && admins.len() == 1 {
         return Err(ApiError::Conflict("last_active_admin"));
     }
@@ -188,18 +171,21 @@ pub async fn patch(
     {
         return Err(ApiError::BadRequest("invalid_display_name"));
     }
-    let loses_admin =
-        old_role == "tenant_admin" && (new_role != "tenant_admin" || new_status != "active");
+    let loses_admin = old_role == "tenant_admin" && (new_role != "tenant_admin" || new_status != "active");
     if loses_admin {
         guard_last_admin(&mut tx, id).await?;
     }
     sqlx::query(
-        "UPDATE users SET role = $2, status = $3, display_name = coalesce($4, display_name), updated_at = now() WHERE id = $1",
+        "UPDATE users SET role = $2, status = $3, display_name = coalesce($4, display_name), updated_at = now(), \
+           failed_logins = CASE WHEN $5 THEN 0 ELSE failed_logins END, \
+           locked_until = CASE WHEN $5 THEN NULL ELSE locked_until END WHERE id = $1",
     )
     .bind(id)
     .bind(&new_role)
     .bind(&new_status)
     .bind(req.display_name.as_deref().map(str::trim))
+    // An explicit `status: active` is the admin unlock path for locked accounts.
+    .bind(req.status.as_deref() == Some("active"))
     .execute(&mut *tx)
     .await?;
     let mut revoked = 0;
@@ -269,13 +255,7 @@ pub async fn revoke_sessions(
     audit::append(
         &mut tx,
         p.tenant_id,
-        Record::user(
-            p.user_id,
-            "user.sessions_revoked",
-            "user",
-            id,
-            json!({ "count": n }),
-        ),
+        Record::user(p.user_id, "user.sessions_revoked", "user", id, json!({ "count": n })),
     )
     .await?;
     tx.commit().await?;

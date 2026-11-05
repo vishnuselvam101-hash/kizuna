@@ -9,9 +9,7 @@ use serde_json::json;
 #[tokio::test]
 async fn health_and_security_headers() {
     let c = ctx().await;
-    let r = c
-        .raw(Request::get("/healthz").body(Body::empty()).unwrap())
-        .await;
+    let r = c.raw(Request::get("/healthz").body(Body::empty()).unwrap()).await;
     assert_eq!(r.status, StatusCode::OK);
     for h in [
         "x-content-type-options",
@@ -51,11 +49,7 @@ async fn login_me_and_generic_failures() {
             "no account enumeration"
         );
     }
-    assert!(
-        c.security_kinds(t)
-            .await
-            .contains(&"auth.login_failed".to_string())
-    );
+    assert!(c.security_kinds(t).await.contains(&"auth.login_failed".to_string()));
     // Email lookup is case-insensitive.
     assert_eq!(
         c.login(&slug, &email.to_uppercase(), PW, None).await.status,
@@ -114,9 +108,7 @@ async fn lockout_after_repeated_failures() {
     let (_, email) = c.user(t, "viewer").await;
     for _ in 0..5 {
         assert_eq!(
-            c.login(&slug, &email, "wrong password here", None)
-                .await
-                .status,
+            c.login(&slug, &email, "wrong password here", None).await.status,
             StatusCode::UNAUTHORIZED
         );
     }
@@ -125,11 +117,7 @@ async fn lockout_after_repeated_failures() {
         StatusCode::UNAUTHORIZED,
         "locked even with right password"
     );
-    assert!(
-        c.security_kinds(t)
-            .await
-            .contains(&"auth.account_locked".to_string())
-    );
+    assert!(c.security_kinds(t).await.contains(&"auth.account_locked".to_string()));
 }
 
 #[tokio::test]
@@ -176,10 +164,7 @@ async fn refresh_rotates_and_reuse_revokes_family() {
         .post("/api/v1/auth/refresh", None, json!({ "refresh_token": r1 }))
         .await;
     assert_eq!(replay.status, StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        c.get("/api/v1/auth/me", &a2).await.status,
-        StatusCode::UNAUTHORIZED
-    );
+    assert_eq!(c.get("/api/v1/auth/me", &a2).await.status, StatusCode::UNAUTHORIZED);
     assert_eq!(
         c.post("/api/v1/auth/refresh", None, json!({ "refresh_token": r2 }))
             .await
@@ -203,24 +188,16 @@ async fn refresh_token_with_forged_tenant_prefix_fails() {
     let r = l.body["refresh_token"].as_str().unwrap();
     let forged = r.replacen(&t.simple().to_string(), &t2.simple().to_string(), 1);
     assert_eq!(
-        c.post(
-            "/api/v1/auth/refresh",
-            None,
-            json!({ "refresh_token": forged })
-        )
-        .await
-        .status,
+        c.post("/api/v1/auth/refresh", None, json!({ "refresh_token": forged }))
+            .await
+            .status,
         StatusCode::UNAUTHORIZED
     );
-    let a = l.body["access_token"].as_str().unwrap().replacen(
-        &t.simple().to_string(),
-        &t2.simple().to_string(),
-        1,
-    );
-    assert_eq!(
-        c.get("/api/v1/auth/me", &a).await.status,
-        StatusCode::UNAUTHORIZED
-    );
+    let a = l.body["access_token"]
+        .as_str()
+        .unwrap()
+        .replacen(&t.simple().to_string(), &t2.simple().to_string(), 1);
+    assert_eq!(c.get("/api/v1/auth/me", &a).await.status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -230,15 +207,10 @@ async fn logout_revokes_server_side() {
     let (_, email) = c.user(t, "viewer").await;
     let tok = c.token(&slug, &email).await;
     assert_eq!(
-        c.post("/api/v1/auth/logout", Some(&tok), json!({}))
-            .await
-            .status,
+        c.post("/api/v1/auth/logout", Some(&tok), json!({})).await.status,
         StatusCode::OK
     );
-    assert_eq!(
-        c.get("/api/v1/auth/me", &tok).await.status,
-        StatusCode::UNAUTHORIZED
-    );
+    assert_eq!(c.get("/api/v1/auth/me", &tok).await.status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -263,6 +235,7 @@ async fn totp_mfa_flow_and_replay() {
     );
 
     let secret = c.enroll_totp(&tok).await;
+    // Regression (review M1 #3): enrolment must not upgrade a password-only session.
     let r = c
         .post(
             "/api/v1/users",
@@ -270,16 +243,14 @@ async fn totp_mfa_flow_and_replay() {
             json!({"email":"x@example.test","display_name":"X","role":"viewer","password":PW}),
         )
         .await;
-    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
-
     assert_eq!(
-        c.login(&slug, &email, PW, None).await.body["error"],
-        "mfa_required"
+        (r.status, r.body["error"].as_str()),
+        (StatusCode::FORBIDDEN, Some("mfa_required"))
     );
+
+    assert_eq!(c.login(&slug, &email, PW, None).await.body["error"], "mfa_required");
     assert_eq!(
-        c.login(&slug, &email, PW, Some("000000".into()))
-            .await
-            .status,
+        c.login(&slug, &email, PW, Some("000000".into())).await.status,
         StatusCode::UNAUTHORIZED
     );
     let code = kizuna_api::crypto::totp_now(&secret, now() + 30);
@@ -291,6 +262,15 @@ async fn totp_mfa_flow_and_replay() {
         StatusCode::UNAUTHORIZED,
         "TOTP replay rejected"
     );
+    let mfa_tok = ok.body["access_token"].as_str().unwrap();
+    let r = c
+        .post(
+            "/api/v1/users",
+            Some(mfa_tok),
+            json!({"email":"x@example.test","display_name":"X","role":"viewer","password":PW}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
 
     // Secret is encrypted at rest (not the raw bytes).
     let enc: Vec<u8> = sqlx::query_scalar("SELECT totp_secret_enc FROM users WHERE id = $1")
@@ -316,7 +296,13 @@ async fn password_change_policy_and_revocation() {
         )
         .await;
     assert_eq!(r.body["error"], "password_policy");
-    let r = c.post("/api/v1/auth/password", Some(&s1), json!({"current_password": "wrong password here", "new_password": "another long passphrase"})).await;
+    let r = c
+        .post(
+            "/api/v1/auth/password",
+            Some(&s1),
+            json!({"current_password": "wrong password here", "new_password": "another long passphrase"}),
+        )
+        .await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
     let r = c
         .post(
@@ -333,9 +319,7 @@ async fn password_change_policy_and_revocation() {
         "other sessions revoked"
     );
     assert_eq!(
-        c.login(&slug, &email, "another long passphrase", None)
-            .await
-            .status,
+        c.login(&slug, &email, "another long passphrase", None).await.status,
         StatusCode::OK
     );
 }

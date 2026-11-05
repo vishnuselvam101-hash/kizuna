@@ -66,9 +66,7 @@ impl IntoResponse for ApiError {
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::Conflict(c) => (StatusCode::CONFLICT, *c),
             ApiError::TooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large"),
-            ApiError::UnsupportedMedia => {
-                (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
-            }
+            ApiError::UnsupportedMedia => (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type"),
             ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             ApiError::Internal(msg) => {
                 tracing::error!(error = %msg, "internal error");

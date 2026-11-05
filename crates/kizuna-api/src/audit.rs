@@ -1,6 +1,6 @@
 //! Writes and verifies the per-tenant hash-chained audit log (hashing in `audit-engine`).
 
-use audit_engine::{Event, StoredEvent, VerifyReport, chain_hash, verify_chain};
+use audit_engine::{ChainVerifier, Event, StoredEvent, VerifyReport, chain_hash};
 use axum::Json;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
@@ -24,13 +24,7 @@ pub struct Record<'a> {
 }
 
 impl<'a> Record<'a> {
-    pub fn user(
-        actor: Uuid,
-        action: &'a str,
-        target_type: &'a str,
-        target_id: impl ToString,
-        details: Value,
-    ) -> Self {
+    pub fn user(actor: Uuid, action: &'a str, target_type: &'a str, target_id: impl ToString, details: Value) -> Self {
         Record {
             actor_user_id: Some(actor),
             actor_kind: "user",
@@ -59,12 +53,11 @@ pub async fn append(tx: &mut Tx, tenant: Uuid, r: Record<'_>) -> Result<i64, Api
         .bind(audit_engine::GENESIS.to_vec())
         .execute(&mut **tx)
         .await?;
-    let (last_seq, last_hash): (i64, Vec<u8>) = sqlx::query_as(
-        "SELECT last_seq, last_hash FROM audit_heads WHERE tenant_id = $1 FOR UPDATE",
-    )
-    .bind(tenant)
-    .fetch_one(&mut **tx)
-    .await?;
+    let (last_seq, last_hash): (i64, Vec<u8>) =
+        sqlx::query_as("SELECT last_seq, last_hash FROM audit_heads WHERE tenant_id = $1 FOR UPDATE")
+            .bind(tenant)
+            .fetch_one(&mut **tx)
+            .await?;
     let at = now_us();
     let ev = Event {
         tenant_id: tenant,
@@ -135,7 +128,8 @@ fn to_stored(tenant: Uuid, r: Row) -> StoredEvent {
     }
 }
 
-const COLS: &str = "seq, occurred_at, actor_user_id, actor_kind, action, target_type, target_id, details, prev_hash, hash";
+const COLS: &str =
+    "seq, occurred_at, actor_user_id, actor_kind, action, target_type, target_id, details, prev_hash, hash";
 
 #[derive(Debug, Serialize)]
 pub struct ChainStatus {
@@ -146,26 +140,37 @@ pub struct ChainStatus {
     pub head_hash: String,
 }
 
-/// Recomputes the whole chain and compares its end with the stored head (detects tail truncation).
+/// Recomputes the whole chain in batches and compares its end with the stored head (detects tail truncation).
+/// Call inside a snapshot transaction (`db::tenant_snapshot_tx`) so concurrent appends cannot cause false alarms.
 pub async fn verify_tenant(tx: &mut Tx, tenant: Uuid) -> Result<ChainStatus, ApiError> {
     db::set_tenant(tx, tenant).await?;
-    let rows: Vec<Row> = sqlx::query_as(&format!(
-        "SELECT {COLS} FROM audit_events WHERE tenant_id = $1 ORDER BY seq"
-    ))
-    .bind(tenant)
-    .fetch_all(&mut **tx)
-    .await?;
-    let events: Vec<StoredEvent> = rows.into_iter().map(|r| to_stored(tenant, r)).collect();
-    let rep: VerifyReport = verify_chain(tenant, &events);
     let head: Option<(i64, Vec<u8>)> =
         sqlx::query_as("SELECT last_seq, last_hash FROM audit_heads WHERE tenant_id = $1")
             .bind(tenant)
             .fetch_optional(&mut **tx)
             .await?;
+    let mut v = ChainVerifier::new(tenant);
+    let mut last = 0i64;
+    let mut total = 0usize;
+    loop {
+        let rows: Vec<Row> = sqlx::query_as(&format!(
+            "SELECT {COLS} FROM audit_events WHERE tenant_id = $1 AND seq > $2 ORDER BY seq LIMIT 1000"
+        ))
+        .bind(tenant)
+        .bind(last)
+        .fetch_all(&mut **tx)
+        .await?;
+        let Some(r) = rows.last() else { break };
+        last = r.0;
+        total += rows.len();
+        if !rows.into_iter().all(|r| v.feed(&to_stored(tenant, r))) {
+            break;
+        }
+    }
+    let rep: VerifyReport = v.report();
     let (head_seq, head_hash) = head.unwrap_or((0, audit_engine::GENESIS.to_vec()));
     let mut problem = rep.first_break.as_ref().map(|b| format!("{b:?}"));
-    if problem.is_none() && (head_seq != events.len() as i64 || head_hash != rep.head_hash.to_vec())
-    {
+    if problem.is_none() && (head_seq != total as i64 || head_hash != rep.head_hash.to_vec()) {
         problem = Some("HeadMismatch".into());
     }
     Ok(ChainStatus {
@@ -231,7 +236,7 @@ pub async fn list_events(
 
 pub async fn verify(State(st): State<AppState>, p: Principal) -> ApiResult<Json<ChainStatus>> {
     p.require(&st, Permission::AuditVerify).await?;
-    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
     let status = verify_tenant(&mut tx, p.tenant_id).await?;
     if !status.intact {
         crate::security_events::record(

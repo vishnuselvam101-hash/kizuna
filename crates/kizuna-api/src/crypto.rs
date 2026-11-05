@@ -65,8 +65,7 @@ pub fn verify_password(pw: &str, phc: &str) -> bool {
 /// Burns the same CPU as a real verification so unknown accounts are not distinguishable by timing.
 pub fn dummy_verify(pw: &str) {
     static DUMMY: OnceLock<String> = OnceLock::new();
-    let h =
-        DUMMY.get_or_init(|| hash_password("kizuna-dummy-password-not-used").unwrap_or_default());
+    let h = DUMMY.get_or_init(|| hash_password("kizuna-dummy-password-not-used").unwrap_or_default());
     let _ = verify_password(pw, h);
 }
 
@@ -128,13 +127,7 @@ pub fn seal(key: &[u8; 32], plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>, Str
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
     let nonce = random_bytes::<12>();
     let ct = cipher
-        .encrypt(
-            Nonce::from_slice(&nonce),
-            Payload {
-                msg: plaintext,
-                aad,
-            },
-        )
+        .encrypt(Nonce::from_slice(&nonce), Payload { msg: plaintext, aad })
         .map_err(|_| "encrypt failed".to_string())?;
     let mut out = nonce.to_vec();
     out.extend_from_slice(&ct);
@@ -147,9 +140,7 @@ pub fn open(key: &[u8; 32], sealed: &[u8], aad: &[u8]) -> Option<Vec<u8>> {
     }
     let cipher = Aes256Gcm::new_from_slice(key).ok()?;
     let (nonce, ct) = sealed.split_at(12);
-    cipher
-        .decrypt(Nonce::from_slice(nonce), Payload { msg: ct, aad })
-        .ok()
+    cipher.decrypt(Nonce::from_slice(nonce), Payload { msg: ct, aad }).ok()
 }
 
 pub fn totp_aad(tenant: Uuid, user: Uuid) -> Vec<u8> {
@@ -182,8 +173,7 @@ pub const TOTP_STEP: i64 = 30;
 
 /// RFC 4226 HOTP with HMAC-SHA1.
 pub fn hotp(secret: &[u8], counter: u64, digits: u32) -> u32 {
-    let mut mac =
-        <Hmac<sha1::Sha1> as Mac>::new_from_slice(secret).expect("hmac accepts any key length");
+    let mut mac = <Hmac<sha1::Sha1> as Mac>::new_from_slice(secret).expect("hmac accepts any key length");
     mac.update(&counter.to_be_bytes());
     let h = mac.finalize().into_bytes();
     let off = (h[19] & 0x0f) as usize;
@@ -261,11 +251,7 @@ mod tests {
         let now = 1_800_000_000;
         let code = totp_now(&k, now);
         let step = totp_verify(&k, &code, now, None).unwrap();
-        assert_eq!(
-            totp_verify(&k, &code, now, Some(step)),
-            None,
-            "replay rejected"
-        );
+        assert_eq!(totp_verify(&k, &code, now, Some(step)), None, "replay rejected");
         assert!(totp_verify(&k, &totp_now(&k, now - 30), now, None).is_some());
         assert!(totp_verify(&k, &totp_now(&k, now - 90), now, None).is_none());
         assert!(totp_verify(&k, "12345", now, None).is_none());
@@ -286,10 +272,7 @@ mod tests {
         assert!(verify_password("correct horse battery", &h));
         assert!(!verify_password("wrong horse battery", &h));
         assert!(!verify_password("x", "not-a-phc"));
-        assert_eq!(
-            check_password_policy("short"),
-            Err(PasswordPolicyError::TooShort)
-        );
+        assert_eq!(check_password_policy("short"), Err(PasswordPolicyError::TooShort));
         assert_eq!(
             check_password_policy(&"x".repeat(129)),
             Err(PasswordPolicyError::TooLong)
