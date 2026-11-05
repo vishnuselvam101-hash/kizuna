@@ -3,8 +3,8 @@
  "documents": 102,
  "malicious_files": 3,
  "timings_s": {
-  "ingest_and_extract": 28.834,
-  "verification_run": 0.05
+  "ingest_and_extract": 25.678,
+  "verification_run": 0.071
  },
  "verification_run": {
   "rule_version": "mfg-rules@1",
@@ -176,6 +176,7 @@
  "security_event_kinds": [
   "auth.login_succeeded",
   "authz.denied",
+  "export.report",
   "ingest.artifact_quarantined",
   "ingest.upload_rejected"
  ],
@@ -184,8 +185,8 @@
    "check": "login auditor",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.o1SogCuFJskWBXP6PX2zUWHKmdxFNQCjZK09OyiOV4E",
-    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.oQN_mF64UZH1_LoAjP3EnXgLmanSf426do6qJwvoBu4",
+    "access_token": "[REDACTED]",
+    "refresh_token": "[REDACTED]",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -195,8 +196,8 @@
    "check": "login analyst",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.qeOX6-P-Rde_Y8VobkqlOuf2D5SKaTVidnUjSgLCVUE",
-    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.wHwsIY5h5tjKngBEdRGwb4mnlMSmiWQidg10SdBBBeQ",
+    "access_token": "[REDACTED]",
+    "refresh_token": "[REDACTED]",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -206,8 +207,8 @@
    "check": "login reviewer",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.p5ud9WOnKxV9GpNCGkz38HB-en_DLAwxlCWQlAzYDwc",
-    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.QM6CdWlM9I7pPcC0Y0iTTNMAdvAMyinPYBQr4Emw7pY",
+    "access_token": "[REDACTED]",
+    "refresh_token": "[REDACTED]",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -217,8 +218,8 @@
    "check": "login reviewer2",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.3nAXqOSgQXUzNH6-7knGD5nNYU1QNIZMQKbB1oRkQEs",
-    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.kRJCEUHU5YW2NyX7HWFM6ZF7AI4x-Aw9oFyKx7SQ96c",
+    "access_token": "[REDACTED]",
+    "refresh_token": "[REDACTED]",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -228,8 +229,8 @@
    "check": "login viewer",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.t0pGZzcnacBi3shur8I2dnqGByvDu046SIEMbpfDIrU",
-    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.u-mR1ca0-swTTqHodOt7URtxdJyy0NO37qnK_jb4f8M",
+    "access_token": "[REDACTED]",
+    "refresh_token": "[REDACTED]",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -239,8 +240,8 @@
    "check": "login outsider",
    "ok": true,
    "detail": {
-    "access_token": "kza.01a1ac1888b37061ad1c36e8e0dfe8be.fFcDTLBk9i-tk7I6rQy-VaYUuL9Se-CBAeqG4-HcpK8",
-    "refresh_token": "kzr.01a1ac1888b37061ad1c36e8e0dfe8be.Jp_li99GrT-WA-M3ukfu9ejpNRgznpfs9wyyKbZNFaY",
+    "access_token": "[REDACTED]",
+    "refresh_token": "[REDACTED]",
     "token_type": "Bearer",
     "expires_in": 900,
     "mfa_verified": false
@@ -285,7 +286,7 @@
    "check": "reviewer records a decision on clean evidence",
    "ok": true,
    "detail": {
-    "id": "01a1ac19-0479-77b8-b7f4-498748a5b2ac",
+    "id": "01a1ac33-3ac5-77f7-9012-c588c7433753",
     "kind": "supplier_part_release",
     "title": "Release CVR-8629 rev D",
     "subject_type": "part",
@@ -293,11 +294,15 @@
     "outcome": "approved",
     "rationale": "Synthetic E2E: spec, drawing, PO and inspection agree",
     "effective_from": null,
-    "decided_by": "01a1ac18-8bda-77aa-9981-eff834a0804b",
-    "decided_at": "2026-11-05T14:24:43.129108Z",
+    "decided_by": "01a1ac32-d17e-77d2-a743-4f1c6e2a8b36",
+    "decided_at": "2026-11-05T14:53:20.965599Z",
     "status": "valid",
-    "derivation_sha256": "b5130004144ce5898d7de963b7ab23050c9a81655a2473b968123c677f9fdd46",
-    "supersedes": null
+    "derivation_sha256": "a8d82c163295c5c66b8de5977c4bc24149f0c3c162c647037883334698ffb067",
+    "supersedes": null,
+    "evidence_claim_ids": [
+     "01a1ac32-d6d4-77e6-8154-98a81cd114dd",
+     "01a1ac32-d6e1-70b9-938e-0d818d864556"
+    ]
    }
   },
   {
@@ -326,15 +331,15 @@
     "events_checked": 222,
     "problem": null,
     "head_seq": 222,
-    "head_hash": "5bb039051ecc25d942619d5568aad1e1fb6b13426551b3beb66b73cebb10a4c2"
+    "head_hash": "67aa2c99489e4232ee65e26bb81f26b48a9d833f487dda04d4bf1c36404e9070"
    }
   }
  ],
  "provenance": {
   "command": "scripts/e2e.sh --seed 11 --parts 48",
-  "commit": "8308073",
-  "dirty": true,
-  "utc": "2026-11-05T14:24:43+00:00",
+  "commit": "c7f518f",
+  "dirty": false,
+  "utc": "2026-11-05T14:53:21+00:00",
   "host": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
   "build": "debug"
  }
