@@ -4,6 +4,28 @@
 
 use serde::Serialize;
 
+pub mod v2;
+
+/// Which matcher the API uses. v1 (rule-based) stays available behind this flag; v2 adds blocking,
+/// Japanese-name comparators and EM-estimated Fellegi–Sunter weights.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErVersion {
+    V1,
+    #[default]
+    V2,
+}
+
+impl ErVersion {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "v1" | "1" => Some(ErVersion::V1),
+            "v2" | "2" => Some(ErVersion::V2),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Outcome {
@@ -126,6 +148,11 @@ fn block_keys(k: &str) -> Vec<String> {
 /// Candidate pairs among distinct identifiers. Automatic `Match` pairs are reported too (for transparency).
 /// A key with possible matches to two or more different keys is ambiguous: its pairs become `RequiresHumanReview`.
 pub fn candidates(keys: &[String]) -> Vec<Candidate> {
+    candidates_with_stats(keys).0
+}
+
+/// `candidates` plus the number of pairs the blocking passed to `compare` (for v1/v2 comparisons).
+pub fn candidates_with_stats(keys: &[String]) -> (Vec<Candidate>, usize) {
     let mut ks: Vec<&String> = keys.iter().collect();
     ks.sort();
     ks.dedup();
@@ -143,6 +170,7 @@ pub fn candidates(keys: &[String]) -> Vec<Candidate> {
             }
         }
     }
+    let compared = pairs.len();
     let mut out = Vec::new();
     for (i, j) in pairs {
         let (o, r) = compare(ks[i], ks[j]);
@@ -171,7 +199,7 @@ pub fn candidates(keys: &[String]) -> Vec<Candidate> {
             c.reasons.push("ambiguous_cluster");
         }
     }
-    out
+    (out, compared)
 }
 
 /// Reference all-pairs implementation (tests only): the blocked search must return exactly the same pairs.

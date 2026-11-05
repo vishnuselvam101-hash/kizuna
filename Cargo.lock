@@ -1966,6 +1966,7 @@ dependencies = [
  "kizuna-api",
  "policy-engine",
  "rust_decimal",
+ "serde",
  "serde_json",
  "sqlx",
  "time",
