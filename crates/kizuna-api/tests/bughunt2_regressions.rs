@@ -129,7 +129,7 @@ async fn report_dates_are_tenant_local_days() {
     // JST (+09:00): 5 Nov 00:00 JST = 4 Nov 15:00 UTC; the inclusive end is 6 Nov 00:00 JST.
     assert_eq!(r.body["range"]["from"], 1_793_804_400);
     assert_eq!(r.body["range"]["to_exclusive"], 1_793_804_400 + 86_400);
-    assert_eq!(r.body["range"]["utc_offset_minutes"], 540);
+    assert_eq!(r.body["range"]["timezone"], "Asia/Tokyo");
     let bad = c
         .post("/api/v1/reports", Some(&admin), json!({ "from_date": "2026-02-30" }))
         .await;

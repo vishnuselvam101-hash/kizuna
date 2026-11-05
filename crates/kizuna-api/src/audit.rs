@@ -280,6 +280,26 @@ pub struct Checkpoint {
     pub key_id: String,
     pub public_key: String,
     pub signature: String,
+    /// KZCP2 chain link: SHA-256 (hex) of the previous checkpoint's signature; absent on legacy KZCP1 checkpoints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev_signature_sha256: Option<String>,
+}
+
+/// The chain link a checkpoint must carry: SHA-256 of the previous signature, or zeros for the first one.
+fn expected_prev(last_sig: Option<&[u8]>) -> [u8; 32] {
+    last_sig.map(crate::crypto::sha256).unwrap_or([0u8; 32])
+}
+
+fn message_of(c: &Checkpoint, head: &[u8]) -> Vec<u8> {
+    match c
+        .prev_signature_sha256
+        .as_deref()
+        .and_then(|h| hex::decode(h).ok())
+        .and_then(|v| <[u8; 32]>::try_from(v).ok())
+    {
+        Some(prev) => audit_engine::checkpoint::message_v2(c.tenant_id, c.seq, head, c.signed_at_us, &prev),
+        None => audit_engine::checkpoint::message(c.tenant_id, c.seq, head, c.signed_at_us),
+    }
 }
 
 fn signing_key(st: &AppState) -> ApiResult<[u8; 32]> {
@@ -308,7 +328,8 @@ fn verification_keys(st: &AppState) -> Vec<(String, [u8; 32], bool)> {
     out
 }
 
-type CpRow = (i64, Vec<u8>, OffsetDateTime, String, Vec<u8>);
+type CpRow = (i64, Vec<u8>, OffsetDateTime, String, Vec<u8>, Option<Vec<u8>>);
+const CP_COLS: &str = "seq, head_hash, signed_at, key_id, signature, prev_sig_sha256";
 
 /// Signs the chain head of a consistent snapshot (only if the chain verifies). Verification starts at the latest
 /// checkpoint whose signature and stored hash still check out (incremental), and no lock is held while verifying,
@@ -321,12 +342,19 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
     // Every checkpoint under a known key must still match the chain; otherwise refuse and alarm instead of
     // signing a (possibly re-chained) head (deep review KZ-C1). The newest valid one is the anchor.
-    let rows: Vec<CpRow> =
-        sqlx::query_as("SELECT seq, head_hash, signed_at, key_id, signature FROM audit_checkpoints ORDER BY seq")
-            .fetch_all(&mut *tx)
-            .await?;
+    let rows: Vec<CpRow> = sqlx::query_as(&format!(
+        "SELECT {CP_COLS} FROM audit_checkpoints ORDER BY seq, signed_at"
+    ))
+    .fetch_all(&mut *tx)
+    .await?;
     let mut anchor = None;
-    for (seq, head, at, kid, sig) in rows {
+    let mut last_sig: Option<Vec<u8>> = None;
+    for (seq, head, at, kid, sig, prev) in rows {
+        // Chain link: a KZCP2 checkpoint must point at the signature of the one before it.
+        let link_ok = prev
+            .as_ref()
+            .is_none_or(|p| p.as_slice() == expected_prev(last_sig.as_deref()));
+        last_sig = Some(sig.clone());
         let Some((_, public, _)) = keys.iter().find(|k| k.0 == kid) else {
             continue;
         };
@@ -337,10 +365,11 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
             signed_at_us: micros(at),
             key_id: kid,
             public_key: hex::encode(public),
-            signature: hex::encode(sig),
+            signature: hex::encode(&sig),
+            prev_signature_sha256: prev.map(hex::encode),
         };
         let r = check_one(&mut tx, &keys, &c).await?;
-        if r["signature_valid"] != true || r["chain_matches"] != true {
+        if r["signature_valid"] != true || r["chain_matches"] != true || !link_ok {
             tx.commit().await?;
             crate::security_events::record(
                 &st.pool,
@@ -364,12 +393,13 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
     }
     let head = hex::decode(&status.head_hash).map_err(ApiError::internal)?;
     let at = micros(now_us());
-    let msg = audit_engine::checkpoint::message(p.tenant_id, status.head_seq, &head, at);
+    let prev = expected_prev(last_sig.as_deref());
+    let msg = audit_engine::checkpoint::message_v2(p.tenant_id, status.head_seq, &head, at, &prev);
     let sig = audit_engine::checkpoint::sign(&seed, &msg);
     let public = audit_engine::checkpoint::public_key(&seed);
     let kid = key_id(&public);
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    sqlx::query("INSERT INTO audit_checkpoints (id, tenant_id, seq, head_hash, signed_at, key_id, signature, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
+    sqlx::query("INSERT INTO audit_checkpoints (id, tenant_id, seq, head_hash, signed_at, key_id, signature, created_by, prev_sig_sha256) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)")
         .bind(Uuid::now_v7())
         .bind(p.tenant_id)
         .bind(status.head_seq)
@@ -378,6 +408,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
         .bind(&kid)
         .bind(sig.to_vec())
         .bind(p.user_id)
+        .bind(prev.to_vec())
         .execute(&mut *tx)
         .await?;
     append(
@@ -401,6 +432,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
         key_id: kid,
         public_key: hex::encode(public),
         signature: hex::encode(sig),
+        prev_signature_sha256: Some(hex::encode(prev)),
     };
     // Export off-host automatically (KZ-C3); delivery failures never fail the checkpoint.
     if st.alerts.enabled() {
@@ -424,12 +456,7 @@ async fn check_one(tx: &mut Tx, keys: &[(String, [u8; 32], bool)], c: &Checkpoin
         None => "unknown_key",
     };
     let sig_ok = key.is_some_and(|(_, public, _)| {
-        c.public_key == hex::encode(public)
-            && audit_engine::checkpoint::verify(
-                public,
-                &audit_engine::checkpoint::message(c.tenant_id, c.seq, &head, c.signed_at_us),
-                &sig,
-            )
+        c.public_key == hex::encode(public) && audit_engine::checkpoint::verify(public, &message_of(c, &head), &sig)
     });
     let stored: Option<Vec<u8>> = sqlx::query_scalar("SELECT hash FROM audit_events WHERE tenant_id = $1 AND seq = $2")
         .bind(c.tenant_id)
@@ -448,12 +475,21 @@ pub async fn verify_checkpoints(State(st): State<AppState>, p: Principal) -> Api
     signing_key(&st)?;
     let keys = verification_keys(&st);
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
-    let rows: Vec<CpRow> =
-        sqlx::query_as("SELECT seq, head_hash, signed_at, key_id, signature FROM audit_checkpoints ORDER BY seq")
-            .fetch_all(&mut *tx)
-            .await?;
+    let rows: Vec<CpRow> = sqlx::query_as(&format!(
+        "SELECT {CP_COLS} FROM audit_checkpoints ORDER BY seq, signed_at"
+    ))
+    .fetch_all(&mut *tx)
+    .await?;
     let mut results = Vec::new();
-    for (seq, head, at, kid, sig) in rows {
+    let mut last_sig: Option<Vec<u8>> = None;
+    let mut links_ok = true;
+    for (seq, head, at, kid, sig, prev) in rows {
+        if let Some(p) = &prev
+            && p.as_slice() != expected_prev(last_sig.as_deref())
+        {
+            links_ok = false;
+        }
+        last_sig = Some(sig.clone());
         let public = keys
             .iter()
             .find(|k| k.0 == kid)
@@ -466,7 +502,8 @@ pub async fn verify_checkpoints(State(st): State<AppState>, p: Principal) -> Api
             signed_at_us: micros(at),
             key_id: kid,
             public_key: public,
-            signature: hex::encode(sig),
+            signature: hex::encode(&sig),
+            prev_signature_sha256: prev.map(hex::encode),
         };
         results.push(check_one(&mut tx, &keys, &c).await?);
     }
@@ -475,6 +512,7 @@ pub async fn verify_checkpoints(State(st): State<AppState>, p: Principal) -> Api
     // Checkpoints under a key that is no longer configured cannot be checked; they are reported, not alarmed.
     let unknown_keys = results.iter().filter(|r| r["key_status"] == "unknown_key").count();
     let all_ok = chain.intact
+        && links_ok
         && results
             .iter()
             .filter(|r| r["key_status"] != "unknown_key")
@@ -491,7 +529,8 @@ pub async fn verify_checkpoints(State(st): State<AppState>, p: Principal) -> Api
         .await;
     }
     Ok(Json(
-        json!({ "intact": all_ok, "chain": chain, "checkpoints": results, "unverifiable_unknown_key": unknown_keys }),
+        json!({ "intact": all_ok, "chain": chain, "checkpoints": results, "checkpoint_links_intact": links_ok,
+               "unverifiable_unknown_key": unknown_keys }),
     ))
 }
 

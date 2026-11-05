@@ -28,6 +28,7 @@ const { api } = fakeApi({
   "GET /audit/events?limit=200": [],
   "GET /integrations/import-settings": { version: 0, settings: {} },
   "GET /integrations/ai-extraction": aiExtraction(),
+  "GET /settings/timezone": { version: 0, timezone: "Asia/Tokyo", default: "Asia/Tokyo", today: "2026-11-05" },
   "GET /security/summary": { open_incidents: 0, actions_awaiting_approval: 0, events_24h: {}, active_ip_blocks: [] },
   "GET /security/incidents": [],
   "GET /security/detection-settings": detectionSettings(),
@@ -57,7 +58,7 @@ test.each(screens)("%s has no axe violations", async (_n, ui, ready) => {
   const { container } = renderWithSession(ui(), { api });
   await screen.findAllByText(ready);
   expect(await axeViolations(container)).toEqual([]);
-});
+}, 30_000); // integrations renders ~400 time-zone options; axe needs longer than the 5 s default on a busy host
 
 test("Japanese UI renders without English leftovers in the chrome", async () => {
   render(

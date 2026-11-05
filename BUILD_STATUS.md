@@ -24,8 +24,9 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | Security reviews | `REVIEW_M5_M7.md` (2 M, 8 L, 4 I) and `REVIEW_DEEP_2026-11-05.md` (4 M, 9 L, 7 I): all fixed with regression tests (KZ-I3 accepted) |
 | Bughunt | 6 fixes merged + 7 more fixed on main (`bughunt2_regressions.rs`, worker tests) |
 
-Known: each extraction holds one pooled connection for its advisory lock while it opens transactions, so with a
-very small pool concurrent extractions can starve the pool (tests use 3 connections; production pool is larger).
+Since: extraction uses a short lease row instead of a held connection (8 concurrent extractions pass on a pool of 2);
+tenant timezone (IANA, admin screen, audited) drives expiry "today" and report dates; checkpoints are chained (KZCP2);
+JA/EN manual merged and updated (idle timeout, re-auth, time zone, re-extract).
 
 ## M7 results (2026-11-05, this host)
 | Command | Result |

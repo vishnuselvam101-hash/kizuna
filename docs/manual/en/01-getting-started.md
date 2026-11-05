@@ -11,6 +11,9 @@ Notes:
 - After repeated failures you see "Too many attempts. Wait a minute and try again." Repeated failed sign-ins also
   lock the account; an administrator can unlock it (see [Administration](09-admin.md)).
 - Your session is kept in memory only. Closing the tab signs you out.
+- After **30 minutes without activity** the session ends and you sign in again ("Your session timed out").
+- Privileged actions (user management, settings, reviews, incident containment) also need a sign-in from the
+  **last 15 minutes**. Otherwise they fail with "Please sign in again"; sign out and in, then repeat the action.
 - The sign-in screen does not support security keys yet. If your account has a security key, see
   [Administration › Security keys](09-admin.md#security-keys-api-only).
 - Some actions need a session verified with your authenticator (MFA). If you signed in without a code, those

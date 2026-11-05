@@ -13,7 +13,7 @@ SHA-256 over its content. Keep that value with the file; a changed file will no 
 ## Organisation audit report
 Who: Administrator, Auditor.
 1. Choose the **Scope**: **Open conflicts and affected decisions** or **All conflicts and decisions**.
-2. Optionally set **From** and **To** dates.
+2. Optionally set **From** and **To** dates (both included, read in the organisation's time zone).
 3. Select **Generate organisation report**, then **Download report JSON**.
 
 The summary shows the number of conflicts and decisions, the audit chain state, the **Report SHA-256** and the

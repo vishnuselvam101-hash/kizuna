@@ -64,6 +64,12 @@ Screen: **Admin › Import settings**. These settings control how files are read
 - New settings apply to the next extraction. Use **Re-extract** on documents already processed.
 - **Export settings (JSON)** downloads the form. **Reset to defaults** discards unsaved changes.
 
+## Time zone
+
+**Integrations › Time zone** sets the organisation's IANA time zone (default `Asia/Tokyo`). It decides which
+calendar day is "today" for expiry checks and how report **From**/**To** dates are read. Administrator with an MFA
+session; every change is versioned, audited and raises a security event.
+
 ## AI-assisted extraction
 Panel at the bottom of **Import settings**. Off by default.
 

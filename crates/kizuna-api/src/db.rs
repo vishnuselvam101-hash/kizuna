@@ -241,17 +241,37 @@ pub async fn assert_runtime_role(pool: &PgPool) -> Result<(), RoleCheckError> {
     Ok(())
 }
 
-/// The tenant's UTC offset (minutes; tenant-local calendar for expiry checks and report date ranges).
-pub async fn tenant_offset(tx: &mut Tx, tenant: Uuid) -> Result<time::UtcOffset, sqlx::Error> {
-    let m: i32 = sqlx::query_scalar("SELECT utc_offset_minutes FROM tenants WHERE id = $1")
-        .bind(tenant)
-        .fetch_optional(&mut **tx)
-        .await?
-        .unwrap_or(540);
-    Ok(time::UtcOffset::from_whole_seconds(m * 60).unwrap_or(time::UtcOffset::UTC))
+/// Default tenant timezone (the pilot customer is in Japan).
+pub const DEFAULT_TIMEZONE: &str = "Asia/Tokyo";
+
+/// The tenant's IANA timezone (latest `general` tenant setting; RLS scope of `tx`).
+pub async fn tenant_timezone(tx: &mut Tx) -> Result<String, sqlx::Error> {
+    let tz: Option<String> = sqlx::query_scalar(
+        "SELECT settings->>'timezone' FROM tenant_settings WHERE kind = 'general' ORDER BY version DESC LIMIT 1",
+    )
+    .fetch_optional(&mut **tx)
+    .await?
+    .flatten();
+    Ok(tz.unwrap_or_else(|| DEFAULT_TIMEZONE.into()))
 }
 
-/// "Today" in the tenant's calendar at `now` (from the injected clock).
+/// "Today" in the tenant's calendar at `now` (from the injected clock); DST-aware via PostgreSQL's tz database.
 pub async fn tenant_today(tx: &mut Tx, tenant: Uuid, now: time::OffsetDateTime) -> Result<time::Date, sqlx::Error> {
-    Ok(now.to_offset(tenant_offset(tx, tenant).await?).date())
+    set_tenant(tx, tenant).await?;
+    let tz = tenant_timezone(tx).await?;
+    sqlx::query_scalar("SELECT ($1::timestamptz AT TIME ZONE $2)::date")
+        .bind(now)
+        .bind(tz)
+        .fetch_one(&mut **tx)
+        .await
+}
+
+/// Start of a tenant-local calendar day as an instant.
+pub async fn tenant_midnight(tx: &mut Tx, day: time::Date) -> Result<time::OffsetDateTime, sqlx::Error> {
+    let tz = tenant_timezone(tx).await?;
+    sqlx::query_scalar("SELECT ($1::date::timestamp AT TIME ZONE $2)")
+        .bind(day)
+        .bind(tz)
+        .fetch_one(&mut **tx)
+        .await
 }

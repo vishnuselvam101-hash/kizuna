@@ -282,6 +282,14 @@ pub mod checkpoint {
         m
     }
 
+    /// KZCP2: like KZCP1 plus the SHA-256 of the previous checkpoint's signature (all-zero for the first).
+    pub fn message_v2(tenant: Uuid, seq: i64, head: &[u8], signed_at_us: i64, prev_sig_sha256: &[u8; 32]) -> Vec<u8> {
+        let mut m = b"KZCP2".to_vec();
+        m.extend_from_slice(&message(tenant, seq, head, signed_at_us)[5..]);
+        m.extend_from_slice(prev_sig_sha256);
+        m
+    }
+
     pub fn public_key(seed: &[u8; 32]) -> [u8; 32] {
         SigningKey::from_bytes(seed).verifying_key().to_bytes()
     }

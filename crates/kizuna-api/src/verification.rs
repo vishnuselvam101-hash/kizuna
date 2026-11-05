@@ -222,21 +222,79 @@ async fn extract_common(st: AppState, p: Principal, id: Uuid, re: Option<String>
     if bytes.len() > 40 * 1024 * 1024 {
         return Err(ApiError::BadRequest("document_too_large_for_extraction"));
     }
-    // I1: one extraction per artifact at a time (session-level lock, released when this request ends).
-    let mut lock_conn = st.pool.acquire().await?;
-    let got: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(hashtextextended($1, 19))")
-        .bind(format!("{}:{id}", p.tenant_id))
-        .fetch_one(&mut *lock_conn)
+    // I1: one extraction per artifact at a time. A lease row (not a session lock) so no pooled connection is held
+    // while the worker and the AI step run; it expires by itself if the request is dropped.
+    let holder = Uuid::now_v7();
+    let got: Option<i32> = {
+        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        let r = sqlx::query_scalar(
+            "INSERT INTO extraction_leases (tenant_id, artifact_id, holder, expires_at) \
+             VALUES ($1, $2, $3, now() + interval '120 seconds') \
+             ON CONFLICT (tenant_id, artifact_id) DO UPDATE SET holder = EXCLUDED.holder, expires_at = EXCLUDED.expires_at \
+             WHERE extraction_leases.expires_at < now() RETURNING 1",
+        )
+        .bind(p.tenant_id)
+        .bind(id)
+        .bind(holder)
+        .fetch_optional(&mut *tx)
         .await?;
-    if !got {
+        tx.commit().await?;
+        r
+    };
+    if got.is_none() {
         return Err(ApiError::Conflict("extraction_in_progress"));
     }
+    let mut lease = Lease {
+        pool: st.pool.clone(),
+        tenant: p.tenant_id,
+        artifact: id,
+        holder,
+        released: false,
+    };
     let result = extract_locked(&st, &p, id, bytes, art, re).await;
-    let _ = sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 19))")
-        .bind(format!("{}:{id}", p.tenant_id))
-        .execute(&mut *lock_conn)
-        .await;
+    lease.release().await;
     result
+}
+
+/// Releases the extraction lease when the request finishes (or is dropped).
+struct Lease {
+    pool: sqlx::PgPool,
+    tenant: Uuid,
+    artifact: Uuid,
+    holder: Uuid,
+    released: bool,
+}
+
+async fn release_lease(pool: sqlx::PgPool, t: Uuid, a: Uuid, h: Uuid) {
+    if let Ok(mut tx) = db::tenant_tx(&pool, t).await {
+        let _ = sqlx::query("DELETE FROM extraction_leases WHERE artifact_id = $1 AND holder = $2")
+            .bind(a)
+            .bind(h)
+            .execute(&mut *tx)
+            .await;
+        let _ = tx.commit().await;
+    }
+}
+
+impl Lease {
+    async fn release(&mut self) {
+        self.released = true;
+        release_lease(self.pool.clone(), self.tenant, self.artifact, self.holder).await;
+    }
+}
+
+impl Drop for Lease {
+    fn drop(&mut self) {
+        // Request dropped mid-way (timeout/cancel): release in the background; the expiry is the last resort.
+        if !self.released {
+            tokio::spawn(release_lease(
+                self.pool.clone(),
+                self.tenant,
+                self.artifact,
+                self.holder,
+            ));
+        }
+    }
 }
 
 async fn extract_locked(

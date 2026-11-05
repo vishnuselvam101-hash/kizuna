@@ -219,3 +219,51 @@ pub async fn put_detection(
     crate::incidents::forget_baseline(p.tenant_id);
     Ok(Json(json!({ "version": v, "settings": settings })))
 }
+
+// ---- Tenant timezone ------------------------------------------------------------------------------------------
+
+pub async fn get_timezone(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Value>> {
+    p.require(&st, Permission::UserRead).await?;
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let (v, _, by) = latest(&mut tx, "general").await?;
+    let tz = db::tenant_timezone(&mut tx).await?;
+    let today = db::tenant_today(&mut tx, p.tenant_id, st.clock.now()).await?;
+    tx.commit().await?;
+    Ok(Json(json!({
+        "version": v, "timezone": tz, "default": db::DEFAULT_TIMEZONE, "today": today.to_string(),
+        "updated_by": by.map(|b| b.0), "updated_at": by.map(|b| b.1.unix_timestamp()),
+    })))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutTimezone {
+    pub expected_version: i32,
+    pub timezone: String,
+}
+
+/// Sets the tenant's IANA timezone (validated against PostgreSQL's tz database; admin + MFA; audited; alerts).
+pub async fn put_timezone(
+    State(st): State<AppState>,
+    p: Principal,
+    ApiJson(req): ApiJson<PutTimezone>,
+) -> ApiResult<Json<Value>> {
+    p.require(&st, Permission::UserManage).await?;
+    let tz = req.timezone.trim();
+    let shape_ok =
+        !tz.is_empty() && tz.len() <= 64 && tz.chars().all(|c| c.is_ascii_alphanumeric() || "/_-+".contains(c));
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let known: bool = shape_ok
+        && sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = $1)")
+            .bind(tz)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !known {
+        return Err(ApiError::BadRequest("invalid_timezone"));
+    }
+    let settings = json!({ "timezone": tz });
+    let (v, _) = save(&mut tx, &p, "general", req.expected_version, &settings).await?;
+    tx.commit().await?;
+    alert_change(&st, &p, "timezone", v, false).await;
+    Ok(Json(json!({ "version": v, "timezone": tz })))
+}

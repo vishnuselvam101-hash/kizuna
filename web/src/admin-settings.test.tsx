@@ -176,3 +176,22 @@ test("validateDetection enforces bounds, integers and lock >= brute force", () =
   expect(validateDetection({ ...d.effective, adaptive_max_factor: 99 }, d.bounds)).toEqual([]);
   expect(validateDetection({ ...d.effective, mode: "adaptive", adaptive_max_factor: 99, baseline_days: 1 }, d.bounds)).toEqual(["adaptive_max_factor", "baseline_days"]);
 });
+
+test("time zone: select, save with expected_version, server errors shown", async () => {
+  const { TimezonePanel } = await import("./TimezonePanel");
+  let sent: unknown = null;
+  let state = { version: 0, timezone: "Asia/Tokyo", default: "Asia/Tokyo", today: "2026-11-05" };
+  const { api } = fakeApi({
+    "GET /settings/timezone": () => state,
+    "PUT /settings/timezone": (b: unknown) => ((sent = b), (state = { ...state, version: 1, timezone: "Europe/Berlin" }), { version: 1 }),
+  });
+  renderWithSession(<TimezonePanel />, { api });
+  const sel = (await screen.findByLabelText("Time zone (IANA)")) as HTMLSelectElement;
+  expect(sel.value).toBe("Asia/Tokyo");
+  const save = screen.getByRole("button", { name: "Save time zone" }) as HTMLButtonElement;
+  expect(save.disabled).toBe(true);
+  fireEvent.change(sel, { target: { value: "Europe/Berlin" } });
+  fireEvent.click(save);
+  await screen.findByText("Time zone set to Europe/Berlin.");
+  expect(sent).toEqual({ expected_version: 0, timezone: "Europe/Berlin" });
+});
