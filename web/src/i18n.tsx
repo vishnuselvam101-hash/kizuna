@@ -646,6 +646,8 @@ export const en = {
   "sec.col.policy": "Policy",
   "sec.col.status": "Status",
   "sec.col.detail": "Detail",
+  "evidence.tableLabel": "Evidence table (scrolls sideways)",
+  "err.no_self_review": "Four-eyes rule: you supplied evidence for this item (uploaded or recorded it), so another person must review it.",
 } as const;
 
 export type Key = keyof typeof en;
@@ -1294,6 +1296,8 @@ export const ja: Record<Key, string> = {
   "sec.col.policy": "ポリシー",
   "sec.col.status": "状態",
   "sec.col.detail": "詳細",
+  "evidence.tableLabel": "証拠一覧（横スクロール）",
+  "err.no_self_review": "四つの目の原則：ご自身が証拠を提供（アップロードまたは記録）した項目のため、別の担当者がレビューする必要があります。",
 };
 
 export type Lang = "en" | "ja";

@@ -20,6 +20,8 @@ export function DocumentsView() {
   // Re-extraction (after an import-settings change) is a deliberate two-step action with a required reason.
   const [re, setRe] = useState<{ id: string; name: string } | null>(null);
   const [reason, setReason] = useState("");
+  // Releasing a quarantined file is privileged and two-step; the server refuses the uploader (four-eyes).
+  const [rel, setRel] = useState<{ id: string; name: string } | null>(null);
 
   function reextract(e: React.FormEvent) {
     e.preventDefault();
@@ -116,6 +118,26 @@ export function DocumentsView() {
           </form>
         </Panel>
       )}
+      {rel && (
+        <div className="callout crit confirm" role="alertdialog" aria-labelledby="rel-h">
+          <span id="rel-h">{t("docs.releaseConfirm", { name: rel.name })}</span>
+          <button
+            className="danger"
+            disabled={busy}
+            onClick={() => {
+              const target = rel;
+              setRel(null);
+              act(async () => {
+                const r = await api.request<Artifact>("POST", `/artifacts/${target.id}/release`, {});
+                return t("docs.released", { status: tv("artifact.status", r.status) });
+              });
+            }}
+          >
+            {t("common.confirm")}
+          </button>
+          <button onClick={() => setRel(null)}>{t("common.cancel")}</button>
+        </div>
+      )}
       <Panel title={t("docs.library")} id="lib">
         <Loading on={list.loading} />
         {list.data && list.data.length === 0 && <Empty text={t("docs.none")} />}
@@ -162,6 +184,11 @@ export function DocumentsView() {
                     >
                       {t("docs.verify")}
                     </button>
+                    {a.status === "quarantined" && can("incident_manage") && (
+                      <button disabled={busy} aria-label={t("docs.releaseFor", { name: a.display_name })} onClick={() => setRel({ id: a.id, name: a.display_name })}>
+                        {t("docs.release")}
+                      </button>
+                    )}
                     {a.status === "accepted" && can("claim_write") && (
                       <button
                         disabled={busy}

@@ -24,6 +24,7 @@ def csv_sjis() -> bytes:
         f"PO-J-7001,{PART},B,120,東邦精工株式会社",
         f"PO-J-7002,{PART},A,40,東邦精工株式会社",
         "PO-J-7003,JA-SFT-2002,C,300,北陸金属工業",
+        "PO-J-7004,JA-SFT2002,C,60,北陸金属工業",  # same part, identifier typed without a separator
     ]
     return ("\r\n".join(rows) + "\r\n").encode("cp932")
 

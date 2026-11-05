@@ -29,12 +29,12 @@ test("analyst uploads each Japanese document type; a hostile certificate is quar
   const bad = row(page, "検査成績書_改竄.pdf");
   await expect(bad).toContainText(c.tv("artifact.status", "quarantined"));
   await expect(bad).toContainText("pdf_active_content");
-  await expect(bad.getByRole("button", { name: c.t("docs.extract") })).toHaveCount(0);
+  await expect(bad.getByRole("button", { name: c.t("docs.extract"), exact: true })).toHaveCount(0);
   // The same bytes again: recorded as a new capture of the stored file, not a second document.
   await upload(page, c, ja("検査成績書_JA-BRK-1001.pdf"), "inspection_report");
   await expect(status(page)).toHaveText(c.t("docs.duplicate", { status: c.tv("artifact.status", "accepted") }));
   await expect(row(page, "検査成績書_JA-BRK-1001.pdf")).toHaveCount(1);
-  await page.getByRole("button", { name: c.t("docs.verifyFor", { name: "仕様書_JA-BRK-1001.xlsx" }) }).click();
+  await page.getByRole("button", { name: c.t("docs.verifyFor", { name: "仕様書_JA-BRK-1001.xlsx" }), exact: true }).click();
   await expect(status(page)).toHaveText(c.t("docs.intact"));
   await axe(page, "documents");
   await noHorizontalScroll(page, "documents");

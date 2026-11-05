@@ -68,8 +68,8 @@ export async function totp(c: Ctx, u: User): Promise<string> {
 
 // ---- page helpers
 export async function applyTheme(page: Page, c: Ctx) {
-  const pressed = await page.getByRole("button", { name: c.t("prefs.lightTheme") }).first().getAttribute("aria-pressed");
-  if ((pressed === "true") !== (c.theme === "light")) await page.getByRole("button", { name: c.t("prefs.lightTheme") }).first().click();
+  const pressed = await page.getByRole("button", { name: c.t("prefs.lightTheme"), exact: true }).first().getAttribute("aria-pressed");
+  if ((pressed === "true") !== (c.theme === "light")) await page.getByRole("button", { name: c.t("prefs.lightTheme"), exact: true }).first().click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", c.theme);
 }
 
@@ -85,23 +85,24 @@ export async function login(page: Page, c: Ctx, u: User) {
   await expect(page.locator("html")).toHaveAttribute("lang", c.lang);
   await applyTheme(page, c);
   await fillLogin(page, c, u);
-  await page.getByRole("button", { name: c.t("login.submit") }).click();
+  await page.getByRole("button", { name: c.t("login.submit"), exact: true }).click();
   if (hasTotp(c, u)) {
     await page.getByLabel(c.t("login.totp")).fill(await totp(c, u));
-    await page.getByRole("button", { name: c.t("login.submit") }).click();
+    await page.getByRole("button", { name: c.t("login.submit"), exact: true }).click();
   }
-  await expect(page.getByRole("button", { name: c.t("shell.signOut") })).toBeVisible();
+  await expect(page.getByRole("button", { name: c.t("shell.signOut"), exact: true })).toBeVisible();
 }
 
 export async function logout(page: Page, c: Ctx) {
-  await page.getByRole("button", { name: c.t("shell.signOut") }).click();
+  await page.getByRole("button", { name: c.t("shell.signOut"), exact: true }).click();
   await expect(page.getByRole("heading", { name: c.t("login.title") })).toBeVisible();
 }
 
 /** Navigates like a user: primary section, then the sub-page tab (if the section has more than one). */
 export async function go(page: Page, c: Ctx, section: string, view?: string) {
   await page.getByRole("navigation", { name: c.t("shell.primaryNav") }).getByRole("button", { name: c.t(`section.${section}`), exact: true }).click();
-  if (view) await page.getByRole("navigation", { name: c.t("shell.sectionNav") }).getByRole("button", { name: c.t(`nav.${view}`), exact: true }).click();
+  const sub = page.getByRole("navigation", { name: c.t("shell.sectionNav") });
+  if (view && (await sub.count())) await sub.getByRole("button", { name: c.t(`nav.${view}`), exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(c.t(`nav.${view ?? (section === "overview" ? "dashboard" : section)}`));
 }
 
@@ -111,7 +112,7 @@ export const alert = (page: Page) => page.locator("p[role=alert]").first();
 export async function upload(page: Page, c: Ctx, file: string, kind: string) {
   await page.getByLabel(c.t("docs.kind")).selectOption(kind);
   await page.getByLabel(c.t("docs.file")).setInputFiles(file);
-  await page.getByRole("button", { name: c.t("docs.uploadBtn") }).click();
+  await page.getByRole("button", { name: c.t("docs.uploadBtn"), exact: true }).click();
 }
 
 export function row(scope: Page | Locator, text: string | RegExp): Locator {
@@ -122,6 +123,9 @@ export function row(scope: Page | Locator, text: string | RegExp): Locator {
 const require_ = createRequire(import.meta.url);
 const AXE = readFileSync(require_.resolve("axe-core/axe.min.js"), "utf8");
 export async function axe(page: Page, label: string) {
+  // Evaluate from the top of the page: axe's target-size rule counts controls partly under the sticky top bar
+  // after a scroll as undersized, which depends on scroll position rather than the page.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: AXE });
   const res = await page.evaluate(async () => {
     // @ts-expect-error injected global

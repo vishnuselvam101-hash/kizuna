@@ -2,15 +2,15 @@ import { useMemo, useState } from "react";
 import { claimValue, confidenceShort, sourceLocation } from "./format";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
-import type { EntityCandidate, PredicateEvidence, Subject } from "./types";
+import type { Claim, EntityCandidate, PredicateEvidence, Subject } from "./types";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, short, useLoad } from "./ui";
 
-export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
+export function EvidenceTable({ groups, onSupersede }: { groups: PredicateEvidence[]; onSupersede?: (c: Claim) => void }) {
   const { t, tv } = useI18n();
   if (!groups.length) return <Empty text={t("evidence.none")} />;
   return (
     <>
-    <div className="table-wrap">
+    <div className="table-wrap" tabIndex={0} role="region" aria-label={t("evidence.tableLabel")}>
       <table>
         <thead>
           <tr>
@@ -20,12 +20,13 @@ export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
             <th scope="col">{t("evidence.source")}</th>
             <th scope="col">{t("evidence.method")}</th>
             <th scope="col">{t("evidence.review")}</th>
+            <th scope="col">{t("evidence.id")}</th>
           </tr>
         </thead>
         <tbody>
           {groups.flatMap((g) =>
             g.current.map((c, i) => (
-              <tr key={c.id} className={g.disagreement ? "row-crit" : undefined}>
+              <tr key={c.id} className={g.disagreement ? "row-crit" : undefined} data-predicate={g.predicate}>
                 <td>
                   {i === 0 && <span className="mono">{g.predicate}</span>}
                   {i === 0 && g.disagreement && <span className="badge crit">{t("evidence.disagree")}</span>}
@@ -42,6 +43,16 @@ export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
                 <td>
                   <Badge group="review" value={c.review_status} />
                 </td>
+                <td>
+                  <code className="claim-id" data-testid="claim-id">
+                    {c.id}
+                  </code>
+                  {onSupersede && (
+                    <button className="link" aria-label={t("evidence.supersedeFor", { predicate: c.predicate, value: claimValue(c) })} onClick={() => onSupersede(c)}>
+                      {t("evidence.supersede")}
+                    </button>
+                  )}
+                </td>
               </tr>
             )),
           )}
@@ -56,8 +67,68 @@ export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
 type RecordType = "supplier" | "part";
 const PAGE = 200;
 
-export function RecordsView() {
+function SupersedeForm({ c, onDone }: { c: Claim; onDone: (ok: boolean) => void }) {
   const { api } = useSession();
+  const { t } = useI18n();
+  const [f, setF] = useState({ value: "", unit: c.value_unit ?? "", reason: "" });
+  const [err, setErr] = useState<unknown>(null);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const v = f.value.trim();
+    const numeric = c.value_num !== null && /^-?\d+(\.\d+)?$/.test(v);
+    try {
+      await api.request("POST", `/claims/${c.id}/supersede`, {
+        reason: f.reason.trim(),
+        subject_type: c.subject_type,
+          subject_key: c.subject_key,
+          predicate: c.predicate,
+          value_text: numeric ? null : v,
+          value_num: numeric ? v : null,
+          value_unit: numeric ? f.unit.trim() || null : null,
+          revision: c.revision,
+          artifact_id: c.artifact_id,
+          source_location: c.source_location,
+      });
+      onDone(true);
+    } catch (x) {
+      setErr(x);
+    }
+  }
+  return (
+    <form onSubmit={submit} className="review-box" aria-labelledby="sup-h">
+      <h3 id="sup-h">{t("evidence.supersedeFor", { predicate: c.predicate, value: claimValue(c) })}</h3>
+      <div className="form-grid">
+        <label>
+          {t("evidence.newValue")}
+          <input required value={f.value} onChange={(e) => setF({ ...f, value: e.target.value })} />
+        </label>
+        {c.value_num !== null && (
+          <label>
+            {t("evidence.newUnit")}
+            <input value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} />
+          </label>
+        )}
+        <label>
+          {t("evidence.reason")}
+          <input required maxLength={500} value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} />
+        </label>
+      </div>
+      <Notice error={err} />
+      <div className="actions">
+        <button className="primary">{t("evidence.supersedeBtn")}</button>
+        <button type="button" onClick={() => onDone(false)}>
+          {t("common.cancel")}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export function RecordsView() {
+  const { api, can } = useSession();
+  const [sup, setSup] = useState<Claim | null>(null);
+  const [supMsg, setSupMsg] = useState("");
   const { t } = useI18n();
   const [type, setType] = useState<RecordType>("part");
   const [filter, setFilter] = useState("");
@@ -144,7 +215,9 @@ export function RecordsView() {
         <Panel title={selected ? t("records.evidenceFor", { key: selected }) : t("records.selectPrompt")} id="rec-ev">
           <Loading on={!!selected && evidence.loading} />
           <Notice error={evidence.error} />
-          {evidence.data && <EvidenceTable groups={evidence.data} />}
+          {sup && <SupersedeForm c={sup} onDone={(ok) => (setSup(null), ok && (setSupMsg(t("evidence.supersededMsg")), evidence.reload()))} />}
+          <Notice msg={supMsg} />
+          {evidence.data && <EvidenceTable groups={evidence.data} onSupersede={can("claim_write") ? (c) => (setSupMsg(""), setSup(c)) : undefined} />}
         </Panel>
       </div>
       <DuplicateCandidates key={type} type={type} />
@@ -173,7 +246,7 @@ function DuplicateCandidates({ type }: { type: RecordType }) {
       <Notice error={err ?? cands.error} />
       {cands.data && list.length === 0 && <Empty text={t("records.noDuplicates")} />}
       {list.length > 0 && (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={t("records.duplicates")}>
           <table>
             <thead>
               <tr>
