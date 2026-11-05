@@ -1,0 +1,39 @@
+{
+ "backup": "/tmp/claude-0/-root/a9f19c99-9d9b-4499-bc91-507a745c1ea1/scratchpad/backups2/kizuna-kizuna_e2e_1793888590_4075857-20261105T142337Z.tar.gpg",
+ "utc": "2026-11-05T14:23:51+00:00",
+ "restore_seconds": 1.23,
+ "verify_seconds": 0.09,
+ "exit": 0,
+ "tamper_test": "detected",
+ "verification": {
+  "ok": true,
+  "tenants": [
+   {
+    "artifact_problems": [],
+    "artifacts": 54,
+    "artifacts_intact": 54,
+    "audit_chain": {
+     "events_checked": 122,
+     "head_hash": "ef6c8ceebded7444858feec8c009c146a66785193a6c6f8b69ac8e104ced62bf",
+     "head_seq": 122,
+     "intact": true,
+     "problem": null
+    },
+    "tenant": "e2e-mfg"
+   },
+   {
+    "artifact_problems": [],
+    "artifacts": 0,
+    "artifacts_intact": 0,
+    "audit_chain": {
+     "events_checked": 3,
+     "head_hash": "6adeed2180272cb5c11467e5953c8a98e99f2214c987d41bd99ff72d8ea1d735",
+     "head_seq": 3,
+     "intact": true,
+     "problem": null
+    },
+    "tenant": "e2e-other"
+   }
+  ]
+ }
+}

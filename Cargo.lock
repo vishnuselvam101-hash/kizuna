@@ -1101,6 +1101,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "kizuna-bench"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64",
+ "conflict-engine",
+ "domain-manufacturing",
+ "entity-resolution",
+ "hex",
+ "kizuna-api",
+ "policy-engine",
+ "rust_decimal",
+ "serde_json",
+ "sqlx",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

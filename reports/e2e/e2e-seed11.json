@@ -1,0 +1,341 @@
+{
+ "seed": 11,
+ "documents": 102,
+ "malicious_files": 3,
+ "timings_s": {
+  "ingest_and_extract": 28.834,
+  "verification_run": 0.05
+ },
+ "verification_run": {
+  "rule_version": "mfg-rules@1",
+  "findings_total": 24,
+  "findings_new": 24,
+  "marked_obsolete": 0
+ },
+ "findings_total": 24,
+ "findings_by_kind": {
+  "expired_evidence": 4,
+  "missing_approval": 8,
+  "revision_mismatch": 4,
+  "value_mismatch": 8
+ },
+ "rule_findings": {
+  "precision": 1.0,
+  "recall_faults": 1.0,
+  "tp_findings": 24,
+  "fp_findings": 0,
+  "false_positives": [],
+  "missed_faults": []
+ },
+ "entity_resolution": {
+  "expected_pairs": [
+   [
+    "BRK-1008",
+    "BRK1008"
+   ],
+   [
+    "HSG-9387",
+    "HSG9387"
+   ],
+   [
+    "SPR-5819",
+    "SPR5819"
+   ],
+   [
+    "VLV-4200",
+    "VLV4200"
+   ]
+  ],
+  "candidate_pairs": [
+   [
+    "BRK-1008",
+    "BRK1008"
+   ],
+   [
+    "HSG-9387",
+    "HSG9387"
+   ],
+   [
+    "SPR-5819",
+    "SPR5819"
+   ],
+   [
+    "VLV-4200",
+    "VLV4200"
+   ]
+  ],
+  "unexpected": []
+ },
+ "per_fault_type": {
+  "wrong_revision": {
+   "injected": 4,
+   "detected": 4
+  },
+  "expired_document": {
+   "injected": 4,
+   "detected": 4
+  },
+  "wrong_unit": {
+   "injected": 4,
+   "detected": 4
+  },
+  "missing_approval": {
+   "injected": 4,
+   "detected": 4
+  },
+  "conflicting_spec": {
+   "injected": 4,
+   "detected": 4
+  },
+  "duplicate_component_id": {
+   "injected": 4,
+   "detected": 4
+  },
+  "malicious_upload": {
+   "injected": 3,
+   "detected": 3
+  },
+  "unauthorised_request": {
+   "injected": 10,
+   "detected": 10
+  }
+ },
+ "overall_fault_recall": 1.0,
+ "malicious_uploads": [
+  {
+   "file": "malicious/supplier_cert_js.pdf",
+   "expect": "quarantined",
+   "got": "quarantined",
+   "http": 200
+  },
+  {
+   "file": "malicious/drawing_launch.pdf",
+   "expect": "quarantined",
+   "got": "quarantined",
+   "http": 200
+  },
+  {
+   "file": "malicious/inspection_report.pdf",
+   "expect": "rejected_415",
+   "got": "rejected_415",
+   "http": 415
+  }
+ ],
+ "unauthorised_requests": [
+  {
+   "id": "no_token_list_artifacts",
+   "expect": 401,
+   "got": 401
+  },
+  {
+   "id": "forged_token",
+   "expect": 401,
+   "got": 401
+  },
+  {
+   "id": "viewer_upload",
+   "expect": 403,
+   "got": 403
+  },
+  {
+   "id": "viewer_run_verification",
+   "expect": 403,
+   "got": 403
+  },
+  {
+   "id": "analyst_review_conflict",
+   "expect": 403,
+   "got": 403
+  },
+  {
+   "id": "analyst_create_decision",
+   "expect": 403,
+   "got": 403
+  },
+  {
+   "id": "viewer_audit_verify",
+   "expect": 403,
+   "got": 403
+  },
+  {
+   "id": "reviewer_release_quarantined",
+   "expect": 403,
+   "got": 403
+  },
+  {
+   "id": "other_tenant_read_artifact",
+   "expect": 404,
+   "got": 404
+  },
+  {
+   "id": "other_tenant_read_conflict",
+   "expect": 404,
+   "got": 404
+  }
+ ],
+ "security_event_kinds": [
+  "auth.login_succeeded",
+  "authz.denied",
+  "ingest.artifact_quarantined",
+  "ingest.upload_rejected"
+ ],
+ "checks": [
+  {
+   "check": "login auditor",
+   "ok": true,
+   "detail": {
+    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.o1SogCuFJskWBXP6PX2zUWHKmdxFNQCjZK09OyiOV4E",
+    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.oQN_mF64UZH1_LoAjP3EnXgLmanSf426do6qJwvoBu4",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "mfa_verified": false
+   }
+  },
+  {
+   "check": "login analyst",
+   "ok": true,
+   "detail": {
+    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.qeOX6-P-Rde_Y8VobkqlOuf2D5SKaTVidnUjSgLCVUE",
+    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.wHwsIY5h5tjKngBEdRGwb4mnlMSmiWQidg10SdBBBeQ",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "mfa_verified": false
+   }
+  },
+  {
+   "check": "login reviewer",
+   "ok": true,
+   "detail": {
+    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.p5ud9WOnKxV9GpNCGkz38HB-en_DLAwxlCWQlAzYDwc",
+    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.QM6CdWlM9I7pPcC0Y0iTTNMAdvAMyinPYBQr4Emw7pY",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "mfa_verified": false
+   }
+  },
+  {
+   "check": "login reviewer2",
+   "ok": true,
+   "detail": {
+    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.3nAXqOSgQXUzNH6-7knGD5nNYU1QNIZMQKbB1oRkQEs",
+    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.kRJCEUHU5YW2NyX7HWFM6ZF7AI4x-Aw9oFyKx7SQ96c",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "mfa_verified": false
+   }
+  },
+  {
+   "check": "login viewer",
+   "ok": true,
+   "detail": {
+    "access_token": "kza.01a1ac18886874d4a925c4486d1cce01.t0pGZzcnacBi3shur8I2dnqGByvDu046SIEMbpfDIrU",
+    "refresh_token": "kzr.01a1ac18886874d4a925c4486d1cce01.u-mR1ca0-swTTqHodOt7URtxdJyy0NO37qnK_jb4f8M",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "mfa_verified": false
+   }
+  },
+  {
+   "check": "login outsider",
+   "ok": true,
+   "detail": {
+    "access_token": "kza.01a1ac1888b37061ad1c36e8e0dfe8be.fFcDTLBk9i-tk7I6rQy-VaYUuL9Se-CBAeqG4-HcpK8",
+    "refresh_token": "kzr.01a1ac1888b37061ad1c36e8e0dfe8be.Jp_li99GrT-WA-M3ukfu9ejpNRgznpfs9wyyKbZNFaY",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "mfa_verified": false
+   }
+  },
+  {
+   "check": "all clean documents uploaded and accepted",
+   "ok": true,
+   "detail": "102/102"
+  },
+  {
+   "check": "all clean documents produced claims",
+   "ok": true,
+   "detail": "102/102"
+  },
+  {
+   "check": "verification run",
+   "ok": true,
+   "detail": {
+    "rule_version": "mfg-rules@1",
+    "findings_total": 24,
+    "findings_new": 24,
+    "marked_obsolete": 0
+   }
+  },
+  {
+   "check": "verification run is idempotent",
+   "ok": true,
+   "detail": {
+    "rule_version": "mfg-rules@1",
+    "findings_total": 24,
+    "findings_new": 0,
+    "marked_obsolete": 0
+   }
+  },
+  {
+   "check": "viewer can read conflicts",
+   "ok": true,
+   "detail": 200
+  },
+  {
+   "check": "reviewer records a decision on clean evidence",
+   "ok": true,
+   "detail": {
+    "id": "01a1ac19-0479-77b8-b7f4-498748a5b2ac",
+    "kind": "supplier_part_release",
+    "title": "Release CVR-8629 rev D",
+    "subject_type": "part",
+    "subject_key": "CVR-8629",
+    "outcome": "approved",
+    "rationale": "Synthetic E2E: spec, drawing, PO and inspection agree",
+    "effective_from": null,
+    "decided_by": "01a1ac18-8bda-77aa-9981-eff834a0804b",
+    "decided_at": "2026-11-05T14:24:43.129108Z",
+    "status": "valid",
+    "derivation_sha256": "b5130004144ce5898d7de963b7ab23050c9a81655a2473b968123c677f9fdd46",
+    "supersedes": null
+   }
+  },
+  {
+   "check": "decision trace reconstructs",
+   "ok": true,
+   "detail": 200
+  },
+  {
+   "check": "verification report has a sha256",
+   "ok": true,
+   "detail": 200
+  },
+  {
+   "check": "material correction invalidates the decision",
+   "ok": true,
+   "detail": {
+    "supersede": 200,
+    "status": "potentially_affected"
+   }
+  },
+  {
+   "check": "audit chain intact",
+   "ok": true,
+   "detail": {
+    "intact": true,
+    "events_checked": 222,
+    "problem": null,
+    "head_seq": 222,
+    "head_hash": "5bb039051ecc25d942619d5568aad1e1fb6b13426551b3beb66b73cebb10a4c2"
+   }
+  }
+ ],
+ "provenance": {
+  "command": "scripts/e2e.sh --seed 11 --parts 48",
+  "commit": "8308073",
+  "dirty": true,
+  "utc": "2026-11-05T14:24:43+00:00",
+  "host": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+  "build": "debug"
+ }
+}
