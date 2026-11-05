@@ -11,6 +11,7 @@ members = [
     "crates/security-detection",
     "crates/kizuna-api",
     "crates/kizuna-bench",
+    "crates/tolerance",
 ]
 
 [workspace.package]
