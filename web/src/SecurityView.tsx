@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DataTable } from "./DataTable";
+import { DetectionSettingsPanel } from "./DetectionSettingsPanel";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
 import { Badge, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
@@ -160,6 +161,7 @@ export function SecurityView() {
           <p className="muted">{t("sec.defensive_only")}</p>
         </Panel>
       )}
+      {can("user_manage") && <DetectionSettingsPanel />}
     </>
   );
 }

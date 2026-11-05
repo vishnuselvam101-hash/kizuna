@@ -1,4 +1,6 @@
 import type { Artifact, Claim, Conflict, ConflictDetail, DashboardSummary, Decision, OrgReport, Subject, Trace, User } from "./types";
+import type { AiExtraction } from "./AiExtractionPanel";
+import type { DetectionSettings } from "./DetectionSettingsPanel";
 
 export const claim = (id: string, v: string, over: Partial<Claim> = {}): Claim => ({
   id,
@@ -105,3 +107,50 @@ export const orgReport: OrgReport = {
   report_sha256: "9f".repeat(32),
   signature: { algorithm: "ed25519", public_key: "12".repeat(32), signature: "34".repeat(64) },
 };
+
+export const AI_NOTICE_TEXT =
+  "Document text is sent to Example AI Inc. (US) for extraction only.\nIt is not retained or used for training. 文書テキストは抽出のみに使用されます。";
+
+export const aiExtraction = (over: Partial<AiExtraction> = {}): AiExtraction => ({
+  version: 3,
+  settings: { enabled: false, notice_version: null },
+  active: false,
+  notice: { version: "2026-11-01", text: AI_NOTICE_TEXT },
+  provider: { configured: true, model: "extract-small-1", host: "api.example-ai.test", daily_calls: 500, daily_chars: 2000000, calls_per_min: 20 },
+  usage_today: { calls: 12, prompt_chars: 48000 },
+  ...over,
+});
+
+const detThresholds = {
+  brute_force: 5,
+  brute_force_lock: 10,
+  spray_failures: 20,
+  spray_users: 5,
+  authz_denials: 30,
+  privileged_ops: 50,
+  upload_abuse: 100,
+  extraction_failures: 25,
+  exports: 20,
+};
+
+export const detectionSettings = (over: Partial<DetectionSettings> = {}): DetectionSettings => ({
+  version: 2,
+  settings: {},
+  effective: { mode: "static", thresholds: { ...detThresholds }, adaptive_max_factor: 3, baseline_days: 14 },
+  defaults: { mode: "static", thresholds: { ...detThresholds }, adaptive_max_factor: 3, baseline_days: 14 },
+  bounds: {
+    brute_force: [3, 50],
+    brute_force_lock: [3, 100],
+    spray_failures: [5, 500],
+    spray_users: [2, 100],
+    authz_denials: [5, 1000],
+    privileged_ops: [5, 1000],
+    upload_abuse: [10, 5000],
+    extraction_failures: [5, 1000],
+    exports: [5, 1000],
+    adaptive_max_factor: [1, 5],
+    baseline_days: [3, 60],
+  },
+  active_thresholds: { ...detThresholds, upload_abuse: 180 },
+  ...over,
+});

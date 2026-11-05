@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AiExtractionPanel } from "./AiExtractionPanel";
 import { DOC_KINDS } from "./DocumentsView";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
@@ -190,6 +191,7 @@ export function IntegrationsView() {
           </button>
         </div>
       </form>
+      <AiExtractionPanel />
     </div>
   );
 }
