@@ -13,10 +13,11 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::timeout::TimeoutLayer;
 
+use crate::clock::{Clock, SystemClock};
 use crate::config::Config;
 use crate::ratelimit::RateLimiter;
 use crate::storage::{FsStore, ObjectStore};
-use crate::{artifacts, audit, auth, claims, decisions, security_events, users, verification};
+use crate::{artifacts, audit, auth, claims, decisions, security_events, users, verification, webauthn};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -29,12 +30,20 @@ pub struct AppState {
     pub store: Arc<dyn ObjectStore>,
     /// Caps concurrent sandboxed extraction workers.
     pub worker_permits: Arc<tokio::sync::Semaphore>,
+    /// Source of "now" for every expiry decision; replaceable in tests.
+    pub clock: Arc<dyn Clock>,
+    pub webauthn: Arc<webauthn_rs::Webauthn>,
 }
 
 impl AppState {
     pub fn new(pool: PgPool, cfg: Config) -> Self {
         let store: Arc<dyn ObjectStore> = Arc::new(FsStore::new(cfg.storage_dir.clone()));
+        // Validated in Config::from_lookup.
+        let webauthn = crate::webauthn::build(&cfg.webauthn_rp_id, &cfg.webauthn_origin)
+            .expect("webauthn relying party validated by Config");
         Self {
+            clock: Arc::new(SystemClock),
+            webauthn: Arc::new(webauthn),
             store,
             pool,
             cfg: Arc::new(cfg),
@@ -69,6 +78,11 @@ pub fn router(st: AppState) -> Router {
         .route("/auth/password", post(auth::change_password))
         .route("/auth/mfa/totp/setup", post(auth::totp_setup))
         .route("/auth/mfa/totp/confirm", post(auth::totp_confirm))
+        .route("/auth/mfa/webauthn/register/start", post(webauthn::register_start))
+        .route("/auth/mfa/webauthn/register/finish", post(webauthn::register_finish))
+        .route("/auth/webauthn/login/start", post(webauthn::login_start))
+        .route("/auth/webauthn/login/finish", post(webauthn::login_finish))
+        .route("/auth/webauthn/recover", post(webauthn::recover))
         .route("/users", get(users::list).post(users::create))
         .route("/users/{id}", patch(users::patch))
         .route("/users/{id}/revoke-sessions", post(users::revoke_sessions))

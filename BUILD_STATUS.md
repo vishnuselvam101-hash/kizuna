@@ -62,10 +62,19 @@ static PDF markers can be obfuscated (sandbox is the second line); scanned PDFs 
 Upload memory bound = upload limit × concurrent uploads (per-user rate limit 30/min); objects written before DB commit
 can be orphaned on rollback (content-addressed, harmless, no GC yet); static scan is not antivirus (ADR 0011).
 
+## Auth hardening lane (branch `lane-auth`, 2026-11-05)
+WebAuthn (webauthn-rs 0.6.2) with recovery codes / peer reset / operator CLI, offline common-password screening,
+versioned data keys + `kizuna-admin rotate-data-key`, injected clock; migration `0006_auth_hardening.sql`.
+`scripts/check.sh`: fmt, clippy -D warnings, **119 Rust tests** (new: `auth_hardening` 9 integration, 8 unit),
+cargo audit 0 (425 crates), Python/web pass; gitleaks dir scan of changed paths 0 (`gitleaks git` scans all refs and
+reports findings from other lanes' commits). Independent review: 2 findings fixed (enrolment/login downgrade race guard,
+unbounded challenge rows) with tests; the race guard in `complete_login` is SQL-level and not reproducible over HTTP.
+CLI smoke: `rotate-data-key` exits 2 while any secret is unreadable/stale, `unknown tenant` on a bad slug.
+
 ## Known defects / gaps
-- WebAuthn designed (ADR 0006) but not implemented.
-- No breached-password screening; static data key without rotation; in-process rate limiter.
-- Session expiry is not tested with an injected clock.
+- WebAuthn verified only with a software authenticator (no real-hardware or browser test yet); attestation not enforced.
+- Password screening uses a bundled 46k common-password list, not a full breach corpus. In-process rate limiter.
+- Data keys come from env (no KMS/HSM); rotation is an operator-run CLI job.
 - Python extraction is still a scaffold (M3).
 - No orphan-object garbage collection; no bulk integrity sweep job yet (M5).
 - CI workflow written but never executed (no remote, by instruction).

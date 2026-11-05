@@ -33,18 +33,50 @@ pub fn random_bytes<const N: usize>() -> [u8; N] {
 pub enum PasswordPolicyError {
     TooShort,
     TooLong,
+    /// On the bundled common/breached password list.
+    Common,
+    /// Contains the account's email local part or the product name.
+    ContainsContext,
 }
 
-/// ASVS 5.0 V6: length-based policy, no composition rules.
-pub fn check_password_policy(pw: &str) -> Result<(), PasswordPolicyError> {
+impl PasswordPolicyError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            PasswordPolicyError::TooShort | PasswordPolicyError::TooLong => "password_policy",
+            PasswordPolicyError::Common => "password_common",
+            PasswordPolicyError::ContainsContext => "password_contains_context",
+        }
+    }
+}
+
+/// Lower-cased passwords of 12+ characters from the SecLists xato-net 1M list (MIT; see
+/// `data/common-passwords.LICENSE` and docs/research/dependencies.md). Bundled: screening makes no network calls.
+static COMMON_PASSWORDS: &str = include_str!("../data/common-passwords.txt");
+
+fn is_common_password(pw: &str) -> bool {
+    static SET: OnceLock<std::collections::HashSet<&'static str>> = OnceLock::new();
+    SET.get_or_init(|| COMMON_PASSWORDS.lines().collect())
+        .contains(pw.trim().to_lowercase().as_str())
+}
+
+/// ASVS 5.0 V6: length-based policy, no composition rules, screened against common/breached passwords and
+/// context words (`email` may be empty when unknown).
+pub fn check_password_policy(pw: &str, email: &str) -> Result<(), PasswordPolicyError> {
     let n = pw.chars().count();
     if n < PASSWORD_MIN_CHARS {
-        Err(PasswordPolicyError::TooShort)
+        return Err(PasswordPolicyError::TooShort);
     } else if n > PASSWORD_MAX_CHARS {
-        Err(PasswordPolicyError::TooLong)
-    } else {
-        Ok(())
+        return Err(PasswordPolicyError::TooLong);
     }
+    if is_common_password(pw) {
+        return Err(PasswordPolicyError::Common);
+    }
+    let lower = pw.to_lowercase();
+    let local = email.split('@').next().unwrap_or_default().to_lowercase();
+    if lower.contains("kizuna") || (local.chars().count() >= 4 && lower.contains(&local)) {
+        return Err(PasswordPolicyError::ContainsContext);
+    }
+    Ok(())
 }
 
 pub fn hash_password(pw: &str) -> Result<String, String> {
@@ -272,12 +304,37 @@ mod tests {
         assert!(verify_password("correct horse battery", &h));
         assert!(!verify_password("wrong horse battery", &h));
         assert!(!verify_password("x", "not-a-phc"));
-        assert_eq!(check_password_policy("short"), Err(PasswordPolicyError::TooShort));
+        assert_eq!(check_password_policy("short", ""), Err(PasswordPolicyError::TooShort));
         assert_eq!(
-            check_password_policy(&"x".repeat(129)),
+            check_password_policy(&"x".repeat(129), ""),
             Err(PasswordPolicyError::TooLong)
         );
-        assert!(check_password_policy("twelve chars").is_ok());
+        assert!(check_password_policy("twelve chars", "").is_ok());
+    }
+
+    #[test]
+    fn common_and_context_passwords_rejected() {
+        for pw in ["0987654321qwerty", "123123QWERTY", " 123321qwerty "] {
+            assert_eq!(check_password_policy(pw, ""), Err(PasswordPolicyError::Common), "{pw}");
+        }
+        assert!(
+            COMMON_PASSWORDS
+                .lines()
+                .all(|l| l.chars().count() >= PASSWORD_MIN_CHARS && l == l.to_lowercase())
+        );
+        assert_eq!(
+            check_password_policy("my Kizuna login 2026", ""),
+            Err(PasswordPolicyError::ContainsContext)
+        );
+        assert_eq!(
+            check_password_policy("hello-Alice.Smith-99", "alice.smith@example.test"),
+            Err(PasswordPolicyError::ContainsContext)
+        );
+        assert!(
+            check_password_policy("bob plus long phrase", "bob@example.test").is_ok(),
+            "short local part ignored"
+        );
+        assert_eq!(PasswordPolicyError::Common.code(), "password_common");
     }
 
     #[test]
