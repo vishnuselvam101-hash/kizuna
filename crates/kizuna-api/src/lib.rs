@@ -23,6 +23,7 @@ pub mod keyring;
 pub mod matching;
 pub mod ops;
 pub mod ratelimit;
+pub mod review_batches;
 pub mod seccomp;
 pub mod security_events;
 pub mod serve;
