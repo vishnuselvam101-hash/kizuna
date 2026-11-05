@@ -134,7 +134,7 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
 /** Shared list → trace workspace used by Decisions and affected-decision analysis. */
 export function DecisionWorkspace({ status, title, lead, children, reloadToken = 0 }: { status?: string; title: string; lead: string; children?: React.ReactNode; reloadToken?: number }) {
   const { api, can } = useSession();
-  const { t, tv, fmtDate } = useI18n();
+  const { t, fmtDate } = useI18n();
   const list = useLoad(() => api.request<Decision[]>("GET", status ? `/decisions?status=${status}` : "/decisions"), [status, reloadToken]);
   const [trace, setTrace] = useState<Trace | null>(null);
   const [err, setErr] = useState<unknown>(null);
@@ -180,6 +180,7 @@ export function DecisionWorkspace({ status, title, lead, children, reloadToken =
                   key: "title",
                   label: t("decisions.title"),
                   value: (d) => d.title,
+                  className: "col-title",
                   render: (d) => (
                     <button className="link" onClick={(e) => (e.stopPropagation(), open(d.id))}>
                       {d.title}
@@ -187,7 +188,6 @@ export function DecisionWorkspace({ status, title, lead, children, reloadToken =
                   ),
                 },
                 { key: "subject", label: t("compare.part"), value: (d) => d.subject_key, render: (d) => <span className="mono">{d.subject_key}</span> },
-                { key: "outcome", label: t("decisions.outcome"), value: (d) => d.outcome, render: (d) => tv("decision.outcome", d.outcome) },
                 { key: "status", label: t("docs.status"), value: (d) => d.status, render: (d) => <Badge group="decision.status" value={d.status} /> },
                 { key: "at", label: t("decisions.decidedAt"), value: (d) => d.decided_at, render: (d) => fmtDate(d.decided_at), className: "num" },
               ]}

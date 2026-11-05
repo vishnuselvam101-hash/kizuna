@@ -34,18 +34,22 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
   return { data, error, loading, reload };
 }
 
-export function Badge({ group, value, tone }: { group: string; value: string; tone?: "ok" | "warn" | "crit" | "info" }) {
+export type Tone = "ok" | "warn" | "crit" | "info" | "neutral";
+export function Badge({ group, value, tone }: { group: string; value: string; tone?: Tone }) {
   const { tv } = useI18n();
   return <span className={`badge ${tone ?? toneFor(value)}`}>{tv(group, value)}</span>;
 }
 
-const CRIT = ["quarantined", "rejected", "open", "revoked", "potentially_affected", "resolved_rejected", "disabled", "failed"];
-const WARN = ["needs_evidence", "pending_scan", "unreviewed", "possible_match", "requires_human_review", "changed", "removed", "added"];
-const OK = ["accepted", "valid", "active", "resolved_approved", "approved", "succeeded"];
-export function toneFor(v: string): "ok" | "warn" | "crit" | "info" {
+// 朱 crit = conflict/failure, 金 ok = verified, dashed amber warn = needs a person, neutral = pending/plain state.
+const CRIT = ["quarantined", "rejected", "open", "revoked", "potentially_affected", "resolved_rejected", "disabled", "failed", "removed"];
+const WARN = ["needs_evidence", "possible_match", "requires_human_review", "changed"];
+const OK = ["accepted", "valid", "resolved_approved", "approved", "succeeded"];
+const NEUTRAL = ["unreviewed", "pending_scan", "active", "superseded", "obsolete", "unchanged"];
+export function toneFor(v: string): Tone {
   if (CRIT.includes(v)) return "crit";
   if (WARN.includes(v)) return "warn";
   if (OK.includes(v)) return "ok";
+  if (NEUTRAL.includes(v)) return "neutral";
   return "info";
 }
 

@@ -3,6 +3,7 @@ import { DataTable } from "./DataTable";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
 import type { Artifact } from "./types";
+import { fileSize } from "./format";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
 
 export const DOC_KINDS = ["spec_document", "drawing", "purchase_order", "inspection_report", "spreadsheet", "other"] as const;
@@ -95,7 +96,7 @@ export function DocumentsView() {
                 ),
               },
               { key: "kind", label: t("docs.kind"), value: (a) => tv("artifact.kind", a.kind), render: (a) => tv("artifact.kind", a.kind) },
-              { key: "size", label: t("docs.size"), value: (a) => a.size_bytes, render: (a) => fmtNum(a.size_bytes), className: "num" },
+              { key: "size", label: t("docs.size"), value: (a) => a.size_bytes, render: (a) => <span title={`${fmtNum(a.size_bytes)} B`}>{fileSize(a.size_bytes)}</span>, className: "num" },
               { key: "status", label: t("docs.status"), value: (a) => a.status, render: (a) => <Badge group="artifact.status" value={a.status} /> },
               { key: "sha", label: t("docs.sha"), render: (a) => <code title={a.sha256}>{a.sha256.slice(0, 12)}…</code> },
               { key: "at", label: t("docs.captured"), value: (a) => a.created_at, render: (a) => fmtDate(a.created_at), className: "num" },

@@ -26,7 +26,7 @@ const claims = [];
 const preds = ["mfg.material", "mfg.finish", "mfg.thickness", "mfg.revision", "mfg.tolerance"];
 ["BRK-100", "BRK-101", "BRK100", "HSG-220", "SUP-ACME"].forEach((key, k) =>
   preds.forEach((p, j) =>
-    claims.push({ id: `c${k}${j}`, subject_type: key.startsWith("SUP") ? "supplier" : "part", subject_key: key, predicate: p, value_text: j === 0 ? (k ? "S275" : "S355") : `v${j}`, value_num: null, value_unit: null, revision: k % 2 ? "D" : "C", artifact_id: `a${(j % 4) + 1}`, source_location: { page: j + 1 }, extraction_method: "manual", confidence_bps: 9000 - j * 300, review_status: j === 2 ? "accepted" : "unreviewed", recorded_at: now, superseded_at: null }),
+    claims.push({ id: `c${k}${j}`, subject_type: key.startsWith("SUP") ? "supplier" : "part", subject_key: key, predicate: p, value_text: j === 0 ? (k ? "S275" : "S355") : `v${j}`, value_num: null, value_unit: null, revision: k % 2 ? "D" : "C", artifact_id: `a${(j % 4) + 1}`, artifact_display_name: artifacts[j % 4].display_name, source_location: { page: j + 1 }, extraction_method: "manual", confidence_bps: 9000 - j * 300, review_status: j === 2 ? "accepted" : "unreviewed", recorded_at: now, superseded_at: null }),
   ),
 );
 const conflicts = [
@@ -72,6 +72,15 @@ function respond(path) {
   if (base === "/auth/login") return { access_token: "t", refresh_token: "r", mfa_verified: true };
   if (base === "/auth/me") return { user_id: "u1", tenant_id: "t", email: users[0].email, display_name: "Aiko Admin", role: "tenant_admin", mfa_enabled: true, session_mfa_verified: true };
   if (base === "/artifacts") return artifacts;
+  if (base === "/dashboard/summary") return { artifacts: { accepted: 4, quarantined: 1 }, claims: { unreviewed: 20, accepted: 5 }, conflicts: { open: 3, resolved: 2 }, conflict_kinds_open: { value_mismatch: 1, revision_mismatch: 1, missing_approval: 1 }, decisions: { valid: 1, potentially_affected: 1 }, subjects: { part: 4, supplier: 1 } };
+  if (base === "/subjects") {
+    const type = new URLSearchParams(q).get("type");
+    return [...new Set(claims.filter((c) => c.subject_type === type).map((c) => c.subject_key))].map((k) => ({ subject_type: type, subject_key: k, claims: 5, predicates: 5 }));
+  }
+  if (base === "/integrations/import-settings") return { default_kind: "spec_document", max_upload_mb: 25, csv: { delimiter: ",", encoding: "shift_jis", header_row: 1, max_records: 20000 }, xlsx: { sheet: "", header_row: 1, max_sheets: 50, max_records: 20000 }, pdf: { ocr: true, ocr_language: "jpn+eng", max_pages: 500 }, mapping: { subject_key: "part_number", predicate: "attribute", value: "value", unit: "unit", revision: "revision" } };
+  if (base === "/security/summary") return { open_incidents: 1, actions_awaiting_approval: 1, events_24h: { "auth.login_failed": { severity: "medium", count: 14 }, "upload.rejected": { severity: "low", count: 2 } }, active_ip_blocks: [{ ip: "203.0.113.7", until: 1793000000 }] };
+  if (base === "/security/incidents") return [{ id: "i1", rule: "brute_force_account", severity: "high", subject: "203.0.113.7", summary: "14 failed sign-ins for aiko.admin@example.test in 10 minutes.", status: "open", last_seen: now }];
+  if (base.startsWith("/security/incidents/")) return { incident: { id: "i1", rule: "brute_force_account", severity: "high", subject: "203.0.113.7", summary: "14 failed sign-ins for aiko.admin@example.test in 10 minutes.", status: "open", last_seen: now }, actions: [{ id: "x1", kind: "block_ip", target: "203.0.113.7", policy: "approval_required", status: "proposed", detail: null }], events: [] };
   if (base === "/claims") return claims.filter((c) => !q.includes("subject_type=") || q.includes(`subject_type=${c.subject_type}`));
   if (base.startsWith("/evidence/")) {
     const key = decodeURIComponent(base.split("/")[3]);
@@ -113,12 +122,13 @@ const VIEWS = [
   ["reports", "Reports", null],
   ["users", "Admin", "Users & access"],
   ["integrations", "Admin", "Import settings"],
+  ["security", "Admin", "Security monitoring"],
 ];
 
 async function prepare(page, name) {
   if (name === "records") await page.getByRole("button", { name: /BRK-100/ }).first().click();
   if (name === "revisions") {
-    await page.getByLabel("Component").fill("BRK-100");
+    await page.getByLabel("Identifier").fill("BRK-100");
     await page.getByLabel("From revision").fill("C");
     await page.getByLabel("To revision").fill("D");
     await page.getByRole("button", { name: "Compare", exact: true }).click();
@@ -128,13 +138,15 @@ async function prepare(page, name) {
   await page.waitForTimeout(400);
 }
 
-const results = { axe: {}, perf: {}, fps: {} };
+const results = { axe: {}, errors: [], perf: {}, fps: {} };
 const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
 
 for (const theme of ["dark", "light"]) {
   for (const width of [1440, 390]) {
     const page = await browser.newPage({ viewport: { width, height: width > 500 ? 900 : 844 }, deviceScaleFactor: 1 });
     await mockApi(page);
+    page.on("pageerror", (e) => results.errors.push(`${theme}-${width}: ${e.message}`));
+    page.on("console", (m) => m.type() === "error" && results.errors.push(`${theme}-${width}: ${m.text().slice(0, 200)}`));
     await page.goto(BASE);
     if (theme === "light") await page.getByRole("button", { name: "Light theme" }).click();
     await page.waitForTimeout(600);

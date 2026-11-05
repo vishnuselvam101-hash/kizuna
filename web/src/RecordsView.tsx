@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { claimValue, confidence, sourceLocation } from "./format";
+import { claimValue, confidenceShort, sourceLocation } from "./format";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
 import type { EntityCandidate, PredicateEvidence, Subject } from "./types";
@@ -9,6 +9,7 @@ export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
   const { t, tv } = useI18n();
   if (!groups.length) return <Empty text={t("evidence.none")} />;
   return (
+    <>
     <div className="table-wrap">
       <table>
         <thead>
@@ -36,7 +37,7 @@ export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
                   {c.artifact_id ? (c.artifact_display_name ?? t("evidence.artifactRef", { id: short(c.artifact_id) })) : t("evidence.manual")} · {sourceLocation(t, c.source_location)}
                 </td>
                 <td>
-                  {tv("method", c.extraction_method)} · {confidence(t, c.confidence_bps)}
+                  {tv("method", c.extraction_method)} · <span className="num">{confidenceShort(t, c.confidence_bps)}</span>
                 </td>
                 <td>
                   <Badge group="review" value={c.review_status} />
@@ -47,6 +48,8 @@ export function EvidenceTable({ groups }: { groups: PredicateEvidence[] }) {
         </tbody>
       </table>
     </div>
+    <p className="hint table-note">{t("evidence.confidenceNote")}</p>
+    </>
   );
 }
 
