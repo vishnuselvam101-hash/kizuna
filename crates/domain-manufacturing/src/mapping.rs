@@ -494,3 +494,31 @@ mod tests {
         assert_eq!(parse_quantity("1,5", None), None);
     }
 }
+
+#[cfg(test)]
+mod fuzz {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Arbitrary document text never panics the mapper, and everything it emits passes claim validation.
+        #[test]
+        fn fuzz_map_records_never_panics_and_emits_valid_claims(
+            recs in proptest::collection::vec(("\\PC{0,30}", "\\PC{0,40}", "[a-z0-9]{0,3}"), 0..40),
+            kind in prop_oneof!["spec_document", "drawing", "purchase_order", "inspection_report", "other"],
+        ) {
+            let records: Vec<Record> = recs.into_iter().map(|(l, v, g)| Record { label: l, value: v, location: json!({"line": 1}), group: g }).collect();
+            let m = map_records(&kind, &records, 8000);
+            for c in &m.claims {
+                prop_assert!(evidence_core::claim::validate(c).is_ok(), "{c:?}");
+            }
+        }
+
+        #[test]
+        fn fuzz_quantity_and_tolerance_parsers(s in "\\PC{0,30}", u in proptest::option::of("[a-z]{0,4}")) {
+            let _ = parse_quantity(&s, u.as_deref());
+            let _ = parse_tolerance(&s, u.as_deref());
+            let _ = parse_date(&s);
+        }
+    }
+}

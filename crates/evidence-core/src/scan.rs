@@ -61,7 +61,7 @@ const PDF_ACTIVE: [&[u8]; 10] = [
 
 /// Decodes PDF name escapes (`/J#61vaScript` → `/JavaScript`) so markers cannot be hidden (review finding M5).
 fn decode_pdf_names(b: &[u8]) -> Vec<u8> {
-    let hex = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
+    let hex = |c: u8| (c as char).to_digit(16).and_then(|d| u8::try_from(d).ok());
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {

@@ -199,7 +199,7 @@ impl ChainVerifier {
         if self.broken.is_some() {
             return false;
         }
-        let expected = self.checked as i64 + 1;
+        let expected = i64::try_from(self.checked).unwrap_or(i64::MAX).saturating_add(1);
         let b = if se.event.tenant_id != self.tenant_id {
             Some(Break::WrongTenant { seq: se.event.seq })
         } else if se.event.seq != expected {
@@ -262,7 +262,7 @@ pub mod checkpoint {
         let mut m = b"KZCP1".to_vec();
         m.extend_from_slice(tenant.as_bytes());
         m.extend_from_slice(&seq.to_be_bytes());
-        m.extend_from_slice(&(head.len() as u32).to_be_bytes());
+        m.extend_from_slice(&u32::try_from(head.len()).unwrap_or(u32::MAX).to_be_bytes());
         m.extend_from_slice(head);
         m.extend_from_slice(&signed_at_us.to_be_bytes());
         m

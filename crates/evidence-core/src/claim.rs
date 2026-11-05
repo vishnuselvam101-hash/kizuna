@@ -247,3 +247,18 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod fuzz {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn fuzz_validate_never_panics(st in "\\PC{0,50}", sk in "\\PC{0,50}", p in "\\PC{0,50}", n in proptest::option::of("\\PC{0,30}"),
+                                      t in proptest::option::of("\\PC{0,30}"), conf in proptest::option::of(any::<i32>())) {
+            let c = ClaimInput { subject_type: st, subject_key: sk, predicate: p, value_num: n, value_text: t, confidence_bps: conf, ..Default::default() };
+            let _ = validate(&c);
+        }
+    }
+}
