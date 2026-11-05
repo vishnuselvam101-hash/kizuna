@@ -1804,6 +1804,7 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "proptest",
+ "quality-stats",
  "rust_decimal",
  "serde",
  "serde_json",

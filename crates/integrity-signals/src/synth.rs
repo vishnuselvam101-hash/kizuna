@@ -132,6 +132,12 @@ pub fn certificates(seed: u64, inject: &[Option<SignalKind>], n: usize) -> CertC
         let start = 20_000 + rng.below(300) as i64;
         let mut lot_no = 1000 + rng.below(1000) as u64;
         let mut list: Vec<Certificate> = Vec::new();
+        // The digit test needs ≥ 50 values (quality-stats); give that supplier a longer history.
+        let n = if *inj == Some(SignalKind::DigitPreference) {
+            n.max(80)
+        } else {
+            n
+        };
         for i in 0..n {
             lot_no += 1 + rng.below(3) as u64;
             let issued = start + (i as i64) * 7 + rng.below(3) as i64;
@@ -296,6 +302,19 @@ pub fn certificates(seed: u64, inject: &[Option<SignalKind>], n: usize) -> CertC
                     d.date = iso(ship + 10 + rng.below(30) as i64);
                 }
                 truth.push(Truth::Cert(SignalKind::DateOrder, c.id.clone()));
+            }
+            Some(SignalKind::DigitPreference) => {
+                // Values rounded by hand to steps of 0.005 mm (last digit 0 or 5) on one dimension.
+                let k = rng.below(dims.len());
+                for c in &mut list {
+                    let v = c.readings[k].value * Decimal::from(200);
+                    c.readings[k].value = (v.round() / Decimal::from(200)).normalize();
+                }
+                truth.push(Truth::Series(
+                    SignalKind::DigitPreference,
+                    supplier.clone(),
+                    dims[k].name.clone(),
+                ));
             }
             Some(SignalKind::LotSequence) => {
                 let i = 1 + rng.below((n / 4).max(1));

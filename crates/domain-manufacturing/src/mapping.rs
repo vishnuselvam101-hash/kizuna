@@ -52,7 +52,6 @@ pub(crate) enum Field {
     CertificateDate,
     ShipDate,
     InspectionDate,
-    Note,
     Chemistry(&'static str),
 }
 
@@ -177,7 +176,6 @@ pub(crate) fn field(label: &str) -> Option<Field> {
         "inspection date" | "test date" | "date of inspection" | "date of test" | "検査日" | "試験日" => {
             Field::InspectionDate
         }
-        "note" | "notes" | "remarks" | "注記" | "備考" => Field::Note,
         "tolerance" | "tol" => Field::Tolerance(None),
         _ => {
             if let Some(d) = dim(label) {
@@ -463,8 +461,6 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                     Some(d) => emit("qa.inspection_date".into(), Some(d), None),
                     None => out.warnings.push("unparsed inspection date".into()),
                 },
-                (Field::Note, true, _) => emit("drawing.note".into(), Some(v.chars().take(2000).collect()), None),
-                (Field::Note, false, _) => {}
                 (Field::Chemistry(_), _, k) if k != "inspection_report" => {}
                 (Field::Chemistry(el), ..) => match parse_quantity(v, Some("%")) {
                     Some((n, _)) => emit(format!("qa.chem.{el}"), None, Some((n, Some("%".into())))),

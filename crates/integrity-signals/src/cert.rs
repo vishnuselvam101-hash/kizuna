@@ -72,10 +72,11 @@ pub enum SignalKind {
     ChemistrySum,
     DateOrder,
     LotSequence,
+    DigitPreference,
 }
 
 impl SignalKind {
-    pub const ALL: [SignalKind; 8] = [
+    pub const ALL: [SignalKind; 9] = [
         SignalKind::IdenticalValues,
         SignalKind::TableCopy,
         SignalKind::NarrowBand,
@@ -84,6 +85,7 @@ impl SignalKind {
         SignalKind::ChemistrySum,
         SignalKind::DateOrder,
         SignalKind::LotSequence,
+        SignalKind::DigitPreference,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -96,6 +98,7 @@ impl SignalKind {
             SignalKind::ChemistrySum => "chemistry_sum",
             SignalKind::DateOrder => "date_order",
             SignalKind::LotSequence => "lot_sequence",
+            SignalKind::DigitPreference => "digit_preference",
         }
     }
 }
@@ -213,6 +216,7 @@ pub fn analyze(certs: &[Certificate], limits: &Limits, s: &Settings) -> Vec<Sign
         lot_sequence(&supplier, &part, &group, s, &mut out);
     }
     precision(certs, s, &mut out);
+    digits(certs, s, &mut out);
     for c in certs {
         chemistry(c, s, &mut out);
         dates(c, s, &mut out);
@@ -539,6 +543,81 @@ fn precision(certs: &[Certificate], s: &Settings, out: &mut Vec<Signal>) {
             evidence: finer.iter().take(MAX_EVIDENCE).map(|(c, r)| reading_ref(c, r)).collect(),
             certificates: certs_set.into_iter().map(str::to_string).collect(),
             fingerprint: fingerprint(&["excess_precision", &supplier, &ch, &unit_txt]),
+        });
+    }
+}
+
+/// Terminal-digit preference (χ² of last digits vs uniform, `quality-stats`), per supplier and characteristic with
+/// a known resolution. Values are first written at the resolution's number of decimals, because stored values are
+/// normalised ("120.10" → "120.1") and a lost trailing zero would itself look like a digit preference. Values finer
+/// than the resolution are left out (that is the excess-precision signal). quality-stats guards n ≥ 50 and a spread
+/// of ≥ 5 last-digit units.
+fn digits(certs: &[Certificate], s: &Settings, out: &mut Vec<Signal>) {
+    use quality_stats::Measurement;
+    use quality_stats::integrity::{rounding_heaping, terminal_digit_preference};
+    let mut by: BTreeMap<SupplierChar, Vec<(&Certificate, &Reading)>> = BTreeMap::new();
+    for c in certs {
+        for r in &c.readings {
+            by.entry((c.supplier.clone(), r.characteristic.clone(), r.unit.clone()))
+                .or_default()
+                .push((c, r));
+        }
+    }
+    let max_p = f64::from(s.digit_max_p_ppm) / 1e6;
+    for ((supplier, ch, unit), rs) in by {
+        let Some(res) = s.resolution_for(&ch, unit.as_deref()) else {
+            continue;
+        };
+        let dp = res.normalize().scale();
+        let ms: Vec<Measurement> = rs
+            .iter()
+            .filter(|(_, r)| r.value.checked_rem(res).is_some_and(|m| m.is_zero()))
+            .map(|(_, r)| {
+                let mut v = r.value;
+                v.rescale(dp);
+                Measurement::from_decimal(v)
+            })
+            .collect();
+        let Some(t) = terminal_digit_preference(&ms).applicable().cloned() else {
+            continue;
+        };
+        if t.p_value > max_p {
+            continue;
+        }
+        let heap = rounding_heaping(&ms).applicable().cloned();
+        let strength = if t.p_value <= max_p / 1e4 {
+            Strength::Strong
+        } else if t.p_value <= max_p / 100.0 {
+            Strength::Moderate
+        } else {
+            Strength::Weak
+        };
+        let unit_txt = unit.clone().unwrap_or_default();
+        let p_txt = format!("{:.1e}", t.p_value);
+        let certs_set: BTreeSet<&str> = rs.iter().map(|(c, _)| c.id.as_str()).collect();
+        out.push(Signal {
+            kind: SignalKind::DigitPreference,
+            supplier: supplier.clone(),
+            part: None,
+            characteristic: Some(ch.clone()),
+            strength,
+            why: format!(
+                "The last recorded digits of {} values of {ch} are not evenly spread over 0–9 (χ² = {:.1}, p = {p_txt}; threshold {max_p:.0e}). Measured values usually end in every digit about equally often; rounding by hand or a gauge that reads in steps of 5 are ordinary causes. {BENIGN_EN}",
+                t.n, t.statistic
+            ),
+            why_ja: format!(
+                "{ch} の {} 件の値の末尾の数字が 0～9 に均等に分布していません（χ² = {:.1}、p = {p_txt}、しきい値 {max_p:.0e}）。手作業での丸めや 5 刻みで読む計測器も通常の原因です。{BENIGN_JA}",
+                t.n, t.statistic
+            ),
+            statistic: json!({
+                "n": t.n, "chi2": t.statistic, "df": t.df, "p_value": t.p_value, "threshold_p": max_p,
+                "detail": t.explanation, "resolution": res.to_string(), "unit": unit,
+                "heaping_0_5": heap.map(|h| json!({ "index": h.statistic, "p_value": h.p_value })),
+                "method": "quality-stats terminal_digit_preference",
+            }),
+            evidence: rs.iter().take(MAX_EVIDENCE).map(|(c, r)| reading_ref(c, r)).collect(),
+            certificates: certs_set.into_iter().map(str::to_string).collect(),
+            fingerprint: fingerprint(&["digit_preference", &supplier, &ch, &unit_txt]),
         });
     }
 }

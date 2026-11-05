@@ -16,7 +16,7 @@ CREATE TABLE integrity_signals (
     id               uuid PRIMARY KEY,
     tenant_id        uuid NOT NULL REFERENCES tenants(id),
     kind             text NOT NULL CHECK (kind IN ('identical_values', 'table_copy', 'narrow_band', 'at_limit',
-                         'excess_precision', 'chemistry_sum', 'date_order', 'lot_sequence')),
+                         'excess_precision', 'chemistry_sum', 'date_order', 'lot_sequence', 'digit_preference')),
     supplier_key     text NOT NULL CHECK (length(supplier_key) BETWEEN 1 AND 200),
     part_key         text CHECK (length(part_key) <= 200),
     characteristic   text CHECK (length(characteristic) <= 120),

@@ -1,3 +1,4 @@
+import { integrityEn, integrityJa } from "./i18n-integrity";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 // All user-visible UI text lives here. `ja` is typed against `en`, so a missing translation
@@ -592,6 +593,7 @@ export const en = {
   "bool.not_material": "Not material",
   "bool.enabled": "Enrolled",
   "bool.not_enabled": "Not enrolled",
+  ...integrityEn,
 } as const;
 
 export type Key = keyof typeof en;
@@ -1186,6 +1188,7 @@ export const ja: Record<Key, string> = {
   "bool.not_material": "軽微",
   "bool.enabled": "登録済み",
   "bool.not_enabled": "未登録",
+  ...integrityJa,
 };
 
 export type Lang = "en" | "ja";

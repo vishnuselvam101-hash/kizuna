@@ -178,6 +178,7 @@ details.collapsible[open] > summary { margin-bottom: var(--s3); }
 .notice.crit { border-left-color: var(--crit); background: var(--crit-bg); color: var(--fg); }
 .callout { padding: var(--s3); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
 .callout.crit { border-color: color-mix(in srgb, var(--crit) 55%, transparent); background: var(--crit-bg); }
+.callout.warn { border-color: color-mix(in srgb, var(--warn) 60%, transparent); border-style: dashed; }
 .callout.ok { border-color: color-mix(in srgb, var(--gold) 55%, transparent); background: var(--gold-bg); }
 .confirm { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin: var(--s3) 0; }
 .empty { color: var(--fg-muted); padding: var(--s4) 0; }

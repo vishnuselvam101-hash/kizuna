@@ -13,6 +13,7 @@ serde_json.workspace = true
 sha2.workspace = true
 hex.workspace = true
 rust_decimal.workspace = true
+quality-stats = { path = "../quality-stats" }
 
 [dev-dependencies]
 proptest.workspace = true

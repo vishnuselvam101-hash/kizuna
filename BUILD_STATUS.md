@@ -15,6 +15,7 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | M4 | done | decisions with derivation hashes, typed dependencies with materiality, selective invalidation incl. earlier claim versions and decision chains, traces, reconfirm/revoke, signed verification reports |
 | M5 | done | 10 detection rules, incidents, pre-authorised vs approval-gated containment, guards, revert/resolve, emergency unlock, Ed25519 audit checkpoints, security monitoring screen |
 | M7 | done | opt-in AI-assisted label mapping with free models (ADR 0016), saved import settings consumed by the worker, per-tenant + adaptive detection thresholds (ADR 0015), web API gaps 2–8 switched to real endpoints, WebAuthn-optional decision recorded (ADR 0006) |
+| I2/I3 | done (synthetic eval only) | certificate integrity signals (9 kinds) + revision drift radar, ADR 0019, migration 0016, `/integrity/*` API, "Integrity signals" and "Revision drift" views; eval docs/testing/INTEGRITY_SIGNALS_EVAL.md |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
 ## M7 results (2026-11-05, this host)

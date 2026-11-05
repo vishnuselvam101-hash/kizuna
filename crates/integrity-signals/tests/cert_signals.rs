@@ -395,3 +395,46 @@ fn wording_is_neutral() {
         assert!(s.why_ja.contains("不正の判断ではありません"));
     }
 }
+
+/// 80 well-spread length values; `step` rounds them (0.001 = honest, 0.005 = heaped on 0/5).
+fn long_history(step: &str) -> Vec<Certificate> {
+    let st = d(step);
+    (0..80)
+        .map(|i| {
+            let raw = d("119.9") + Decimal::new((i * 37 % 200) as i64, 3);
+            let v = ((raw / st).round() * st).normalize().to_string();
+            cert(
+                &format!("C{i:02}"),
+                &format!("L{}", 100 + i),
+                &iso(20_000 + 7 * i as i64),
+                &[("qa.measured.length", &v, Some("mm"))],
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn digit_preference_via_quality_stats() {
+    let s = Settings::default();
+    let heaped = analyze(&long_history("0.005"), &Limits::new(), &s);
+    let g = of(&heaped, SignalKind::DigitPreference);
+    assert_eq!(g.len(), 1, "{heaped:#?}");
+    assert_eq!(g[0].statistic["n"], 80);
+    assert!(g[0].statistic["heaping_0_5"]["index"].as_f64().unwrap() > 4.0);
+    // Honest values, including ones whose trailing zero was dropped by normalisation ("119.910" → "119.91"): none.
+    assert!(
+        of(
+            &analyze(&long_history("0.001"), &Limits::new(), &s),
+            SignalKind::DigitPreference
+        )
+        .is_empty()
+    );
+    // Fewer than 50 values: the test does not apply.
+    assert!(
+        of(
+            &analyze(&long_history("0.005")[..40], &Limits::new(), &s),
+            SignalKind::DigitPreference
+        )
+        .is_empty()
+    );
+}

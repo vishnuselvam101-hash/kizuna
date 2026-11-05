@@ -49,6 +49,8 @@ pub struct Settings {
     pub drift_min_fields: u32,
     /// Revision drift: also report a changed file whose extracted content is identical (re-scans; off by default).
     pub drift_report_file_only: bool,
+    /// Digit preference: report when the χ² p-value is at most this (parts per million).
+    pub digit_max_p_ppm: u32,
     pub resolutions: Vec<Resolution>,
 }
 
@@ -70,6 +72,7 @@ impl Default for Settings {
             drift_extraction_gap: 1,
             drift_min_fields: 3,
             drift_report_file_only: false,
+            digit_max_p_ppm: 100,
             resolutions: vec![
                 Resolution {
                     prefix: "qa.measured.".into(),
@@ -97,7 +100,7 @@ impl Default for Settings {
 }
 
 /// (name, low, high, "higher is less sensitive").
-const BOUNDS: [(&str, u32, u32, bool); 14] = [
+const BOUNDS: [(&str, u32, u32, bool); 15] = [
     ("min_identical_values", 2, 20, true),
     ("max_coincidence_ppm", 1, 50_000, false),
     ("min_table_values", 3, 50, true),
@@ -112,6 +115,7 @@ const BOUNDS: [(&str, u32, u32, bool); 14] = [
     ("lot_min_days", 1, 365, true),
     ("drift_extraction_gap", 0, 5, true),
     ("drift_min_fields", 1, 20, true),
+    ("digit_max_p_ppm", 1, 10_000, false),
 ];
 
 pub const MAX_RESOLUTIONS: usize = 50;
@@ -121,7 +125,7 @@ impl Settings {
         BOUNDS.iter().map(|(k, lo, hi, _)| (*k, [*lo, *hi])).collect()
     }
 
-    fn values(&self) -> [u32; 14] {
+    fn values(&self) -> [u32; 15] {
         [
             self.min_identical_values,
             self.max_coincidence_ppm,
@@ -137,6 +141,7 @@ impl Settings {
             self.lot_min_days,
             self.drift_extraction_gap,
             self.drift_min_fields,
+            self.digit_max_p_ppm,
         ]
     }
 
