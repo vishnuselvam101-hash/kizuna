@@ -210,3 +210,46 @@ async fn scanner_outage_quarantines_do_not_restrict_uploaders() {
     let r = c.upload(&tok, "ok.csv", b"part,qty\nOUT-9,1\n", None).await;
     assert_eq!(r.status, axum::http::StatusCode::OK, "{:?}", r.body);
 }
+
+/// Chaos C6 (clock jumps, no bug found): the application clock jumps forward past token expiry and then backwards a
+/// day relative to the database clock. Expired tokens are refused, fresh logins work, uploads and extraction keep
+/// working after the backward jump, and the audit chain stays intact (it orders by sequence, not by time).
+#[tokio::test]
+async fn clock_jumps_keep_auth_safe_and_audit_intact() {
+    use std::sync::Arc;
+    let mut c = ctx().await;
+    let clock = Arc::new(kizuna_api::clock::OffsetClock::default());
+    c.st.clock = clock.clone();
+    c.app = kizuna_api::router(c.st.clone());
+    let (t, slug) = c.tenant().await;
+    let (_, email) = c.user(t, "analyst").await;
+    let (_, aud) = c.user(t, "auditor").await;
+    let tok = c.token(&slug, &email).await;
+    clock.advance(time::Duration::days(2));
+    assert_eq!(
+        c.get("/api/v1/artifacts", &tok).await.status,
+        axum::http::StatusCode::UNAUTHORIZED
+    );
+    let tok = c.token(&slug, &email).await;
+    clock.advance(time::Duration::days(-3));
+    assert_eq!(
+        c.get("/api/v1/artifacts", &tok).await.status,
+        axum::http::StatusCode::OK
+    );
+    let up = c
+        .upload(
+            &tok,
+            "j.csv",
+            b"PO Number,Part No,Qty\nPO-7,CLK-1,3\n",
+            Some("purchase_order"),
+        )
+        .await;
+    let id = up.body["artifact"]["id"].as_str().unwrap().to_owned();
+    let x = c
+        .post(&format!("/api/v1/artifacts/{id}/extract"), Some(&tok), json!({}))
+        .await;
+    assert_eq!(x.status, axum::http::StatusCode::OK, "{:?}", x.body);
+    let a = c.token(&slug, &aud).await;
+    let v = c.get("/api/v1/audit/verify", &a).await;
+    assert_eq!(v.body["intact"], true, "{:?}", v.body);
+}
