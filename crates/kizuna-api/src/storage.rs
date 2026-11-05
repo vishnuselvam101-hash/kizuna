@@ -57,10 +57,14 @@ impl ObjectStore for FsStore {
         fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
         let tmp = dir.join(format!(".tmp-{}", Uuid::new_v4()));
         let mut f = OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)?;
-        f.write_all(data)?;
-        f.sync_all()?;
+        let written = f.write_all(data).and_then(|()| f.sync_all());
         drop(f);
-        fs::rename(&tmp, &path)
+        // A failed write (e.g. ENOSPC) or rename must not leave its partial temporary file behind (chaos C4).
+        let r = written.and_then(|()| fs::rename(&tmp, &path));
+        if r.is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+        r
     }
 
     fn get(&self, key: &ObjectKey) -> io::Result<Vec<u8>> {
@@ -91,6 +95,30 @@ mod tests {
         assert!(p.starts_with(&root));
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Chaos C4 (disk full): a write that fails part-way must not leave its temporary file behind, or a full disk
+    /// stays full (every failed upload keeps its partial copy) and recovery needs manual cleanup.
+    #[test]
+    fn failed_put_removes_its_temp_file() {
+        let root = std::env::temp_dir().join(format!("kz-store-{}", Uuid::new_v4()));
+        let s = FsStore::new(&root);
+        let key = ObjectKey {
+            tenant: Uuid::from_u128(6),
+            sha256: crate::crypto::sha256(b"blocked"),
+        };
+        // The final name is occupied by a non-empty directory: the rename fails after the data was written.
+        let p = s.path(&key);
+        fs::create_dir_all(p.join("x")).unwrap();
+        assert!(s.put(&key, b"blocked").is_err());
+        let dir = p.parent().unwrap();
+        let tmp: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().starts_with(".tmp-"))
+            .collect();
+        assert!(tmp.is_empty(), "temporary files left behind: {tmp:?}");
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -118,4 +118,54 @@ mod tests {
         assert_eq!(cmp_revision("c", "C"), Some(Ordering::Equal));
         assert_eq!(cmp_revision("B2", "C"), None);
     }
+
+    /// A missing revision is never ordered or equal (mutation-testing kill).
+    #[test]
+    fn empty_revisions_are_incomparable() {
+        assert_eq!(cmp_revision("", ""), None);
+        assert_eq!(cmp_revision("  ", "A"), None);
+        assert_eq!(cmp_revision("7", ""), None);
+    }
+
+    struct Twice;
+    impl Rule for Twice {
+        fn name(&self) -> &'static str {
+            "twice"
+        }
+        fn detect(&self, subject: &str, _: &[&Fact], _: &Ctx) -> Vec<Finding> {
+            let f = |a: &str, b: &str| Finding {
+                kind: "k",
+                subject: subject.into(),
+                claim_a: a.into(),
+                claim_b: Some(b.into()),
+                explanation: Value::Null,
+            };
+            vec![f("c1", "c2"), f("c2", "c1"), f("c1", "c2")]
+        }
+    }
+
+    /// The same pair reported twice (in either order) is one finding, normalised to claim_a < claim_b.
+    #[test]
+    fn duplicate_findings_are_merged() {
+        let fact = Fact {
+            id: "c1".into(),
+            subject: "P-1".into(),
+            predicate: "p".into(),
+            text: None,
+            num: None,
+            unit: None,
+            revision: None,
+            scope: BTreeMap::new(),
+            source_kind: "s".into(),
+        };
+        let out = run(
+            &[&Twice],
+            &[fact],
+            &Ctx {
+                today: "2026-11-05".into(),
+            },
+        );
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!((out[0].claim_a.as_str(), out[0].claim_b.as_deref()), ("c1", Some("c2")));
+    }
 }

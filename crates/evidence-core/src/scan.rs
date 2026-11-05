@@ -359,6 +359,60 @@ mod tests {
         assert_eq!(scan(b"PK\x03\x04garbage", &Limits::default()).verdict, Verdict::Reject);
     }
 
+    // Mutation-testing kills (docs/testing/CHAOS_SOAK_2026-11-05.md): each limit is exercised at its boundary.
+
+    #[test]
+    fn pdf_without_eof_marker_is_flagged() {
+        let r = scan(b"%PDF-1.7\n1 0 obj << /Type /Page >>\n", &Limits::default());
+        assert!(
+            r.findings.contains(&"pdf_no_eof_marker".to_string()),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    #[test]
+    fn zip_compression_ratio_limit() {
+        // 100 bytes compressed claiming 20 000 bytes uncompressed: ratio 200 > 100, far below the size limit.
+        let data = [b'x'; 100];
+        let r = scan(&xlsx(&[("xl/sheet1.xml", 20_000, &data)]), &Limits::default());
+        assert!(
+            r.findings.contains(&"zip_bomb_suspected".to_string()),
+            "{:?}",
+            r.findings
+        );
+        let ok = scan(&xlsx(&[("xl/sheet1.xml", 100, &data)]), &Limits::default());
+        assert_eq!(ok.verdict, Verdict::Clean, "{:?}", ok.findings);
+    }
+
+    #[test]
+    fn zip_entry_limit_is_exact() {
+        let limits = |n| Limits {
+            max_zip_entries: n,
+            ..Limits::default()
+        };
+        let z = xlsx(&[("xl/a.xml", 1, b"a")]); // 3 entries
+        assert_eq!(scan(&z, &limits(3)).verdict, Verdict::Clean);
+        let r = scan(&z, &limits(2));
+        assert!(
+            r.findings.contains(&"zip_too_many_entries".to_string()),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    #[test]
+    fn csv_line_limit_is_exact() {
+        let limits = Limits {
+            max_csv_lines: 3,
+            ..Limits::default()
+        };
+        assert_eq!(scan(b"a,b\n1,2\n3,4\n", &limits).verdict, Verdict::Clean);
+        let r = scan(b"a,b\n1,2\n3,4\n5,6\n", &limits);
+        assert_eq!(r.verdict, Verdict::Quarantine);
+        assert!(r.findings.contains(&"csv_too_many_lines".to_string()));
+    }
+
     #[test]
     fn executables_and_binary_rejected() {
         assert_eq!(scan(b"\x7fELF\x02\x01", &Limits::default()).verdict, Verdict::Reject);

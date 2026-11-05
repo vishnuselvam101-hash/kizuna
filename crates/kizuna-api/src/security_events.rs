@@ -43,6 +43,9 @@ pub enum Kind {
     PromptInjectionSuspected,
     /// A tenant security/ingest setting changed (detection thresholds, AI opt-in, import settings).
     SettingsChanged,
+    /// An upload was quarantined only because the configured virus scanner could not be reached (fail closed). An
+    /// outage, not a finding: kept apart from `ingest.artifact_quarantined` so it never counts as upload abuse.
+    ScannerUnavailable,
 }
 
 impl Kind {
@@ -72,6 +75,7 @@ impl Kind {
             Kind::BlockedRequest => "response.blocked_request",
             Kind::PromptInjectionSuspected => "ingest.prompt_injection_suspected",
             Kind::SettingsChanged => "admin.settings_changed",
+            Kind::ScannerUnavailable => "ingest.scanner_unavailable",
         }
     }
 
@@ -91,7 +95,8 @@ impl Kind {
             | Kind::ContainmentApplied
             | Kind::BlockedRequest
             | Kind::PromptInjectionSuspected
-            | Kind::SettingsChanged => "medium",
+            | Kind::SettingsChanged
+            | Kind::ScannerUnavailable => "medium",
             Kind::RefreshTokenReuse => "high",
             Kind::AuditChainBroken | Kind::ArtifactIntegrityFailure => "critical",
         }

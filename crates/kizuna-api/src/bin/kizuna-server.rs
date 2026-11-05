@@ -55,10 +55,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(%bind, header_read_timeout = ?limits.header_read_timeout, max_connections = limits.max_connections,
         "kizuna-server listening");
-    // Own accept loop: header-read deadline + connection cap (red-team 2026-11-05 F3).
-    kizuna_api::serve::serve(listener, app, limits, async {
-        let _ = tokio::signal::ctrl_c().await;
-    })
-    .await?;
+    // Own accept loop: header-read deadline + connection cap (red-team 2026-11-05 F3); SIGTERM/Ctrl-C stop accepting
+    // and drain in-flight requests (chaos C3).
+    kizuna_api::serve::serve(listener, app, limits, shutdown_signal()).await?;
     Ok(())
+}
+
+/// Ctrl-C (interactive) or SIGTERM (systemd stop, container runtimes): stop accepting connections and let in-flight
+/// requests finish. Without SIGTERM a service restart cut uploads and extractions off mid-request (chaos C2).
+async fn shutdown_signal() {
+    let term = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "SIGTERM handler unavailable; only Ctrl-C shuts down gracefully");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        () = term => {}
+    }
+    tracing::info!("shutdown signal received: draining in-flight requests");
 }

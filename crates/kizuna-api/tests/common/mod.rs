@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 pub const PW: &str = "correct horse battery staple";
 
-fn env(k: &str) -> String {
+pub fn env(k: &str) -> String {
     if let Ok(v) = std::env::var(k) {
         return v;
     }

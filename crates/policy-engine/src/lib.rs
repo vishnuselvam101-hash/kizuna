@@ -239,6 +239,37 @@ mod tests {
         );
     }
 
+    /// Mutation-testing kills: review decisions need MFA, and the auditor role is strictly read-only.
+    #[test]
+    fn review_decisions_are_privileged() {
+        let p = Policy::new();
+        assert_eq!(
+            p.authorize(&subj(Role::Reviewer, false), ReviewDecide, &res(1)),
+            Decision::Deny(DenyReason::MfaRequired)
+        );
+        assert_eq!(
+            p.authorize(&subj(Role::Reviewer, true), ReviewDecide, &res(1)),
+            Decision::Allow
+        );
+    }
+
+    #[test]
+    fn auditor_grants_are_exactly_read_only() {
+        let granted: Vec<Permission> = ALL_P.into_iter().filter(|x| role_grants(Role::Auditor, *x)).collect();
+        assert_eq!(
+            granted,
+            vec![
+                UserRead,
+                AuditRead,
+                AuditVerify,
+                SecurityEventRead,
+                ArtifactRead,
+                ClaimRead,
+                DecisionRead
+            ]
+        );
+    }
+
     #[test]
     fn only_admin_manages_users_and_incidents() {
         let p = Policy::new();
