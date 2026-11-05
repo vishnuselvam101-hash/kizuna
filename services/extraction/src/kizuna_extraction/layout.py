@@ -3,6 +3,7 @@ text
 fragments is wider than about one character. Lines are numbered top-to-bottom per page, starting at 1."""
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 SPLIT_CELLS = re.compile(r"\t+| {2,}")
@@ -35,8 +36,33 @@ class Line:
         return [round(self.cells[0].x0, 1), round(self.y, 1), round(self.cells[-1].x1, 1), round(self.y, 1)]
 
 
+# CJK fonts often map glyphs to Kangxi / CJK radical or compatibility code points in their ToUnicode table
+# (U+2F0A "⼊" for 入, U+2FA6 "⾦" for 金). They look identical but never match a label or another document.
+_COMPAT = re.compile("[\u2e80-\u2fdf\uf900-\ufaff]")
+
+
+# CJK Radicals Supplement forms have no NFKC mapping; these are the ones fonts use for whole characters.
+_RADICALS = dict(zip("⻑⻄⻘⻝⻤⻩⻭⻨⻫⻲⻯⻆⺠⻁", "長西青食鬼黄歯麦斉亀竜角民虎", strict=True))
+
+
+def fold_cjk_compat(s: str) -> str:
+    return _COMPAT.sub(lambda m: _RADICALS.get(m.group()) or unicodedata.normalize("NFKC", m.group()), s)
+
+
+def _wide(ch: str) -> bool:
+    return unicodedata.east_asian_width(ch) in ("W", "F")
+
+
+def _width(text: str, size: float) -> float:
+    """Estimated advance: full-width (CJK) glyphs are one em, others about half."""
+    return sum(size if _wide(ch) else size * 0.5 for ch in text)
+
+
 def lines_from_fragments(page: int, frags: list[tuple[float, float, float, str]]) -> list[Line]:
-    """frags: (x, y, font_size, text). Groups fragments into lines by baseline and into cells by gaps."""
+    """frags: (x, y, font_size, text). Groups fragments into lines by baseline and into cells by gaps.
+    Fragments are joined with a space, except between two full-width (CJK) characters: Japanese has no spaces
+    between words, and PDF producers often position every glyph separately."""
+    frags = [(x, y, s, fold_cjk_compat(t)) for x, y, s, t in frags]
     frags = sorted(frags, key=lambda f: (-round(f[1], 0), f[0]))
     rows: list[list[tuple[float, float, float, str]]] = []
     for f in frags:
@@ -48,13 +74,20 @@ def lines_from_fragments(page: int, frags: list[tuple[float, float, float, str]]
     for row in rows:
         row.sort(key=lambda f: f[0])
         cells: list[Cell] = []
+        last = ""
         for x, _y, size, text in row:
-            width = len(text) * size * 0.5
-            if cells and x - cells[-1].x1 <= size * 1.0:
-                cells[-1].text += " " + text
+            width = _width(text, size)
+            gap = x - cells[-1].x1 if cells else 0.0
+            if cells and gap <= size * 1.0:
+                prev = cells[-1].text
+                # Per-glyph positioning (single-character fragments almost touching) is one word, too.
+                glyph_run = len(last) == 1 and len(text) == 1 and gap <= size * 0.15
+                sep = "" if (prev and _wide(prev[-1]) and _wide(text[0])) or glyph_run else " "
+                cells[-1].text += sep + text
                 cells[-1].x1 = max(cells[-1].x1, x + width)
             else:
                 cells.append(Cell(text, x, x + width))
+            last = text
         out.append(Line(page, len(out) + 1, cells, y=row[0][1], size=max(f[2] for f in row)))
     return out
 
