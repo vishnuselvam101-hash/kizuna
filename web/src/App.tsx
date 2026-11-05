@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Api } from "./api";
 import { ArtifactsView } from "./ArtifactsView";
+import { CompareView, ConflictsView } from "./ConflictsView";
 import { EvidenceView } from "./EvidenceView";
 import { LoginView } from "./LoginView";
 
 const api = new Api();
-const TABS = ["Documents", "Evidence"] as const;
+const TABS = ["Documents", "Evidence", "Findings", "Revisions"] as const;
 type Tab = (typeof TABS)[number];
 
 export function App() {
@@ -25,6 +26,8 @@ export function App() {
       <main>
         {tab === "Documents" && <ArtifactsView api={api} />}
         {tab === "Evidence" && <EvidenceView api={api} />}
+        {tab === "Findings" && <ConflictsView api={api} />}
+        {tab === "Revisions" && <CompareView api={api} />}
       </main>
     </div>
   );

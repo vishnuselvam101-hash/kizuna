@@ -9,9 +9,11 @@ pub mod config;
 pub mod crypto;
 pub mod db;
 pub mod error;
+pub mod extraction;
 pub mod ratelimit;
 pub mod security_events;
 pub mod storage;
 pub mod users;
+pub mod verification;
 
 pub use app::{AppState, router};

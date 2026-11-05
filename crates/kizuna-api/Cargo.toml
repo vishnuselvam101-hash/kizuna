@@ -11,6 +11,10 @@ publish.workspace = true
 audit-engine = { path = "../audit-engine" }
 policy-engine = { path = "../policy-engine" }
 evidence-core = { path = "../evidence-core" }
+entity-resolution = { path = "../entity-resolution" }
+conflict-engine = { path = "../conflict-engine" }
+domain-manufacturing = { path = "../domain-manufacturing" }
+rust_decimal.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "macros", "multipart"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "fs", "io-util", "process", "sync"] }
 tower = { version = "0.5", default-features = false, features = ["util"] }

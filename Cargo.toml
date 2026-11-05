@@ -1,6 +1,14 @@
 [workspace]
 resolver = "3"
-members = ["crates/audit-engine", "crates/policy-engine", "crates/evidence-core", "crates/kizuna-api"]
+members = [
+    "crates/audit-engine",
+    "crates/policy-engine",
+    "crates/evidence-core",
+    "crates/entity-resolution",
+    "crates/conflict-engine",
+    "crates/domain-manufacturing",
+    "crates/kizuna-api",
+]
 
 [workspace.package]
 edition = "2024"
@@ -17,6 +25,7 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 proptest = "1"
+rust_decimal = { version = "1", default-features = false, features = ["std", "serde-str"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

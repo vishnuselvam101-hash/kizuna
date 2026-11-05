@@ -24,6 +24,14 @@ export function ArtifactsView({ api }: { api: Api }) {
       setMsg(String(x));
     }
   }
+  async function extract(id: string) {
+    try {
+      const r = await api.request<{ claims_created: number; unmapped_labels: string[] }>("POST", `/artifacts/${id}/extract`, {});
+      setMsg(`${r.claims_created} claims extracted (unreviewed). Unrecognised labels: ${r.unmapped_labels.join(", ") || "none"}`);
+    } catch (x) {
+      setMsg(String(x));
+    }
+  }
   async function verify(id: string) {
     const r = await api.request<{ intact: boolean }>("POST", `/artifacts/${id}/verify`, {});
     setMsg(r.intact ? "Stored bytes unchanged since capture (not a statement about truthfulness)." : "INTEGRITY FAILURE: stored bytes changed.");
@@ -63,7 +71,8 @@ export function ArtifactsView({ api }: { api: Api }) {
                 <code>{a.sha256.slice(0, 16)}…</code>
               </td>
               <td>
-                <button onClick={() => verify(a.id)}>Verify integrity</button>
+                <button onClick={() => verify(a.id)}>Verify integrity</button>{" "}
+                {a.status === "accepted" && <button onClick={() => extract(a.id)}>Extract claims</button>}
               </td>
             </tr>
           ))}

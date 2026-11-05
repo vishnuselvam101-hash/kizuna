@@ -16,7 +16,7 @@ use tower_http::timeout::TimeoutLayer;
 use crate::config::Config;
 use crate::ratelimit::RateLimiter;
 use crate::storage::{FsStore, ObjectStore};
-use crate::{artifacts, audit, auth, claims, security_events, users};
+use crate::{artifacts, audit, auth, claims, security_events, users, verification};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,6 +27,8 @@ pub struct AppState {
     /// Caps concurrent argon2 computations (CPU/RAM bound) so login floods cannot exhaust the host.
     pub hash_permits: Arc<tokio::sync::Semaphore>,
     pub store: Arc<dyn ObjectStore>,
+    /// Caps concurrent sandboxed extraction workers.
+    pub worker_permits: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {
@@ -37,7 +39,8 @@ impl AppState {
             pool,
             cfg: Arc::new(cfg),
             limiter: Arc::new(RateLimiter::new(Duration::from_secs(60))),
-            policy: Arc::new(Policy::new()),
+            policy: Arc::new(Policy::new().with_rule(verification::NoSelfReview)),
+            worker_permits: Arc::new(tokio::sync::Semaphore::new(2)),
             hash_permits: Arc::new(tokio::sync::Semaphore::new(
                 std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
             )),
@@ -82,6 +85,15 @@ pub fn router(st: AppState) -> Router {
         .route("/claims/{id}", get(claims::get))
         .route("/claims/{id}/supersede", post(claims::supersede))
         .route("/evidence/{subject_type}/{subject_key}", get(claims::subject))
+        .route("/artifacts/{id}/extract", post(verification::extract))
+        .route("/claims/{id}/review", post(verification::review_claim))
+        .route("/verification/run", post(verification::run_detection))
+        .route("/conflicts", get(verification::list_conflicts))
+        .route("/conflicts/{id}", get(verification::get_conflict))
+        .route("/conflicts/{id}/review", post(verification::review_conflict))
+        .route("/entities/candidates", get(verification::entity_candidates))
+        .route("/entities/decisions", post(verification::entity_decision))
+        .route("/compare/part/{key}", get(verification::compare))
         .layer(DefaultBodyLimit::max(body_limit))
         .layer(RequestBodyLimitLayer::new(body_limit));
     let upload_api = Router::new()

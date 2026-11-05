@@ -9,8 +9,8 @@ web (React/TS) ──HTTPS/JSON──► kizuna-api (axum)
                                 ├─ security_events
                                 ├─ PostgreSQL (runtime role kizuna_app, RLS FORCE per tenant)
                                 ├─ object store (filesystem, trait)
-                                └─ extraction worker (python subprocess,       [M3]
-                                   no DB creds, no network, rlimits)
+                                └─ extraction worker (python in bubblewrap:
+                                   no DB creds, no network, rlimits; ADR 0012)
 ```
 
 ## Directive §6 module map
@@ -21,7 +21,7 @@ web (React/TS) ──HTTPS/JSON──► kizuna-api (axum)
 | security-events | `kizuna-api/src/security_events.rs` | M1 recording; detection M5 |
 | authentication & identity, tenant management | `kizuna-api/src/{auth,users}.rs`, `kizuna-admin` | M1 done |
 | evidence-core (file types, scan, claim validation), claim-model, provenance, integrity | `crates/evidence-core`, `kizuna-api/src/{artifacts,claims,storage}.rs` | M2 done |
-| entity-resolution, conflict-engine, review workflows | planned M3 | not started |
+| entity-resolution, conflict-engine, manufacturing domain pack, extraction, review workflows | `crates/{entity-resolution,conflict-engine,domain-manufacturing}`, `services/extraction`, `kizuna-api/src/{extraction,verification}.rs` | M3 done |
 | temporal-engine, dependency-engine, decision-engine | planned M4 | not started |
 | notification service, connectors (ERP/PLM/QMS/MES) | interfaces only, later | not started |
 

@@ -5,8 +5,8 @@
 | M0 | inspection, research registers, ADRs, threat model, data model, test plan | done |
 | M1 | structure, migrations, auth, tenants, authz, audit, config, CI, tests | done (see BUILD_STATUS) |
 | M2 | artifact ingestion, object store, hashing/integrity, claims, provenance, evidence APIs + viewer | done |
-| M3 | PDF/spreadsheet extraction, identity matching, spec comparison, revisions, conflicts, review | next |
-| M4 | valid/transaction time, decisions, typed dependencies, materiality, selective invalidation, traces | |
+| M3 | PDF/spreadsheet extraction, identity matching, spec comparison, revisions, conflicts, review | done |
+| M4 | valid/transaction time, decisions, typed dependencies, materiality, selective invalidation, traces | next |
 | M5 | detection rules, containment, quarantine, revocation, incident dashboard, recovery | |
 | M6 | E2E, security review, benchmarks, backup/restore, deployment docs, demo | |
 

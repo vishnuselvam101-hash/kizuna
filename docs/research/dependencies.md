@@ -17,6 +17,7 @@ review is manual (this table).
 | subtle | 2 | BSD-3-Clause | constant-time compare | |
 | base64, hex | 0.22, 0.4 | MIT/Apache-2.0 | encodings | |
 | uuid, time, serde, serde_json, thiserror, tracing(-subscriber) | current | MIT/Apache-2.0 | basics | |
+| rust_decimal | 1 | MIT | exact decimal unit conversion / tolerance checks | no floats in rules |
 | proptest (dev) | 1 | MIT/Apache-2.0 | property tests | |
 | http-body-util (dev) | 0.1 | MIT | test body reads | |
 
@@ -26,6 +27,7 @@ Not adopted: `governor` (own 60-line limiter, ADR 0008), `jsonwebtoken` (opaque 
 ## Python (services/extraction, via uv)
 | Package | Licence | Use |
 |---|---|---|
+| pypdf 6.x | BSD-3-Clause | PDF text extraction (inside sandbox) |
 | pytest (dev) | MIT | tests |
 | ruff (dev) | MIT | lint/format |
 
@@ -41,3 +43,13 @@ Initial pins (vite 5.4.11, vitest 2.1.8) had 25 `pnpm audit` findings incl. crit
 
 ## Upgrade backlog
 sqlx 0.9, rand 0.10, sha2 0.11, argon2 0.6, aes-gcm 0.11 (new majors; API changes; schedule after M6).
+
+## System tools (invoked as separate programs, not linked)
+| Tool | Licence | Use |
+|---|---|---|
+| bubblewrap (`/usr/bin/bwrap`) | LGPL-2.0-or-later | extraction sandbox (ADR 0012) |
+| prlimit (util-linux) | GPL-2.0 | worker resource limits |
+| tesseract 5.5 | Apache-2.0 | OCR of image uploads, when installed |
+| ImageMagick (tests only) | ImageMagick licence | renders an OCR test image |
+
+Not adopted: defusedxml (stdlib ElementTree + DTD refusal + size caps instead, see `tabular.py`), ClamAV (ADR 0011).

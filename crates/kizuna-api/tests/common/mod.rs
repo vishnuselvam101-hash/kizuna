@@ -55,6 +55,13 @@ pub fn test_config() -> Config {
         "KIZUNA_DATA_KEY" => Some(key.clone()),
         "KIZUNA_STORAGE_DIR" => Some(storage.to_string_lossy().into_owned()),
         "KIZUNA_EXTRACTION_DIR" => Some(concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/extraction/src").into()),
+        "KIZUNA_EXTRACTION_PYTHON" => Some(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../services/extraction/.venv/bin/python"
+            )
+            .into(),
+        ),
         _ => None,
     })
     .unwrap()
@@ -274,3 +281,58 @@ impl Ctx {
 }
 
 pub const CLEAN_PDF: &[u8] = b"%PDF-1.7\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n";
+
+/// Minimal one-page PDF with one text line per entry (Helvetica), readable by pypdf.
+pub fn make_pdf(lines: &[&str]) -> Vec<u8> {
+    let esc = |s: &str| s.replace('\\', "\\\\").replace('(', "\\(").replace(')', "\\)");
+    let content = format!(
+        "BT /F1 11 Tf 72 740 Td 14 TL {} ET",
+        lines
+            .iter()
+            .map(|l| format!("({}) '", esc(l)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".into(),
+        format!("<< /Length {} >>\nstream\n{}\nendstream", content.len(), content),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".into(),
+    ];
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offs = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offs.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", i + 1, o).as_bytes());
+    }
+    let xref = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offs {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n",
+            objs.len() + 1,
+            xref
+        )
+        .as_bytes(),
+    );
+    out
+}
+
+impl Ctx {
+    /// Uploads and extracts a document; returns the artifact id.
+    pub async fn ingest(&self, token: &str, name: &str, data: &[u8], kind: &str) -> String {
+        let r = self.upload(token, name, data, Some(kind)).await;
+        assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
+        let id = r.body["artifact"]["id"].as_str().unwrap().to_owned();
+        let x = self
+            .post(&format!("/api/v1/artifacts/{id}/extract"), Some(token), json!({}))
+            .await;
+        assert_eq!(x.status, StatusCode::OK, "extract {name}: {:?}", x.body);
+        assert!(x.body["claims_created"].as_u64().unwrap() > 0, "{name}: {:?}", x.body);
+        id
+    }
+}

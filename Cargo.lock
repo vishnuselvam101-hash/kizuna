@@ -65,6 +65,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayvec"
+version = "0.7.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
+
+[[package]]
 name = "atoi"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -303,6 +309,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "conflict-engine"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -426,6 +442,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-manufacturing"
+version = "0.1.0"
+dependencies = [
+ "conflict-engine",
+ "entity-resolution",
+ "evidence-core",
+ "proptest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -452,6 +481,15 @@ dependencies = [
  "rustversion",
  "scopeguard",
  "simdutf8",
+]
+
+[[package]]
+name = "entity-resolution"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -964,6 +1002,9 @@ dependencies = [
  "audit-engine",
  "axum",
  "base64",
+ "conflict-engine",
+ "domain-manufacturing",
+ "entity-resolution",
  "evidence-core",
  "hex",
  "hmac",
@@ -971,6 +1012,7 @@ dependencies = [
  "policy-engine",
  "proptest",
  "rand 0.9.5",
+ "rust_decimal",
  "serde",
  "serde_json",
  "sha1",
@@ -1555,6 +1597,23 @@ dependencies = [
  "spki",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "rust_decimal"
+version = "1.43.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7653272e75dcac41dc199fbea6f5797633994fafd339943c06c9af16bf29cd3a"
+dependencies = [
+ "arrayvec",
+ "borsh",
+ "bytes",
+ "num-traits",
+ "rand 0.8.8",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2479,6 +2538,7 @@ checksum = "a0181c14ddd6c7b8b0b0132a5f1ea2f32be0d893cd3ea97b6e3b28886b8a3d1c"
 dependencies = [
  "cfg-if",
  "rustversion",
+ "serde",
  "wasm-bindgen-macro",
  "wasm-bindgen-shared",
 ]

@@ -58,6 +58,9 @@ pub struct Config {
     pub storage_dir: std::path::PathBuf,
     pub extraction_python: String,
     pub extraction_dir: std::path::PathBuf,
+    /// `bwrap` (default: no network, read-only minimal filesystem) or `none` (rlimits only; development only).
+    pub extraction_sandbox: String,
+    pub extraction_timeout_secs: u64,
 }
 
 pub fn parse_data_key(b64: &str) -> Result<[u8; 32], ConfigError> {
@@ -114,10 +117,23 @@ impl Config {
             storage_dir: get("KIZUNA_STORAGE_DIR")
                 .map(Into::into)
                 .unwrap_or_else(|| here.join("var/objects")),
-            extraction_python: get("KIZUNA_EXTRACTION_PYTHON").unwrap_or_else(|| "python3".into()),
+            extraction_python: get("KIZUNA_EXTRACTION_PYTHON").unwrap_or_else(|| {
+                let venv = here.join("services/extraction/.venv/bin/python");
+                if venv.exists() {
+                    venv.to_string_lossy().into_owned()
+                } else {
+                    "/usr/bin/python3".into()
+                }
+            }),
             extraction_dir: get("KIZUNA_EXTRACTION_DIR")
                 .map(Into::into)
                 .unwrap_or_else(|| here.join("services/extraction/src")),
+            extraction_sandbox: match get("KIZUNA_EXTRACTION_SANDBOX").as_deref() {
+                None | Some("bwrap") => "bwrap".into(),
+                Some("none") => "none".into(),
+                Some(_) => return Err(ConfigError::Invalid("KIZUNA_EXTRACTION_SANDBOX")),
+            },
+            extraction_timeout_secs: num("KIZUNA_EXTRACTION_TIMEOUT_SECS", 45, 5, 50)? as u64,
         })
     }
 }
