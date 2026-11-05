@@ -9,8 +9,12 @@ ATTRIB/ATTDEF entities are needed, and ezdxf would add numpy/fonttools to the sa
 import re
 
 from .errors import ExtractionError
+from .ja import parse_date
 from .layout import Line
 from .records import LABEL_VALUE, Sink, _loc, _rec
+
+# Approval boxes (印影 / sign-off): role label above a stamp or name, often a date below that.
+STAMP_LABELS = {"設計", "作図", "製図", "検図", "照査", "承認"}
 
 # Title-block labels that often stand alone in one cell with the value to the right or directly below.
 TITLE_LABELS = {
@@ -43,6 +47,7 @@ TITLE_LABELS = {
     "材質",
     "尺度",
     "改訂",
+    *STAMP_LABELS,
 }
 
 
@@ -50,7 +55,29 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
-def title_block(lines: list[Line], sink: Sink) -> None:
+def _region(top: Line, bottom: Line, x0: float, x1: float) -> list[int]:
+    """The approval box from the role label down to the stamp/name, as whole OCR pixels or PDF points
+    ([x0, y0, x1, y1]; PDF y grows upwards)."""
+    if "px_bbox" in top.extra and "px_bbox" in bottom.extra:
+        return [int(x0), top.extra["px_bbox"][1], int(x1), bottom.extra["px_bbox"][3]]
+    if top.y is not None and bottom.y is not None:
+        y0, y1 = bottom.y - bottom.size * 0.3, top.y + top.size
+        return [max(0, round(v)) for v in (x0, y0, x1, y1)]
+    return []
+
+
+def _stamp_date(plines: list[Line], start: int, c, label: str, sink: Sink, method: str) -> None:
+    """A date written under the stamp (up to two lines further down, same column) belongs to that sign-off."""
+    tol = max(8.0, (c.x1 - c.x0))
+    for ln in plines[start : start + 2]:
+        for bj, b in enumerate(ln.cells, start=1):
+            if abs(b.x0 - c.x0) <= tol and parse_date(b.text) is not None:
+                conf = 0.75 * (b.conf if b.conf is not None else ln.confidence)
+                sink.add(_rec(label, b.text, _loc(ln, cell=bj), "title_block", f"{method}-title-block", conf))
+                return
+
+
+def title_block(lines: list[Line], sink: Sink, method: str = "pdf") -> None:
     """Label cell followed by a value cell on the same line, or by the cell directly below it."""
     seen = {(r["location"].get("page"), r["location"].get("line"), r["value"]) for r in sink.items}
     by_page: dict[int, list[Line]] = {}
@@ -78,9 +105,11 @@ def title_block(lines: list[Line], sink: Sink) -> None:
                     continue
                 if (at.page, at.no, value_cell.text) in seen:
                     continue  # already extracted as a table cell
-                sink.add(
-                    _rec(label, value_cell.text, loc, "title_block", "pdf-title-block", 0.75 * at.confidence)
-                )
+                conf = 0.75 * (value_cell.conf if value_cell.conf is not None else at.confidence)
+                if label in STAMP_LABELS and at is not ln:
+                    loc["region"] = _region(ln, at, c.x0, max(c.x1, value_cell.x1))
+                    _stamp_date(plines, i + 2, c, label, sink, method)
+                sink.add(_rec(label, value_cell.text, loc, "title_block", f"{method}-title-block", conf))
 
 
 def pdf_metadata(meta: dict[str, str], sink: Sink) -> None:

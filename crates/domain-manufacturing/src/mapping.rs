@@ -1,5 +1,6 @@
-//! Deterministic record → claim mapping (`mfg-map@2`; @2 adds heat number, certificate type, property bounds and
-//! side-specific drawing references for the quality three-way match). Document text is data: labels are matched against a fixed
+//! Deterministic record → claim mapping (`mfg-map@3`: @2 added heat number, certificate type, property bounds and
+//! side-specific drawing references for the quality three-way match; @3 adds Japanese documents, see `ja`).
+//! Document text is data: labels are matched against a fixed
 //! vocabulary and nothing in a document can add predicates, change rules or trigger actions.
 
 use std::collections::BTreeMap;
@@ -9,7 +10,9 @@ use evidence_core::claim::{ClaimInput, parse_decimal};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub const MAPPING_VERSION: &str = "mfg-map@2";
+use crate::ja;
+
+pub const MAPPING_VERSION: &str = "mfg-map@3";
 
 /// One label/value pair produced by the extraction worker. `group` ties values of one row/document together.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -48,13 +51,25 @@ pub(crate) enum Field {
     PoLine,
     Quantity,
     Lot,
-    Heat,
     CertificateType,
     Result,
-    CertificateDate,
-    ShipDate,
-    InspectionDate,
-    Chemistry(&'static str),
+    /// Nominal dimension from an item/role table (`外径 規格値`): a drawing value in any document kind.
+    Nominal(&'static str),
+    /// Text facts: part name, heat number, standard, surface treatment, scale.
+    Text(&'static str),
+    /// Dates: inspection, issue, delivery.
+    Date(&'static str),
+    UnitPrice,
+    /// Approval box 設計/検図/承認 (drawn/checked/approved): a name (sign or seal), a status word or a date.
+    Stamp(&'static str),
+    /// Detected 印影 region; the value names the approval role it sits under ('' when none).
+    Seal,
+    /// FAX transmission header: sender, number, sent_at.
+    Fax(&'static str),
+    /// Chemical element symbol; chemistry only in a row with at least three of them (mill sheets).
+    Element(&'static str),
+    /// A row's unit column (単位), applied to the row's quantity.
+    UnitColumn,
 }
 
 const DIMS: [(&str, &str); 8] = [
@@ -68,15 +83,16 @@ const DIMS: [(&str, &str); 8] = [
     ("od", "outer_diameter"),
 ];
 
-const PROPS: [(&str, &str); 4] = [
+const PROPS: [(&str, &str); 5] = [
     ("hardness", "hardness"),
     ("tensile strength", "tensile_strength"),
     ("yield strength", "yield_strength"),
     ("surface roughness", "surface_roughness"),
+    ("elongation", "elongation"),
 ];
 
 /// Chemical elements by symbol or English name → predicate suffix (symbol).
-const ELEMENTS: [(&str, &str); 22] = [
+const ELEMENT_NAMES: [(&str, &str); 22] = [
     ("c", "c"),
     ("carbon", "c"),
     ("si", "si"),
@@ -112,8 +128,21 @@ fn chemistry(label: &str, unit: Option<&str>) -> Option<Field> {
         return None;
     }
     let l = label.strip_suffix(" content").unwrap_or(label);
-    ELEMENTS.iter().find(|(k, _)| *k == l).map(|(_, v)| Field::Chemistry(v))
+    ELEMENT_NAMES
+        .iter()
+        .find(|(k, _)| *k == l)
+        .map(|(_, v)| Field::Element(v))
 }
+
+const ELEMENTS: [&str; 15] = [
+    "c", "si", "mn", "p", "s", "cu", "ni", "cr", "mo", "v", "nb", "ti", "al", "b", "n",
+];
+
+/// Approval-box labels that are sign-offs on paper (a seal or a written name), as opposed to `approved by`.
+const STAMP_LABELS: [&str; 6] = ["設計", "作図", "製図", "検図", "照査", "承認"];
+
+/// OCR values below this confidence must be confirmed by a person before they can back a decision.
+pub const OCR_REVIEW_FLOOR: f64 = 0.80;
 
 fn dim(s: &str) -> Option<&'static str> {
     DIMS.iter().find(|(k, _)| *k == s).map(|(_, v)| *v)
@@ -121,7 +150,7 @@ fn dim(s: &str) -> Option<&'static str> {
 
 /// Splits "Length (mm)" into ("length", Some("mm")) and normalises the label.
 pub(crate) fn normalize_label(raw: &str) -> (String, Option<String>) {
-    let s = safe_normalize(raw).to_lowercase();
+    let s = ja::fold(raw).to_lowercase();
     let (base, unit) = match (s.find('('), s.rfind(')')) {
         (Some(a), Some(b)) if b > a => (
             format!("{}{}", &s[..a], &s[b + 1..]),
@@ -139,8 +168,9 @@ pub(crate) fn normalize_label(raw: &str) -> (String, Option<String>) {
             }
         })
         .collect();
+    let translated: Vec<&str> = cleaned.split_whitespace().map(ja::translate_token).collect();
     (
-        cleaned.split_whitespace().collect::<Vec<_>>().join(" "),
+        translated.join(" ").split_whitespace().collect::<Vec<_>>().join(" "),
         unit.filter(|u| !u.is_empty()),
     )
 }
@@ -148,25 +178,19 @@ pub(crate) fn normalize_label(raw: &str) -> (String, Option<String>) {
 pub(crate) fn field(label: &str) -> Option<Field> {
     let f = match label {
         "part number" | "part no" | "part #" | "part" | "partno" | "p/n" | "pn" | "item number" | "item no"
-        | "品番" | "部品番号" => Field::Part,
-        "drawing number" | "drawing no" | "dwg no" | "dwg number" | "図番" => Field::Drawing,
-        "revision" | "rev" | "rev no" | "drawing revision" | "spec revision" | "part revision" | "改訂" | "版" => {
-            Field::Revision
-        }
-        "material" | "material grade" | "材質" => Field::Material,
-        "supplier" | "vendor" | "supplier name" | "manufacturer" | "仕入先" => Field::Supplier,
-        "approval status" | "approval" | "status" | "承認" => Field::ApprovalStatus,
+        | "品番" | "部品番号" | "品目コード" | "部品コード" => Field::Part,
+        "drawing number" | "drawing no" | "dwg no" | "dwg number" | "図番" | "図面番号" => Field::Drawing,
+        "revision" | "rev" | "rev no" | "drawing revision" | "spec revision" | "part revision" | "改訂" | "版"
+        | "版数" | "改訂番号" => Field::Revision,
+        "material" | "material grade" | "steel grade" | "grade" | "材質" | "材料" | "鋼種" => Field::Material,
+        "supplier" | "vendor" | "supplier name" | "manufacturer" | "maker" | "仕入先" | "製造者" | "発行者"
+        | "発注先" | "メーカー" => Field::Supplier,
+        "approval status" | "approval" | "status" => Field::ApprovalStatus,
         "approved by" | "approver" => Field::ApprovedBy,
-        "approval date" | "approved on" | "date approved" => Field::ApprovalDate,
+        "approval date" | "approved on" | "date approved" | "承認日" => Field::ApprovalDate,
         "expiry" | "expiry date" | "expiration date" | "valid until" | "certificate expiry" | "有効期限" => {
             Field::Expiry
         }
-        "po number" | "po no" | "po" | "purchase order" | "purchase order number" | "注文番号" => Field::PoNumber,
-        "line" | "po line" | "line no" => Field::PoLine,
-        "quantity" | "qty" | "数量" => Field::Quantity,
-        "lot" | "lot number" | "lot no" | "ロット" | "ロット番号" => Field::Lot,
-        "heat" | "heat no" | "heat number" | "charge no" | "cast no" | "溶解番号" | "チャージ" | "チャージno"
-        | "チャージ番号" | "ヒート番号" => Field::Heat,
         "certificate type"
         | "cert type"
         | "inspection document"
@@ -175,18 +199,57 @@ pub(crate) fn field(label: &str) -> Option<Field> {
         | "en 10204 type"
         | "証明書種類"
         | "検査証明書種類" => Field::CertificateType,
-        "result" | "inspection result" | "judgement" | "判定" => Field::Result,
-        "certificate date" | "date of issue" | "issue date" | "issued" | "発行日" | "証明書発行日" => {
-            Field::CertificateDate
-        }
-        "ship date" | "shipping date" | "shipment date" | "date shipped" | "delivery date" | "出荷日" | "納入日" => {
-            Field::ShipDate
-        }
-        "inspection date" | "test date" | "date of inspection" | "date of test" | "検査日" | "試験日" => {
-            Field::InspectionDate
+        "certificate date" | "issued" | "証明書発行日" => Field::Date("issue_date"),
+        "ship date" | "shipping date" | "shipment date" | "date shipped" | "出荷日" => Field::Date("delivery_date"),
+        "test date" | "date of inspection" | "date of test" | "試験日" => Field::Date("inspection_date"),
+        "heat" | "cast no" | "チャージ" => Field::Text("heat_number"),
+        "po number"
+        | "po no"
+        | "po"
+        | "purchase order"
+        | "purchase order number"
+        | "order no"
+        | "order number"
+        | "注文番号"
+        | "発注番号"
+        | "注文no" => Field::PoNumber,
+        "line" | "po line" | "line no" | "行" | "行番号" => Field::PoLine,
+        "quantity" | "qty" | "数量" | "員数" => Field::Quantity,
+        "unit price" | "単価" => Field::UnitPrice,
+        "lot" | "lot number" | "lot no" | "ロット" | "ロットno" | "ロット番号" => Field::Lot,
+        "result" | "inspection result" | "judgement" | "判定" | "総合判定" | "結果" | "判定結果" => {
+            Field::Result
         }
         "tolerance" | "tol" => Field::Tolerance(None),
+        "part name" | "品名" | "部品名" => Field::Text("part_name"),
+        "heat no" | "heat number" | "charge no" | "溶鋼番号" | "チャージno" | "チャージ番号" | "ヒートno"
+        | "溶解番号" => Field::Text("heat_number"),
+        "standard" | "規格" | "規格番号" => Field::Text("standard"),
+        "surface treatment" | "表面処理" => Field::Text("surface_treatment"),
+        "scale" | "尺度" => Field::Text("scale"),
+        "inspection date" | "検査日" | "検査年月日" => Field::Date("inspection_date"),
+        "issue date" | "date of issue" | "発行日" | "作成日" => Field::Date("issue_date"),
+        "delivery date" | "due date" | "納期" | "納入日" | "納入期限" => Field::Date("delivery_date"),
+        "drawn" | "drawn by" | "設計" | "作図" | "製図" => Field::Stamp("drawn"),
+        "checked" | "checked by" | "検図" | "照査" => Field::Stamp("checked"),
+        "承認" => Field::Stamp("approved"),
+        "印影" => Field::Seal,
+        "fax sender" => Field::Fax("sender"),
+        "fax number" => Field::Fax("number"),
+        "fax sent at" => Field::Fax("sent_at"),
+        "単位" | "unit" | "uom" => Field::UnitColumn,
         _ => {
+            if let Some(e) = ELEMENTS.iter().find(|e| **e == label) {
+                return Some(Field::Element(e));
+            }
+            for (prefix, suffix) in [("", " nominal"), ("nominal ", "")] {
+                if let Some(rest) = label.strip_prefix(prefix).and_then(|r| r.strip_suffix(suffix))
+                    && rest != label
+                    && let Some(d) = dim(rest)
+                {
+                    return Some(Field::Nominal(d));
+                }
+            }
             if let Some(d) = dim(label) {
                 return Some(Field::Dimension(d));
             }
@@ -199,6 +262,12 @@ pub(crate) fn field(label: &str) -> Option<Field> {
                     && let Some(d) = dim(rest)
                 {
                     return Some(Field::Measured(d));
+                }
+                if let Some(rest) = label.strip_prefix(prefix).and_then(|r| r.strip_suffix(suffix))
+                    && rest != label
+                    && let Some(p) = PROPS.iter().find(|(k, _)| *k == rest)
+                {
+                    return Some(Field::Property(p.1));
                 }
             }
             for (prefix, suffix) in [("", " tolerance"), ("tolerance ", ""), ("", " tol")] {
@@ -279,16 +348,34 @@ pub fn apply_column_mapping(records: &[Record], m: &ColumnMapping) -> Vec<Record
     out
 }
 
-/// "120.5 mm" → (decimal, unit). Comma decimals and exponents are not accepted (kept as text instead).
+/// "120.5 mm", "120.5㎜", "HRC55", "Ra 1.6", "φ25", "1,200 個", "￥1,250", "440 N/mm²" → (decimal, unit).
+/// Comma decimals and exponents are not accepted (kept as text instead); a comma is only a thousands separator.
 fn parse_quantity(v: &str, label_unit: Option<&str>) -> Option<(String, Option<String>)> {
-    let t = safe_normalize(v);
+    if v.chars().count() > 200 {
+        return None;
+    }
+    let folded = ja::fold(v);
+    let t = folded.trim_start_matches(['φ', 'Φ', '∅', 'Ø', '⌀']).trim();
+    if let Some((num, unit)) = ja::split_prefix_unit(t) {
+        let num = ja::strip_thousands(num).unwrap_or_else(|| num.to_string());
+        return parse_decimal(&num).ok().map(|n| (n, Some(unit.to_string())));
+    }
     let end = t
         .char_indices()
-        .find(|(i, c)| !(c.is_ascii_digit() || *c == '.' || (*i == 0 && (*c == '-' || *c == '+'))))
+        .find(|(i, c)| !(c.is_ascii_digit() || *c == '.' || *c == ',' || (*i == 0 && (*c == '-' || *c == '+'))))
         .map(|(i, _)| i)
         .unwrap_or(t.len());
-    let num = parse_decimal(&t[..end]).ok()?;
+    let raw_num = &t[..end];
+    let num_text = if raw_num.contains(',') {
+        ja::strip_thousands(raw_num)?
+    } else {
+        raw_num.to_string()
+    };
+    let num = parse_decimal(&num_text).ok()?;
     let unit = t[end..].trim();
+    if let Some(u) = ja::ja_unit(unit) {
+        return Some((num, Some(u.to_string())));
+    }
     if !unit.is_empty()
         && conflict_engine::units::parse_unit(unit).is_none()
         && !unit.chars().all(|c| c.is_alphabetic() || "°µμ/²\"%".contains(c))
@@ -296,7 +383,7 @@ fn parse_quantity(v: &str, label_unit: Option<&str>) -> Option<(String, Option<S
         return None;
     }
     let unit = if unit.is_empty() {
-        label_unit.map(str::to_string)
+        label_unit.map(|u| ja::ja_unit(u).map_or_else(|| ja::fold(u).to_lowercase(), str::to_string))
     } else {
         Some(unit.to_lowercase())
     };
@@ -337,16 +424,25 @@ fn parse_bound(v: &str, label_unit: Option<&str>) -> Option<(&'static str, Strin
     None
 }
 
-/// "±0.1", "+/-0.1 mm", "+0.1/-0.2", "0.05" → (plus, minus, unit).
+/// "±0.1", "+/-0.1 mm", "+0.1/-0.2", "＋０．１／−０", "-0.05/+0", "0.05" → (plus, minus, unit).
 fn parse_tolerance(v: &str, label_unit: Option<&str>) -> Option<(String, String, Option<String>)> {
-    let t = safe_normalize(v).replace("+/-", "±").replace("+-", "±");
+    if v.chars().count() > 60 {
+        return None;
+    }
+    let t = ja::fold(v).replace("+/-", "±").replace("+-", "±");
     if let Some(rest) = t.strip_prefix('±') {
         let (n, u) = parse_quantity(rest.trim(), label_unit)?;
         return Some((n.clone(), n, u));
     }
     if let Some((a, b)) = t.split_once('/').or_else(|| t.split_once(" -")) {
-        let (p, u1) = parse_quantity(a.trim().trim_start_matches('+'), label_unit)?;
-        let (m, u2) = parse_quantity(b.trim().trim_start_matches('-'), label_unit)?;
+        let (a, b) = (a.trim(), b.trim());
+        let (a, b) = if a.starts_with('-') && b.starts_with('+') {
+            (b, a)
+        } else {
+            (a, b)
+        };
+        let (p, u1) = parse_quantity(a.trim_start_matches('+'), label_unit)?;
+        let (m, u2) = parse_quantity(b.trim_start_matches('-'), label_unit)?;
         return Some((p, m, u1.or(u2)));
     }
     let (n, u) = parse_quantity(&t, label_unit)?;
@@ -355,6 +451,9 @@ fn parse_tolerance(v: &str, label_unit: Option<&str>) -> Option<(String, String,
 }
 
 fn parse_date(v: &str) -> Option<String> {
+    if let Some(d) = ja::parse_ja_date(v) {
+        return Some(d);
+    }
     let t = safe_normalize(v).replace(['/', '.'], "-");
     let p: Vec<&str> = t.split('-').collect();
     if p.len() != 3 || p[0].len() != 4 {
@@ -376,22 +475,91 @@ fn parse_date(v: &str) -> Option<String> {
         .then(|| format!("{y:04}-{m:02}-{d:02}"))
 }
 
-fn approval(v: &str) -> String {
-    let t = v.trim().to_lowercase();
-    match t.as_str() {
-        "approved" | "released" | "accepted" | "承認済" | "承認" => "approved".into(),
-        "pending" | "draft" | "in review" | "under review" | "preliminary" => "pending".into(),
-        "rejected" | "not approved" | "withdrawn" => "rejected".into(),
-        _ => t,
+fn approval_word(v: &str) -> Option<&'static str> {
+    match safe_normalize(v).to_lowercase().as_str() {
+        "approved" | "released" | "accepted" | "承認済" | "承認済み" | "承認" | "済" => Some("approved"),
+        "pending" | "draft" | "in review" | "under review" | "preliminary" | "未" | "未承認" => Some("pending"),
+        "rejected" | "not approved" | "withdrawn" | "否認" => Some("rejected"),
+        _ => None,
     }
 }
 
+fn approval(v: &str) -> String {
+    approval_word(v).map_or_else(|| v.trim().to_lowercase(), str::to_string)
+}
+
 fn inspection_result(v: &str) -> String {
-    match v.trim().to_lowercase().as_str() {
+    if let Some(r) = ja::result_word(v) {
+        return r.into();
+    }
+    match safe_normalize(v).to_lowercase().as_str() {
         "pass" | "ok" | "accept" | "accepted" | "good" | "合格" => "pass".into(),
         "fail" | "ng" | "reject" | "rejected" | "nok" | "不合格" => "fail".into(),
         other => other.to_string(),
     }
+}
+
+/// The subject a group's claims are about: its part number (drawing number for document-like kinds), else its
+/// heat number (mill sheets).
+fn own_subject(items: &[(&Record, Option<Field>, Option<String>)], doc_like: bool) -> Option<(&'static str, String)> {
+    let first = |want: &Field| {
+        items
+            .iter()
+            .find(|(r, f, _)| f.as_ref() == Some(want) && !r.value.trim().is_empty())
+            .map(|(r, _, _)| safe_normalize(r.value.trim()))
+    };
+    first(&Field::Part)
+        .or_else(|| if doc_like { first(&Field::Drawing) } else { None })
+        .map(|p| ("part", p))
+        .or_else(|| first(&Field::Text("heat_number")).map(|h| ("heat", h)))
+}
+
+/// Source location of a claim, in the shape `evidence_core::claim::validate` accepts: the record's location with
+/// coordinates rounded to whole points/pixels, `original` when normalisation changed the printed text (全角
+/// digits, 和暦, ㎜), and for OCR values `ocr_conf_bps` plus `review: "needs_confirmation"` below
+/// [`OCR_REVIEW_FLOOR`]. Keys outside the location vocabulary are dropped.
+fn claim_location(r: &Record, normalised: Option<&str>) -> Value {
+    let mut o = serde_json::Map::new();
+    let whole = |x: &Value| {
+        x.as_f64()
+            .filter(|f| f.is_finite() && *f >= 0.0 && *f < 1e6)
+            .map(|f| f.round() as u64)
+    };
+    if let Value::Object(src) = &r.location {
+        for (k, v) in src {
+            if k == "ocr_confidence" {
+                if let Some(c) = v.as_f64().filter(|c| (0.0..=1.0).contains(c)) {
+                    o.insert("ocr_conf_bps".into(), json!((c * 10_000.0).round() as u64));
+                    if c < OCR_REVIEW_FLOOR {
+                        o.insert("review".into(), json!("needs_confirmation"));
+                    }
+                }
+                continue;
+            }
+            if !evidence_core::claim::LOCATION_KEYS.contains(&k.as_str()) || k == "review" || k == "original" {
+                continue; // a document cannot pre-set review flags or originals
+            }
+            let v = match v {
+                Value::Array(a) if a.len() <= 8 => match a.iter().map(whole).collect::<Option<Vec<_>>>() {
+                    Some(ints) => json!(ints),
+                    None => continue,
+                },
+                Value::Number(_) => match whole(v) {
+                    Some(n) => json!(n),
+                    None => continue,
+                },
+                Value::String(s) => json!(s.chars().take(120).collect::<String>()),
+                _ => continue,
+            };
+            o.insert(k.clone(), v);
+        }
+    }
+    let v = r.value.trim();
+    let plain = v.split_whitespace().collect::<Vec<_>>().join(" ").to_uppercase();
+    if normalised.is_some_and(|n| n != v) || ja::fold(v) != plain {
+        o.insert("original".into(), json!(v.chars().take(120).collect::<String>()));
+    }
+    Value::Object(o)
 }
 
 /// Maps records of one artifact. `kind` is the artifact kind; `confidence_bps` comes from the extractor type.
@@ -408,23 +576,40 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
         groups.entry(r.group.as_str()).or_default().push((r, f, unit));
     }
     let doc_like = !matches!(kind, "purchase_order" | "inspection_report");
-    for (g, items) in groups {
+    let pfx = match kind {
+        "purchase_order" => "po",
+        "inspection_report" => "qa",
+        _ => "mfg",
+    };
+    // Groups without their own subject (header fields, table rows, title block, stamps, FAX header) are about
+    // the document's subject when the document names exactly one.
+    let mut subjects: Vec<(&'static str, String)> = groups.values().filter_map(|i| own_subject(i, doc_like)).collect();
+    subjects.sort();
+    subjects.dedup();
+    let doc_subject = (subjects.len() == 1).then(|| subjects[0].clone());
+    let doc_first = |want: &Field| {
+        groups
+            .values()
+            .flatten()
+            .find(|(r, f, _)| f.as_ref() == Some(want) && !r.value.trim().is_empty())
+            .map(|(r, _, _)| r.value.trim().to_string())
+    };
+    let doc_revision = doc_subject.as_ref().and_then(|_| doc_first(&Field::Revision));
+    for (g, items) in &groups {
         let first = |want: &Field| {
             items
                 .iter()
                 .find(|(r, f, _)| f.as_ref() == Some(want) && !r.value.trim().is_empty())
                 .map(|(r, _, _)| r.value.trim().to_string())
         };
-        let Some(part_raw) = first(&Field::Part).or_else(|| if doc_like { first(&Field::Drawing) } else { None })
-        else {
+        let Some((subject_type, subject)) = own_subject(items, doc_like).or_else(|| doc_subject.clone()) else {
             if items.iter().any(|(_, f, _)| f.is_some()) {
                 out.warnings
                     .push(format!("group '{g}': no part number; values not mapped"));
             }
             continue;
         };
-        let part = safe_normalize(&part_raw);
-        let revision = first(&Field::Revision);
+        let revision = first(&Field::Revision).or_else(|| doc_revision.clone());
         let mut scope = serde_json::Map::new();
         if let Some(s) = first(&Field::Supplier) {
             scope.insert("supplier".into(), json!(safe_normalize(&s)));
@@ -438,20 +623,23 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
         if let Some(l) = first(&Field::Lot) {
             scope.insert("lot".into(), json!(safe_normalize(&l)));
         }
-        if let Some(h) = first(&Field::Heat) {
+        if let Some(h) = first(&Field::Text("heat_number")) {
             scope.insert("heat".into(), json!(safe_normalize(&h)));
         }
         let single_dim: Vec<&'static str> = items
             .iter()
-            .filter_map(|(_, f, _)| {
-                if let Some(Field::Dimension(d)) = f {
-                    Some(*d)
-                } else {
-                    None
-                }
+            .filter_map(|(_, f, _)| match f {
+                Some(Field::Dimension(d)) | Some(Field::Nominal(d)) => Some(*d),
+                _ => None,
             })
             .collect();
-        for (r, f, label_unit) in &items {
+        let elements = items
+            .iter()
+            .filter(|(_, f, _)| matches!(f, Some(Field::Element(_))))
+            .count();
+        let row_unit = first(&Field::UnitColumn)
+            .filter(|u| ja::ja_unit(u).is_some() || parse_quantity(&format!("1 {u}"), None).is_some());
+        for (r, f, label_unit) in items {
             let Some(f) = f else { continue };
             let v = r.value.trim();
             if v.is_empty() {
@@ -462,9 +650,10 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                     Some((n, u)) => (Some(n), u),
                     None => (None, None),
                 };
+                let loc = claim_location(r, text.as_deref());
                 out.claims.push(ClaimInput {
-                    subject_type: "part".into(),
-                    subject_key: part.clone(),
+                    subject_type: subject_type.into(),
+                    subject_key: subject.clone(),
                     predicate,
                     value_text: text,
                     value_num,
@@ -474,39 +663,16 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                         "purchase_order" => None,
                         _ => revision.clone(),
                     },
-                    source_location: Some(r.location.clone()),
+                    source_location: Some(loc),
                     confidence_bps: Some(confidence_bps),
                 });
             };
             let lu = label_unit.as_deref();
+            let label = normalize_label(&r.label).0;
             match (f, doc_like, kind) {
-                (Field::Part, ..)
-                | (Field::PoNumber, ..)
-                | (Field::PoLine, ..)
-                | (Field::Lot, ..)
-                | (Field::Heat, ..) => {}
-                (Field::CertificateDate | Field::ShipDate | Field::InspectionDate, _, k)
-                    if k != "inspection_report" => {}
-                (Field::CertificateDate, ..) => match parse_date(v) {
-                    Some(d) => emit("qa.certificate_date".into(), Some(d), None),
-                    None => out.warnings.push("unparsed certificate date".into()),
-                },
-                (Field::ShipDate, ..) => match parse_date(v) {
-                    Some(d) => emit("qa.ship_date".into(), Some(d), None),
-                    None => out.warnings.push("unparsed shipment date".into()),
-                },
-                (Field::InspectionDate, ..) => match parse_date(v) {
-                    Some(d) => emit("qa.inspection_date".into(), Some(d), None),
-                    None => out.warnings.push("unparsed inspection date".into()),
-                },
-                (Field::Chemistry(_), _, k) if k != "inspection_report" => {}
-                (Field::Chemistry(el), ..) => match parse_quantity(v, Some("%")) {
-                    Some((n, _)) => emit(format!("qa.chem.{el}"), None, Some((n, Some("%".into())))),
-                    None => out.warnings.push(format!(
-                        "unparsed chemistry value '{}'",
-                        v.chars().take(40).collect::<String>()
-                    )),
-                },
+                (Field::Part, ..) | (Field::PoNumber, ..) | (Field::PoLine, ..) | (Field::Lot, ..) => {}
+                (Field::UnitColumn, ..) => {}
+                (Field::Text("heat_number"), ..) if subject_type == "heat" => {}
                 (Field::Revision, true, _) => emit("mfg.revision".into(), Some(safe_normalize(v)), None),
                 (Field::Revision, false, "purchase_order") => {
                     emit("po.revision_ordered".into(), Some(safe_normalize(v)), None)
@@ -531,17 +697,54 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                     Some(safe_normalize(v)),
                     None,
                 ),
-                (Field::Quantity, ..) => match parse_quantity(v, lu) {
+                (Field::Text(name), ..) => emit(format!("{pfx}.{name}"), Some(ja::fold(v)), None),
+                (Field::Date(name), ..) => match parse_date(v) {
+                    // Certificates: issue/delivery dates are the certificate and shipment dates the integrity
+                    // signals read (`qa.certificate_date`, `qa.ship_date`).
+                    Some(d) => emit(
+                        match (pfx, *name) {
+                            ("qa", "issue_date") => "qa.certificate_date".into(),
+                            ("qa", "delivery_date") => "qa.ship_date".into(),
+                            _ => format!("{pfx}.{name}"),
+                        },
+                        Some(d),
+                        None,
+                    ),
+                    None => out.warnings.push(format!("unparsed {}", name.replace('_', " "))),
+                },
+                (Field::UnitPrice, ..) => match parse_quantity(v, lu) {
+                    Some(q) => emit(format!("{pfx}.unit_price"), None, Some(q)),
+                    None => out.warnings.push("unparsed unit price".into()),
+                },
+                (Field::Quantity, ..) => match parse_quantity(v, lu.or(row_unit.as_deref())) {
                     Some(q) => emit("po.quantity".into(), None, Some(q)),
                     None => out.warnings.push(format!(
                         "unparsed quantity '{}'",
                         v.chars().take(40).collect::<String>()
                     )),
                 },
-                (Field::Dimension(d), true, _) | (Field::Measured(d), true, _) => match parse_quantity(v, lu) {
-                    Some(q) => emit(format!("mfg.dimension.{d}"), None, Some(q)),
-                    None => emit(format!("mfg.dimension.{d}"), Some(v.to_string()), None),
-                },
+                (Field::Nominal(d), ..) | (Field::Dimension(d), true, _) | (Field::Measured(d), true, _) => {
+                    let pred = format!("mfg.dimension.{d}");
+                    match parse_quantity(v, lu) {
+                        Some(q) => emit(pred, None, Some(q)),
+                        None => match ja::split_inline_tolerance(&ja::fold(v)) {
+                            // "120.5㎜ ±0.1": the dimension and its tolerance in one value
+                            Some((head, tol))
+                                if parse_quantity(&head, lu).is_some() && parse_tolerance(&tol, lu).is_some() =>
+                            {
+                                let q = parse_quantity(&head, lu);
+                                let unit = q.as_ref().and_then(|q| q.1.clone());
+                                emit(pred, None, q);
+                                if let Some((p, m, u)) = parse_tolerance(&tol, lu) {
+                                    let u = u.or(unit);
+                                    emit(format!("mfg.tolerance.{d}.plus"), None, Some((p, u.clone())));
+                                    emit(format!("mfg.tolerance.{d}.minus"), None, Some((m, u)));
+                                }
+                            }
+                            _ => emit(pred, Some(v.to_string()), None),
+                        },
+                    }
+                }
                 (Field::Dimension(d), false, _) | (Field::Measured(d), false, _) => match parse_quantity(v, lu) {
                     Some(q) => emit(format!("qa.measured.{d}"), None, Some(q)),
                     None => out.warnings.push(format!(
@@ -566,6 +769,20 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                         )),
                     }
                 }
+                (Field::Element(e), ..) => {
+                    // A chemistry value: in a mill-sheet row (≥ 3 element columns) or a mass-% labelled column.
+                    let pct = matches!(
+                        lu.map(|u| u.replace(' ', "").to_lowercase()).as_deref(),
+                        Some("%" | "wt%" | "mass%" | "質量%")
+                    );
+                    if elements >= 3 || pct {
+                        let pred = format!("{}.chem.{e}", if pfx == "mfg" { "mfg" } else { "qa" });
+                        match parse_quantity(v, Some(if pct { "%" } else { lu.unwrap_or("%") })) {
+                            Some(q) => emit(pred, None, Some(q)),
+                            None => emit(pred, Some(v.to_string()), None),
+                        }
+                    }
+                }
                 (Field::Property(p), _, _) => {
                     let pfx = if doc_like { "mfg" } else { "qa" };
                     if let (true, Some((bound, n, u))) = (doc_like, parse_bound(v, lu)) {
@@ -579,6 +796,37 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
                 }
                 (Field::ApprovalStatus, ..) => emit("mfg.approval.status".into(), Some(approval(v)), None),
                 (Field::ApprovedBy, ..) => emit("mfg.approval.by".into(), Some(v.to_string()), None),
+                (Field::Stamp(role), ..) => {
+                    if let Some(d) = parse_date(v) {
+                        // a date in the approval box dates the sign-off; only 承認's date is the approval date
+                        if *role == "approved" {
+                            emit("mfg.approval.date".into(), Some(d), None);
+                        }
+                    } else if let Some(s) = approval_word(v).filter(|_| *role == "approved") {
+                        emit("mfg.approval.status".into(), Some(s.into()), None);
+                    } else {
+                        let by = match *role {
+                            "approved" => "mfg.approval.by".to_string(),
+                            r => format!("mfg.approval.{r}_by"),
+                        };
+                        emit(by, Some(v.to_string()), None);
+                        if STAMP_LABELS.contains(&label.as_str()) {
+                            // a name in a paper approval box: a mark is present (not an approval decision)
+                            emit(format!("mfg.approval.mark.{role}"), Some("present".into()), None);
+                        }
+                    }
+                }
+                (Field::Seal, ..) => {
+                    let role = match field(&normalize_label(v).0) {
+                        Some(Field::Stamp(r)) => r,
+                        _ => "unassigned",
+                    };
+                    emit(format!("mfg.approval.mark.{role}"), Some("present".into()), None);
+                }
+                (Field::Fax(part), ..) => {
+                    let text = if *part == "sent_at" { v.to_string() } else { ja::fold(v) };
+                    emit(format!("capture.fax.{part}"), Some(text), None)
+                }
                 (Field::ApprovalDate, ..) => match parse_date(v) {
                     Some(d) => emit("mfg.approval.date".into(), Some(d), None),
                     None => out.warnings.push("unparsed approval date".into()),
@@ -650,10 +898,8 @@ mod tests {
             (Some("1.2"), Some("%"))
         );
         assert_eq!(find(&m, "qa.chem.c").len(), 1);
-        assert!(
-            find(&m, "qa.chem.s").is_empty(),
-            "a bare 'S' column without % is not an element"
-        );
+        // mfg-map@3: in a row with at least three element columns (mill-sheet context) a bare 'S' is sulphur.
+        assert_eq!(find(&m, "qa.chem.s").len(), 1);
         assert_eq!(mn[0].scope.as_ref().unwrap()["heat"], "H 12345");
         assert!(m.warnings.iter().any(|w| w.contains("inspection date")));
         // On a spec or drawing, chemistry columns are requirements and dates are document dates: not mapped.
@@ -801,6 +1047,244 @@ mod tests {
 }
 
 #[cfg(test)]
+mod ja_tests {
+    use super::*;
+
+    fn rec(label: &str, value: &str, group: &str, loc: Value) -> Record {
+        Record {
+            label: label.into(),
+            value: value.into(),
+            location: loc,
+            group: group.into(),
+        }
+    }
+
+    fn get<'a>(m: &'a Mapped, pred: &str) -> Vec<&'a ClaimInput> {
+        m.claims.iter().filter(|c| c.predicate == pred).collect()
+    }
+
+    #[test]
+    fn inspection_report_item_table_inherits_document_part() {
+        let doc = json!({"page": 1, "line": 3, "bbox": [60.0, 744.2, 180.4, 744.2]});
+        let r = vec![
+            rec("品番", "ＫＺ－１００", "doc", doc.clone()),
+            rec("改訂", "B", "doc", doc.clone()),
+            rec("検査日", "令和7年4月1日", "doc", doc.clone()),
+            rec("数量", "1,200 個", "doc", doc.clone()),
+            rec("外径 規格値 (mm)", "２５．００", "p1t1r1", doc.clone()),
+            rec("外径 公差", "+0/−0.05", "p1t1r1", doc.clone()),
+            rec("外径 測定値 (mm)", "24.98", "p1t1r1", doc.clone()),
+            rec("判定", "○", "p1t1r1", doc.clone()),
+        ];
+        let m = map_records("inspection_report", &r, 8000);
+        assert!(m.warnings.is_empty(), "{:?}", m.warnings);
+        let nom = get(&m, "mfg.dimension.outer_diameter");
+        assert_eq!(
+            (nom[0].value_num.as_deref(), nom[0].value_unit.as_deref()),
+            (Some("25"), Some("mm"))
+        );
+        assert_eq!(nom[0].subject_key, "KZ-100");
+        assert_eq!(nom[0].revision.as_deref(), Some("B"));
+        let loc = nom[0].source_location.as_ref().unwrap();
+        assert_eq!(
+            loc["original"], "２５．００",
+            "full-width original kept next to the value"
+        );
+        assert_eq!(
+            loc["bbox"],
+            json!([60, 744, 180, 744]),
+            "coordinates rounded for the location contract"
+        );
+        assert_eq!(
+            get(&m, "mfg.tolerance.outer_diameter.plus")[0].value_num.as_deref(),
+            Some("0")
+        );
+        assert_eq!(
+            get(&m, "mfg.tolerance.outer_diameter.minus")[0].value_num.as_deref(),
+            Some("0.05")
+        );
+        assert_eq!(
+            get(&m, "qa.measured.outer_diameter")[0].value_num.as_deref(),
+            Some("24.98")
+        );
+        assert_eq!(get(&m, "qa.result")[0].value_text.as_deref(), Some("pass"));
+        let d = get(&m, "qa.inspection_date");
+        assert_eq!(d[0].value_text.as_deref(), Some("2025-04-01"));
+        assert_eq!(d[0].source_location.as_ref().unwrap()["original"], "令和7年4月1日");
+        let q = get(&m, "po.quantity");
+        assert_eq!(
+            (q[0].value_num.as_deref(), q[0].value_unit.as_deref()),
+            (Some("1200"), Some("pcs"))
+        );
+        assert!(m.claims.iter().all(|c| evidence_core::claim::validate(c).is_ok()));
+    }
+
+    #[test]
+    fn two_parts_in_a_document_are_not_guessed() {
+        let l = json!({"line": 1});
+        let r = vec![
+            rec("品番", "A-1", "csv:2", l.clone()),
+            rec("品番", "A-2", "csv:3", l.clone()),
+            rec("発行日", "R7.4.1", "doc", l.clone()),
+        ];
+        let m = map_records("purchase_order", &r, 9000);
+        assert!(get(&m, "po.issue_date").is_empty());
+        assert_eq!(m.warnings.len(), 1);
+    }
+
+    #[test]
+    fn mill_sheet_chemistry_needs_element_context_and_heat_is_the_subject() {
+        let l = json!({"line": 1});
+        let mut r = vec![rec("溶鋼番号", "A12345", "p1t1r1", l.clone())];
+        for (e, v) in [("C (%)", "0.15"), ("Si (%)", "0.22"), ("Mn (%)", "0.65")] {
+            r.push(rec(e, v, "p1t1r1", l.clone()));
+        }
+        r.push(rec("引張強さ (N/mm²)", "４４０", "p1t1r1", l.clone()));
+        r.push(rec("伸び (%)", "28", "p1t1r1", l.clone()));
+        r.push(rec("鋼種", "SS400", "doc", l.clone()));
+        r.push(rec("S", "12", "other", l.clone())); // a lone 'S' column elsewhere is not sulphur
+        let m = map_records("certificate", &r, 8000);
+        let c = get(&m, "mfg.chem.c");
+        assert_eq!(
+            (c[0].subject_type.as_str(), c[0].subject_key.as_str()),
+            ("heat", "A12345")
+        );
+        assert_eq!(c[0].value_unit.as_deref(), Some("%"));
+        let ts = get(&m, "mfg.property.tensile_strength");
+        assert_eq!(
+            (ts[0].value_num.as_deref(), ts[0].value_unit.as_deref()),
+            (Some("440"), Some("MPa"))
+        );
+        assert_eq!(
+            get(&m, "mfg.material")[0].subject_key,
+            "A12345",
+            "single heat: document fields inherit it"
+        );
+        assert!(get(&m, "mfg.chem.s").is_empty());
+    }
+
+    #[test]
+    fn approval_boxes_stamps_and_fax_header() {
+        let l = json!({"page": 1, "line": 9});
+        let r = vec![
+            rec("図番", "DW-1", "doc", l.clone()),
+            rec("設計", "山田", "title_block", l.clone()),
+            rec("設計", "R7.4.1", "title_block", l.clone()),
+            rec("承認", "鈴木", "title_block", l.clone()),
+            rec("承認", "R7.4.3", "title_block", l.clone()),
+            rec(
+                "印影",
+                "検図",
+                "stamps",
+                json!({"page": 1, "bbox_px": [1092, 2100, 1160, 2164], "red_px": 67, "detector": "red-ink@1"}),
+            ),
+            rec(
+                "印影",
+                "unassigned",
+                "stamps",
+                json!({"page": 1, "bbox_px": [10, 10, 70, 70]}),
+            ),
+            rec("fax sender", "株式会社山本製作所", "fax_header", l.clone()),
+            rec("fax sent at", "2025-04-01T10:23", "fax_header", l.clone()),
+        ];
+        let m = map_records("drawing", &r, 5000);
+        assert_eq!(get(&m, "mfg.approval.drawn_by")[0].value_text.as_deref(), Some("山田"));
+        assert_eq!(get(&m, "mfg.approval.by")[0].value_text.as_deref(), Some("鈴木"));
+        assert_eq!(
+            get(&m, "mfg.approval.date")[0].value_text.as_deref(),
+            Some("2025-04-03")
+        );
+        assert_eq!(
+            get(&m, "mfg.approval.date").len(),
+            1,
+            "a 設計 date is not the approval date"
+        );
+        for role in ["drawn", "approved", "checked", "unassigned"] {
+            assert_eq!(get(&m, &format!("mfg.approval.mark.{role}")).len(), 1, "{role}");
+        }
+        assert!(
+            get(&m, "mfg.approval.status").is_empty(),
+            "a mark is never an approval decision"
+        );
+        let seal = get(&m, "mfg.approval.mark.checked")[0]
+            .source_location
+            .as_ref()
+            .unwrap();
+        assert_eq!(seal["bbox_px"], json!([1092, 2100, 1160, 2164]));
+        assert_eq!(
+            get(&m, "capture.fax.sender")[0].value_text.as_deref(),
+            Some("株式会社山本製作所")
+        );
+        assert_eq!(
+            get(&m, "capture.fax.sent_at")[0].value_text.as_deref(),
+            Some("2025-04-01T10:23")
+        );
+        assert!(m.claims.iter().all(|c| evidence_core::claim::validate(c).is_ok()));
+    }
+
+    #[test]
+    fn low_confidence_ocr_values_need_confirmation_and_documents_cannot_preset_flags() {
+        let r = vec![
+            rec("品番", "KZ-1", "doc", json!({"page": 1, "ocr_confidence": 0.93})),
+            rec(
+                "材質",
+                "SS400",
+                "doc",
+                json!({"page": 1, "ocr_confidence": 0.41, "bbox_px": [1, 2, 3, 4]}),
+            ),
+            rec(
+                "硬さ",
+                "HRC55",
+                "doc",
+                json!({"page": 1, "review": "accepted", "original": "x", "evil": {"a": 1}}),
+            ),
+        ];
+        let m = map_records("specification", &r, 5000);
+        let mat = get(&m, "mfg.material")[0].source_location.as_ref().unwrap();
+        assert_eq!(
+            (mat["review"].as_str(), mat["ocr_conf_bps"].as_u64()),
+            (Some("needs_confirmation"), Some(4100))
+        );
+        let h = get(&m, "mfg.property.hardness")[0];
+        assert_eq!(
+            (h.value_num.as_deref(), h.value_unit.as_deref()),
+            (Some("55"), Some("hrc"))
+        );
+        let hl = h.source_location.as_ref().unwrap();
+        assert!(hl.get("review").is_none() && hl.get("evil").is_none() && hl.get("original").is_none());
+    }
+
+    #[test]
+    fn hostile_japanese_values_stay_text_or_are_refused() {
+        for v in [
+            "令和99999999999999999年1月1日",
+            "R7.4.1.5",
+            "１,２３４,５",
+            "±±0.1",
+            "+0.1/−",
+            "φ",
+            "HRC",
+            "￥",
+        ] {
+            let _ = parse_quantity(v, None);
+            let _ = parse_tolerance(v, None);
+            assert_eq!(parse_date(v), None, "{v}");
+        }
+        assert_eq!(parse_quantity("1,2345", None), None);
+        assert_eq!(parse_quantity(&"9".repeat(500), None), None);
+        assert_eq!(
+            parse_tolerance("-0.05/+0", None),
+            Some(("0".into(), "0.05".into(), None))
+        );
+        assert_eq!(parse_quantity("Ra 1.6", None), Some(("1.6".into(), Some("ra".into()))));
+        assert_eq!(
+            parse_quantity("￥1,250", None),
+            Some(("1250".into(), Some("jpy".into())))
+        );
+    }
+}
+
+#[cfg(test)]
 mod fuzz {
     use super::*;
     use proptest::prelude::*;
@@ -816,6 +1300,19 @@ mod fuzz {
             let m = map_records(&kind, &records, 8000);
             for c in &m.claims {
                 prop_assert!(evidence_core::claim::validate(c).is_ok(), "{c:?}");
+            }
+        }
+
+        /// Whatever the document says, an OCR value below the floor is always flagged for confirmation.
+        #[test]
+        fn fuzz_low_confidence_ocr_claims_are_always_flagged(
+            recs in proptest::collection::vec(("\\PC{0,20}", "\\PC{0,20}", 0.0f64..0.7999), 0..20),
+        ) {
+            let mut records = vec![Record { label: "品番".into(), value: "KZ-1".into(), location: json!({"page": 1}), group: "doc".into() }];
+            records.extend(recs.into_iter().map(|(l, v, c)| Record { label: l, value: v, location: json!({"page": 1, "ocr_confidence": c, "review": "accepted"}), group: "doc".into() }));
+            let m = map_records("drawing", &records, 5000);
+            for c in m.claims.iter().filter(|c| c.source_location.as_ref().is_some_and(|l| l.get("ocr_conf_bps").is_some())) {
+                prop_assert_eq!(c.source_location.as_ref().unwrap()["review"].as_str(), Some("needs_confirmation"));
             }
         }
 

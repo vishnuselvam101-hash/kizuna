@@ -25,10 +25,11 @@ import sys
 from . import __version__
 from .claims import get_claim_extractor
 from .documents import pdf_extract
-from .drawing import dxf_records, pdf_metadata, title_block
+from .drawing import STAMP_LABELS, dxf_records, pdf_metadata, title_block
 from .errors import ExtractionError
 from .ocr import TesseractOcr, image_pixels, rasterize_pdf
-from .records import Sink, records_from_lines
+from .records import Sink, _rec, records_from_lines
+from .stamps import assign_roles, jpeg_as_pdf, png_as_pdf, render_small, seal_regions
 from .tabular import csv_records, xlsx_records
 
 DEFAULT_LIMITS = {
@@ -125,13 +126,15 @@ def extract(
                 for pno, png in enumerate(
                     rasterize_pdf(data, min(limits["max_pages"], limits["max_ocr_pages"])), 1
                 ):
-                    lines += ocr.recognize(png, page=pno)
+                    page_lines = ocr.recognize(png, page=pno)
+                    seals(data, pno, 50, page_lines, sink)
+                    lines += page_lines
                 method = "ocr"
                 warnings.append("pdf_without_text_layer_ocr_applied")
             else:
                 warnings.append("pdf_has_no_text_layer_ocr_unavailable")
         records_from_lines(lines, method, sink)
-        title_block(lines, sink)
+        title_block(lines, sink, method)
         pdf_metadata(meta, sink)
         name = "pdf@2"
     elif media_type in DXF:
@@ -148,12 +151,33 @@ def extract(
             return "ocr-none@1", [], ["ocr_unavailable"]
         lines = ocr.recognize(data)
         records_from_lines(lines, "ocr", sink)
+        title_block(lines, sink, "ocr")
+        wrapped = png_as_pdf(data) or jpeg_as_pdf(data)
+        if wrapped is None:
+            warnings.append("stamp_detection_skipped:image_format")
+        else:
+            seals(wrapped, 1, 18, lines, sink)
         name = "ocr-tesseract@2"
     else:
         raise ExtractionError("unsupported_media_type")
     if sink.full:
         warnings.append("records_truncated")
     return name, sink.items, warnings
+
+
+def seals(pdf: bytes, page: int, dpi: float, lines: list, sink: Sink) -> None:
+    """印影 regions on one scanned page as records (label 印影, value = approval role or 'unassigned')."""
+    small = render_small(pdf, page, dpi)
+    if small is None:
+        return
+    for region, role in assign_roles(seal_regions(*small), lines, STAMP_LABELS):
+        loc = {
+            "page": page,
+            "bbox_px": region["bbox_px"],
+            "red_px": region["red_px"],
+            "detector": "red-ink@1",
+        }
+        sink.add(_rec("印影", role or "unassigned", loc, "stamps", "ocr-stamp", 0.6))
 
 
 def _bounded(out: dict) -> str:

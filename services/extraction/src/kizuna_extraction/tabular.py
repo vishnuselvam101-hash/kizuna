@@ -13,6 +13,7 @@ import zlib
 from posixpath import normpath
 from xml.parsers import expat
 
+from .claims import lookup, normalize_label
 from .errors import ExtractionError
 from .records import Sink, _rec
 
@@ -32,16 +33,58 @@ def col_name(n: int) -> str:
 def rows_to_records(
     rows, sink: Sink, sheet: str | None, method: str, formulas: set | None = None, header_row: int = 0
 ) -> None:
-    """`header_row` 0: first non-empty row is the header; N: row N is the header, earlier rows skipped."""
+    """`header_row` N: row N is the header, earlier rows skipped. 0: detected header, the first row with
+    at least three cells most of which are known labels (within the first PREAMBLE_ROWS rows; Japanese exports
+    put a title, issue date and addressee above the table), else the first non-empty row. Two-cell
+    `label,value` rows above a detected header become document-level records."""
     header: list[str] | None = None
+    pending: list[tuple[int, list[str]]] = []
     for rno, row in rows:
         cells = [(c or "").strip() for c in row]
         if header is None:
-            if header_row and rno < header_row:
+            if header_row:
+                if rno >= header_row:
+                    header = cells
                 continue
-            if any(cells) or header_row:
+            if not any(cells):
+                continue
+            pending.append((rno, cells))
+            if _header_like(cells):
                 header = cells
+                _preamble(pending[:-1], sink, method)
+                pending = []
+            elif len(pending) >= PREAMBLE_ROWS:
+                (_r, header), rest = pending[0], pending[1:]
+                pending = []
+                _body(rest, header, sink, sheet, method, formulas)
             continue
+        _body([(rno, cells)], header, sink, sheet, method, formulas)
+        if sink.full:
+            return
+    if header is None and pending:  # short file without a recognisable header: old behaviour
+        (_r, header), rest = pending[0], pending[1:]
+        _body(rest, header, sink, sheet, method, formulas)
+
+
+PREAMBLE_ROWS = 20
+
+
+def _header_like(cells: list[str]) -> bool:
+    filled = [c for c in cells if c]
+    known = sum(lookup(normalize_label(c)[0]) is not None for c in filled)
+    return len(filled) >= 3 and known * 2 > len(filled)
+
+
+def _preamble(rows: list[tuple[int, list[str]]], sink: Sink, method: str) -> None:
+    for rno, cells in rows:
+        filled = [(i, c) for i, c in enumerate(cells, start=1) if c]
+        if len(filled) == 2 and lookup(normalize_label(filled[0][1])[0]) is not None:
+            loc = {"row": rno, "col": filled[1][0]}
+            sink.add(_rec(filled[0][1], filled[1][1], loc, "doc", method, 0.95))
+
+
+def _body(rows, header: list[str], sink: Sink, sheet: str | None, method: str, formulas: set | None) -> None:
+    for rno, cells in rows:
         for cno, (h, v) in enumerate(zip(header, cells, strict=False), start=1):
             if not h or not v:
                 continue
