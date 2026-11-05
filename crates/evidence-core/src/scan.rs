@@ -25,7 +25,30 @@ pub struct ScanReport {
     pub scanner: &'static str,
 }
 
-pub const SCANNER: &str = "kizuna-static-scan@1";
+pub const SCANNER: &str = "kizuna-static-scan@2";
+
+const MAX_RELS_PARTS: usize = 200;
+const MAX_RELS_BYTES: usize = 1024 * 1024;
+
+/// A relationships part with any `TargetMode` other than a literal `Internal` (so an entity-encoded or UTF-16 encoded
+/// `External` is caught too: NULs and whitespace are dropped, ASCII is lower-cased).
+fn has_external_target(rels: &[u8]) -> bool {
+    let s: Vec<u8> = rels
+        .iter()
+        .filter(|c| !c.is_ascii_whitespace() && **c != 0)
+        .map(u8::to_ascii_lowercase)
+        .collect();
+    let key = b"targetmode=";
+    let mut i = 0;
+    while let Some(off) = s[i..].windows(key.len()).position(|w| w == key) {
+        let v = &s[i + off + key.len()..];
+        if !(v.starts_with(b"\"internal\"") || v.starts_with(b"'internal'")) {
+            return true;
+        }
+        i += off + key.len();
+    }
+    false
+}
 
 #[derive(Debug, Clone)]
 pub struct Limits {
@@ -144,6 +167,29 @@ pub fn scan(bytes: &[u8], limits: &Limits) -> ScanReport {
                     findings.push("xlsx_macros".into());
                     verdict = Verdict::Quarantine.max_with(verdict);
                 }
+                // Relationships to external targets (remote templates, OLE links, UNC paths, web images) make a
+                // spreadsheet reach out when a colleague opens the downloaded original (red-team 2026-11-05 F4).
+                let rels: Vec<_> = entries.iter().filter(|e| e.name.ends_with(".rels")).collect();
+                if rels.len() > MAX_RELS_PARTS {
+                    findings.push("ooxml_too_many_rels".into());
+                    verdict = Verdict::Quarantine.max_with(verdict);
+                }
+                let mut unreadable = false;
+                let mut external = false;
+                for e in rels.iter().take(MAX_RELS_PARTS) {
+                    match crate::zip::read_entry(bytes, e, MAX_RELS_BYTES) {
+                        Some(x) => external |= has_external_target(&x),
+                        None => unreadable = true,
+                    }
+                }
+                if external {
+                    findings.push("ooxml_external_relationship".into());
+                    verdict = Verdict::Quarantine.max_with(verdict);
+                }
+                if unreadable {
+                    findings.push("ooxml_rels_unreadable".into());
+                    verdict = Verdict::Quarantine.max_with(verdict);
+                }
                 if entries.iter().any(|e| e.name.starts_with("xl/externalLinks/")) {
                     findings.push("xlsx_external_links".into());
                     verdict = Verdict::Quarantine.max_with(verdict);
@@ -195,6 +241,26 @@ impl Verdict {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn external_relationship_targets_are_found_in_any_spelling() {
+        let rel = |m: &str| format!(r#"<Relationships><Relationship Id="r" Target="file://h/x" {m}/></Relationships>"#);
+        assert!(!has_external_target(rel("").as_bytes()));
+        assert!(!has_external_target(rel(r#"TargetMode="Internal""#).as_bytes()));
+        for m in [
+            r#"TargetMode="External""#,
+            r#"targetmode = 'EXTERNAL'"#,
+            r#"TargetMode="&#69;xternal""#,
+            r#"TargetMode="Internal" TargetMode="External""#,
+        ] {
+            assert!(has_external_target(rel(m).as_bytes()), "{m}");
+        }
+        let utf16: Vec<u8> = rel(r#"TargetMode="External""#)
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert!(has_external_target(&utf16));
+    }
 
     /// Builds a stored (uncompressed) ZIP with the given (name, declared_uncompressed, data) entries.
     pub fn make_zip(entries: &[(&str, u32, &[u8])]) -> Vec<u8> {

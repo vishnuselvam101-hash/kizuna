@@ -850,7 +850,9 @@ async fn rt_upload_attacks() {
             "reject/quarantine; safe name",
             actual.replace('|', "/"),
         );
-        if (name.starts_with("ELF") || name.contains("macro") || name.contains("bomb")) && status == "accepted" {
+        if (name.starts_with("ELF") || name.contains("macro") || name.contains("bomb") || name.contains("External"))
+            && status == "accepted"
+        {
             bad.push(format!("{name} accepted"));
         }
         if disp.contains('/') || disp.contains('\r') || disp.contains('\n') || disp.contains('"') {
