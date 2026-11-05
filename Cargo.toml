@@ -9,6 +9,7 @@ members = [
     "crates/domain-manufacturing",
     "crates/dependency-engine",
     "crates/kizuna-api",
+    "crates/kizuna-bench",
 ]
 
 [workspace.package]

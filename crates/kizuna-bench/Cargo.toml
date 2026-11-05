@@ -1,0 +1,28 @@
+[package]
+name = "kizuna-bench"
+version = "0.1.0"
+description = "KIZUNA Verify M6 benchmarks and restore-drill verification (operator tools, not part of the server)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Only crates already in Cargo.lock (no new third-party dependencies).
+[dependencies]
+kizuna-api = { path = "../kizuna-api" }
+entity-resolution = { path = "../entity-resolution" }
+conflict-engine = { path = "../conflict-engine" }
+domain-manufacturing = { path = "../domain-manufacturing" }
+policy-engine = { path = "../policy-engine" }
+rust_decimal.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+time.workspace = true
+hex.workspace = true
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
+base64 = "0.22"
+
+[lints]
+workspace = true

@@ -53,3 +53,17 @@ sqlx 0.9, rand 0.10, sha2 0.11, argon2 0.6, aes-gcm 0.11 (new majors; API change
 | ImageMagick (tests only) | ImageMagick licence | renders an OCR test image |
 
 Not adopted: defusedxml (stdlib ElementTree + DTD refusal + size caps instead, see `tabular.py`), ClamAV (ADR 0011).
+
+## M6 additions (2026-11-05)
+No new Rust, Python or npm packages. `crates/kizuna-bench` uses only crates already in `Cargo.lock`
+(tokio, axum, sqlx, base64, serde_json, uuid, time, hex, rust_decimal) plus workspace crates; `cargo audit` covers it.
+`scripts/e2e/*.py` are Python stdlib only.
+
+| Tool (separate program) | Licence | Use | Advisory check |
+|---|---|---|---|
+| GnuPG 2.4 (`gpg`) | GPL-3.0-or-later | symmetric AES-256 encryption of backups (`scripts/backup.sh`) | distro package; follow Ubuntu USNs for gnupg2 |
+| pg_dump / pg_restore 18 | PostgreSQL licence | logical backup and restore | same package as the server |
+| Caddy 2 (2.6.2 on the dev host; deployment only) | Apache-2.0 | TLS termination / reverse proxy (`docs/deploy/DEPLOYMENT.md`) | track caddyserver/caddy GitHub advisories |
+
+Not adopted: `age` (not installed on the target host; GnuPG is already present and its symmetric mode is
+integrity-protected), `openssl enc` (no authenticated mode for files).
