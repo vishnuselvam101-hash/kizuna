@@ -101,3 +101,27 @@ def parse_tsv(tsv: str, page: int) -> list[Line]:
         ln.extra["px_bbox"] = [int(cells[0].x0), top, int(cells[-1].x1), bottom]
         lines.append(ln)
     return lines
+
+
+def rasterize_pdf(data: bytes, max_pages: int, dpi: int = 200, timeout: int = 60) -> list[bytes]:
+    """Renders pages of a PDF without a text layer to PNG with pdftoppm (stdin to stdout, no files)."""
+    exe = shutil.which("pdftoppm")
+    if exe is None:
+        raise ExtractionError("rasterizer_unavailable")
+    pages: list[bytes] = []
+    for p in range(1, max_pages + 1):
+        try:
+            proc = subprocess.run(  # noqa: S603
+                [exe, "-png", "-r", str(dpi), "-f", str(p), "-l", str(p), "-singlefile", "-"],
+                input=data,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+                env={"PATH": "/usr/bin"},
+            )
+        except subprocess.TimeoutExpired as e:
+            raise ExtractionError("rasterize_timeout") from e
+        if proc.returncode != 0 or not proc.stdout:
+            break  # past the last page (or unreadable)
+        pages.append(proc.stdout)
+    return pages

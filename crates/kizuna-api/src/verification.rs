@@ -35,6 +35,17 @@ impl AttributeRule for NoSelfReview {
     }
 }
 
+fn integerize(v: &mut Value) {
+    match v {
+        Value::Number(n) if n.as_i64().is_none() && n.as_u64().is_none() => {
+            *v = json!(n.as_f64().map(|f| f.round().clamp(0.0, 999_999.0) as i64).unwrap_or(0));
+        }
+        Value::Array(a) => a.iter_mut().for_each(integerize),
+        Value::Object(o) => o.values_mut().for_each(integerize),
+        _ => {}
+    }
+}
+
 /// Canonical identity of a part key: safe normalisation, then confirmed alias.
 pub async fn canonical_key(tx: &mut Tx, key: &str) -> ApiResult<String> {
     let n = safe_normalize(key);
@@ -62,7 +73,7 @@ pub async fn claim_owners(tx: &mut Tx, claims: &[Uuid]) -> ApiResult<Vec<Uuid>> 
 fn confidence_for(extractor: &str) -> i32 {
     match extractor.split('@').next().unwrap_or("") {
         "csv" | "xlsx" => 9000,
-        "pdf" => 8000,
+        "pdf" | "dxf" => 8000,
         _ => 5000,
     }
 }
@@ -203,7 +214,12 @@ async fn extract_locked(
         .filter(|c| c.is_ascii_alphanumeric() || "@-_.".contains(*c))
         .take(40)
         .collect();
-    let mapped = map_records(&art.kind, &out.records, confidence_for(&extractor));
+    // Locations become integers only (e.g. bbox in whole PDF points) so derivations stay canonical (no floats).
+    let mut records = out.records.clone();
+    for r in &mut records {
+        integerize(&mut r.location);
+    }
+    let mapped = map_records(&art.kind, &records, confidence_for(&extractor));
     let method = format!("worker:{extractor}+{MAPPING_VERSION}");
     let run = Uuid::now_v7();
     let mut warnings: Vec<String> = out

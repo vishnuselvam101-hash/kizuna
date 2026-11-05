@@ -123,3 +123,23 @@ def test_ocr_extracts_text_from_image():
     r = run("image/png", png)
     assert r["ok"] and r["extractor"] == "ocr-tesseract@2", r
     assert ("Part Number", "BRK-100") in {(x["label"], x["value"]) for x in r["records"]}, r
+
+
+@pytest.mark.skipif(
+    not (shutil.which("tesseract") and shutil.which("pdftoppm") and MAGICK), reason="ocr tools missing"
+)
+def test_scanned_pdf_is_ocred(tmp_path):
+    out = tmp_path / "scan.pdf"
+    argv = [str(MAGICK), "-size", "1400x300", "xc:white", "-font", "DejaVu-Sans-Mono", "-pointsize", "48"]
+    argv += ["-fill", "black", "-annotate", "+20+100", "Part Number: BRK-100", str(out)]
+    subprocess.run(argv, check=True)  # noqa: S603
+    r = run("application/pdf", out.read_bytes())
+    assert r["ok"], r
+    assert "pdf_without_text_layer_ocr_applied" in r["warnings"]
+    assert ("Part Number", "BRK-100") in {(x["label"], x["value"]) for x in r["records"]}
+
+
+def test_regression_review_l4_utf16_dtd_refused():
+    sst = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE x [<!ENTITY a "aaaa">]><sst/>'.encode("utf-16")
+    evil = make_xlsx([["a"], ["b"]], extra={"xl/sharedStrings.xml": sst})
+    assert run(XLSX, evil) == {"ok": False, "error": "xlsx_dtd_refused"}

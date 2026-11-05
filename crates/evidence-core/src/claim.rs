@@ -119,8 +119,8 @@ pub struct ValidClaim {
     pub confidence_bps: i32,
 }
 
-const LOCATION_KEYS: [&str; 9] = [
-    "page", "table", "row", "col", "sheet", "cell", "record", "region", "line",
+const LOCATION_KEYS: [&str; 13] = [
+    "page", "table", "row", "col", "sheet", "cell", "record", "region", "line", "section", "handle", "bbox", "bbox_px",
 ];
 
 pub fn validate(c: &ClaimInput) -> Result<ValidClaim, ClaimError> {
@@ -163,7 +163,14 @@ pub fn validate(c: &ClaimInput) -> Result<ValidClaim, ClaimError> {
         return Err(ClaimError::Location);
     };
     for (k, v) in obj {
-        let ok_val = v.as_u64().is_some_and(|n| n < 1_000_000) || v.as_str().is_some_and(|s| s.len() <= 120);
+        let small = |v: &Value| v.as_u64().is_some_and(|n| n < 1_000_000);
+        let ok_val = small(v)
+            || v.as_str().is_some_and(|s| s.len() <= 120)
+            || v.as_array().is_some_and(|a| {
+                a.len() <= 8
+                    && a.iter()
+                        .all(|x| x.as_i64().is_some_and(|n| (0..1_000_000).contains(&n)))
+            });
         if !LOCATION_KEYS.contains(&k.as_str()) || !ok_val {
             return Err(ClaimError::Location);
         }

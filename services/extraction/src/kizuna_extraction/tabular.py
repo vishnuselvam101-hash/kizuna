@@ -10,6 +10,7 @@ import re
 import xml.etree.ElementTree as ET
 import zipfile
 from posixpath import normpath
+from xml.parsers import expat
 
 from .errors import ExtractionError
 from .records import Sink, _rec
@@ -117,8 +118,7 @@ class _Zip:
         self.read_total += len(data)
         if self.read_total > self.limits["max_total_unzipped"]:
             raise ExtractionError("xlsx_zip_bomb")
-        if b"<!DOCTYPE" in data[:4096] or b"<!ENTITY" in data:
-            raise ExtractionError("xlsx_dtd_refused")
+        _refuse_dtd(data)
         return data
 
     def xml(self, name: str) -> ET.Element:
@@ -128,6 +128,21 @@ class _Zip:
             return ET.fromstring(self.read(name))  # noqa: S314
         except ET.ParseError as e:
             raise ExtractionError("xlsx_bad_xml") from e
+
+
+def _refuse_dtd(data: bytes) -> None:
+    """Refuses DOCTYPE/ENTITY at the parser level, in any encoding expat reads (review finding L4)."""
+    p = expat.ParserCreate()
+
+    def refuse(*_a: object) -> None:
+        raise ExtractionError("xlsx_dtd_refused")
+
+    p.StartDoctypeDeclHandler = refuse
+    p.EntityDeclHandler = refuse
+    try:
+        p.Parse(data, True)
+    except expat.ExpatError as e:
+        raise ExtractionError("xlsx_bad_xml") from e
 
 
 def _ref_to_col(ref: str) -> int:

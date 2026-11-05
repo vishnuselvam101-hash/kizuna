@@ -168,7 +168,7 @@ pub fn scan(bytes: &[u8], limits: &Limits) -> ScanReport {
                 findings.push("csv_formula_prefix".into());
             }
         }
-        FileType::Png | FileType::Jpeg | FileType::Tiff => {}
+        FileType::Png | FileType::Jpeg | FileType::Tiff | FileType::Dxf => {}
     }
     ScanReport {
         verdict,

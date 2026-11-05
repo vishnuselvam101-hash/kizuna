@@ -23,7 +23,7 @@ from .claims import get_claim_extractor
 from .documents import pdf_extract
 from .drawing import dxf_records, pdf_metadata, title_block
 from .errors import ExtractionError
-from .ocr import TesseractOcr, image_pixels
+from .ocr import TesseractOcr, image_pixels, rasterize_pdf
 from .records import Sink, records_from_lines
 from .tabular import csv_records, xlsx_records
 
@@ -42,6 +42,7 @@ DEFAULT_LIMITS = {
     "max_rows": 1_000_000,
     "max_cols": 1000,
     "max_dxf_pairs": 5_000_000,
+    "max_ocr_pages": 20,
     "max_image_pixels": 60_000_000,
 }
 MAX_INPUT = 64 * 1024 * 1024
@@ -77,9 +78,20 @@ def extract(media_type: str, data: bytes, limits: dict) -> tuple[str, list[dict]
     elif media_type == "application/pdf":
         lines, meta, w = pdf_extract(data, limits)
         warnings += w
+        method = "pdf"
         if not lines:
-            warnings.append("pdf_has_no_text_layer_ocr_not_applied")
-        records_from_lines(lines, "pdf", sink)
+            # Scanned PDF: render pages and OCR them (bounded page count), still inside the sandbox.
+            ocr = TesseractOcr()
+            if ocr.available():
+                for pno, png in enumerate(
+                    rasterize_pdf(data, min(limits["max_pages"], limits["max_ocr_pages"])), 1
+                ):
+                    lines += ocr.recognize(png, page=pno)
+                method = "ocr"
+                warnings.append("pdf_without_text_layer_ocr_applied")
+            else:
+                warnings.append("pdf_has_no_text_layer_ocr_unavailable")
+        records_from_lines(lines, method, sink)
         title_block(lines, sink)
         pdf_metadata(meta, sink)
         name = "pdf@2"

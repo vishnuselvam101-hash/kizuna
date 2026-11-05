@@ -8,6 +8,8 @@ pub enum FileType {
     Png,
     Jpeg,
     Tiff,
+    /// AutoCAD DXF (ASCII drawing exchange format).
+    Dxf,
 }
 
 impl FileType {
@@ -19,6 +21,7 @@ impl FileType {
             FileType::Png => "image/png",
             FileType::Jpeg => "image/jpeg",
             FileType::Tiff => "image/tiff",
+            FileType::Dxf => "image/vnd.dxf",
         }
     }
 
@@ -30,10 +33,18 @@ impl FileType {
             FileType::Png,
             FileType::Jpeg,
             FileType::Tiff,
+            FileType::Dxf,
         ]
         .into_iter()
         .find(|t| t.media_type() == s)
     }
+}
+
+/// ASCII DXF starts with group code 0 followed by SECTION.
+fn is_dxf(b: &[u8]) -> bool {
+    let head = String::from_utf8_lossy(&b[..b.len().min(64)]);
+    let mut lines = head.lines().map(str::trim).filter(|l| !l.is_empty());
+    lines.next() == Some("0") && lines.next() == Some("SECTION")
 }
 
 /// Detects an allowed type from magic bytes. Text is accepted as CSV only if it is valid UTF-8 without control characters (except tab/CR/LF).
@@ -54,7 +65,11 @@ pub fn detect(b: &[u8]) -> Option<FileType> {
             .any(|&c| c < 0x20 && !matches!(c, b'\t' | b'\n' | b'\r') || c == 0x7f)
         && std::str::from_utf8(b).is_ok()
     {
-        Some(FileType::Csv)
+        if is_dxf(b) {
+            Some(FileType::Dxf)
+        } else {
+            Some(FileType::Csv)
+        }
     } else {
         None
     }
@@ -73,5 +88,7 @@ mod tests {
         assert_eq!(detect(&[0xC3, 0x28]), None, "invalid UTF-8");
         assert_eq!(detect(b""), None);
         assert_eq!(FileType::from_media_type("text/csv"), Some(FileType::Csv));
+        assert_eq!(detect(b"  0\r\nSECTION\r\n  2\r\nHEADER\r\n"), Some(FileType::Dxf));
+        assert_eq!(FileType::from_media_type("image/vnd.dxf"), Some(FileType::Dxf));
     }
 }

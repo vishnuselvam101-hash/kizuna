@@ -389,3 +389,43 @@ async fn conflicts_are_tenant_isolated() {
         "B's detection never sees A's claims"
     );
 }
+
+#[tokio::test]
+async fn dxf_title_block_and_scanned_pdf_are_extracted() {
+    let c = ctx().await;
+    let (t, slug) = c.tenant().await;
+    let (_, e) = c.user(t, "analyst").await;
+    let tok = c.token(&slug, &e).await;
+    let dxf = b"0\nSECTION\n2\nENTITIES\n0\nATTRIB\n5\n1A\n2\nPART_NO\n1\nBRK-100\n0\nATTRIB\n5\n1B\n2\nREV\n1\nC\n0\nATTRIB\n5\n1C\n2\nMATERIAL\n1\nS355\n0\nENDSEC\n0\nEOF\n";
+    let r = c.upload(&tok, "d.dxf", dxf, Some("drawing")).await;
+    assert_eq!(r.body["artifact"]["media_type"], "image/vnd.dxf");
+    c.ingest(&tok, "d2.dxf", &[dxf.as_slice(), b"999\nx\n"].concat(), "drawing")
+        .await;
+    let ev = c.get("/api/v1/evidence/part/BRK-100", &tok).await;
+    assert!(ev.body.to_string().contains("S355"), "{:?}", ev.body);
+
+    let magick = std::process::Command::new("magick")
+        .args([
+            "-size",
+            "1400x300",
+            "xc:white",
+            "-font",
+            "DejaVu-Sans-Mono",
+            "-pointsize",
+            "48",
+            "-fill",
+            "black",
+            "-annotate",
+            "+20+100",
+            "Part Number: SHF-77",
+            "-annotate",
+            "+20+200",
+            "Material: C45",
+            "pdf:-",
+        ])
+        .output()
+        .expect("imagemagick is required for this test");
+    c.ingest(&tok, "scan.pdf", &magick.stdout, "spec_document").await;
+    let ev = c.get("/api/v1/evidence/part/SHF-77", &tok).await;
+    assert!(ev.body.to_string().contains("C45"), "{:?}", ev.body);
+}
