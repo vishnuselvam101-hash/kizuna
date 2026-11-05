@@ -1,4 +1,5 @@
 import { integrityEn, integrityJa } from "./i18n-integrity";
+import { whatifEn, whatifJa } from "./i18n-whatif";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 // All user-visible UI text lives here. `ja` is typed against `en`, so a missing translation
@@ -741,6 +742,7 @@ export const en = {
   "err.ambiguous_po_line": "This PO line names more than one part.",
   "err.claim_changed_retry": "Evidence changed while recording. Reload and try again.",
   ...integrityEn,
+  ...whatifEn,
   "nav.account": "Account security",
   "login.back": "Start again",
   "login.totpStep": "Enter the 6-digit code from your authenticator app.",
@@ -1611,6 +1613,7 @@ export const ja: Record<Key, string> = {
   "err.ambiguous_po_line": "この発注明細には複数の品番があります。",
   "err.claim_changed_retry": "記録中に証拠が変更されました。再読み込みしてやり直してください。",
   ...integrityJa,
+  ...whatifJa,
   "nav.account": "アカウントのセキュリティ",
   "login.back": "最初からやり直す",
   "login.totpStep": "認証アプリに表示される6桁のコードを入力してください。",

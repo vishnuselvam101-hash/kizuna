@@ -33,6 +33,7 @@ export interface Claim {
   value_num: string | null;
   value_unit: string | null;
   revision: string | null;
+  scope?: Record<string, unknown>;
   artifact_id: string | null;
   artifact_display_name?: string | null;
   source_location: Record<string, string | number>;

@@ -7,6 +7,7 @@ import { useI18n } from "./i18n";
 import { useSession } from "./session";
 import type { Decision, Trace } from "./types";
 import { Badge, download, Empty, Loading, Notice, PageTitle, Panel, short, useLoad } from "./ui";
+import { simPreview, useSimPreview } from "./WhatIfPanel";
 
 export function traceGraph(t: Trace): Graph {
   const d = t.decision;
@@ -39,6 +40,10 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
   const d = t.decision;
   const g = useMemo(() => traceGraph(t), [t]);
   const open = d.status === "valid" || d.status === "potentially_affected";
+  // An active what-if preview highlights this decision and the evidence it would change.
+  const { sim, ids } = useSimPreview();
+  const hl = useMemo(() => new Set(g.nodes.filter((n) => ids.has(n.id)).map((n) => n.id)), [g, ids]);
+  const simHit = sim?.decisions.sample.find((i) => i.decision_id === d.id);
   return (
     <article className="trace" aria-labelledby="trace-h">
       <header className="finding-head">
@@ -61,7 +66,15 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
         <dd>{d.rationale}</dd>
       </dl>
       <h3>{tr("trace.graph")}</h3>
-      <GraphScene g={g} label={tr("trace.graphLabel", { n: t.evidence.length })} onPick={() => {}} height={280} />
+      {sim && (
+        <p className="callout warn" role="status">
+          {simHit ? tr("whatif.traceAffected", { status: tv("decision.status", simHit.status_after) }) : tr("whatif.highlight")}{" "}
+          <button type="button" className="link" onClick={() => simPreview.set(null)}>
+            {tr("whatif.clearHighlight")}
+          </button>
+        </p>
+      )}
+      <GraphScene g={g} label={tr("trace.graphLabel", { n: t.evidence.length })} onPick={() => {}} height={280} highlight={hl.size ? hl : undefined} />
       <h3>{tr("trace.evidence")}</h3>
       <div className="table-wrap">
         <table>

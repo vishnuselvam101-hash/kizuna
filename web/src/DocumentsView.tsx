@@ -5,6 +5,7 @@ import { useSession } from "./session";
 import type { Artifact, ArtifactDetail } from "./types";
 import { fileSize } from "./format";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
+import { WhatIfPanel } from "./WhatIfPanel";
 
 export const DOC_KINDS = ["spec_document", "drawing", "purchase_order", "inspection_report", "spreadsheet", "other"] as const;
 
@@ -122,6 +123,7 @@ export function DocumentsView() {
   // Re-extraction (after an import-settings change) is a deliberate two-step action with a required reason.
   const [re, setRe] = useState<{ id: string; name: string } | null>(null);
   const [rel, setRel] = useState<Artifact | null>(null);
+  const [sim, setSim] = useState<{ id: string; name: string } | null>(null);
   const [reason, setReason] = useState("");
 
   function reextract(e: React.FormEvent) {
@@ -232,6 +234,11 @@ export function DocumentsView() {
           }}
         />
       )}
+      {sim && (
+        <Panel title={sim.name} id="whatif-doc">
+          <WhatIfPanel key={sim.id} doc={sim} onClose={() => setSim(null)} />
+        </Panel>
+      )}
       <Panel title={t("docs.library")} id="lib">
         <Loading on={list.loading} />
         {list.data && list.data.length === 0 && <Empty text={t("docs.none")} />}
@@ -295,6 +302,11 @@ export function DocumentsView() {
                         }
                       >
                         {t("docs.extract")}
+                      </button>
+                    )}
+                    {a.status === "accepted" && (
+                      <button aria-expanded={sim?.id === a.id} aria-label={`${t("whatif.openDoc")} — ${a.display_name}`} onClick={() => setSim({ id: a.id, name: a.display_name })}>
+                        {t("whatif.open")}
                       </button>
                     )}
                     {a.status === "accepted" && can("claim_write") && (

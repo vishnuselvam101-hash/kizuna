@@ -7,6 +7,8 @@ export interface GNode {
   kind: NodeKind;
   label: string;
   tone: "crit" | "ok" | "warn" | "info" | "base";
+  /** What-if marking (simulation graphs): changed evidence, affected or unaffected decisions. */
+  mark?: "changed" | "affected" | "unaffected";
 }
 export interface Graph {
   nodes: GNode[];
@@ -29,7 +31,16 @@ export function webglUsable(): boolean {
 }
 
 /** Static, keyboard-operable SVG rendering of the same graph (reduced motion / no WebGL / low power). */
-export function GraphSvg({ g, label, onPick, height = 320 }: { g: Graph; label: string; onPick: (id: string) => void; height?: number }) {
+type GraphProps = { g: Graph; label: string; onPick: (id: string) => void; height?: number; highlight?: ReadonlySet<string> };
+
+/** Nodes a highlight set covers (ids in the set, or nodes marked by a simulation). */
+export function highlighted(g: Graph, highlight?: ReadonlySet<string>): Set<string> {
+  return new Set(g.nodes.filter((n) => highlight?.has(n.id) || n.mark === "affected" || n.mark === "changed").map((n) => n.id));
+}
+
+export function GraphSvg({ g, label, onPick, height = 320, highlight }: GraphProps) {
+  const { t } = useI18n();
+  const hl = highlighted(g, highlight);
   const W = 1000;
   const per = new Map<number, GNode[]>();
   g.nodes.forEach((n) => per.set(colOf(n.kind), [...(per.get(colOf(n.kind)) ?? []), n]));
@@ -42,7 +53,8 @@ export function GraphSvg({ g, label, onPick, height = 320 }: { g: Graph; label: 
     <svg className="graph-svg" viewBox={`0 0 ${W} ${height}`} role="group" aria-label={label} preserveAspectRatio="xMidYMid meet">
       {g.edges.map(([a, b], i) => {
         const pa = pos.get(a), pb = pos.get(b);
-        return pa && pb ? <line key={i} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} className="g-edge" /> : null;
+        const on = hl.has(a) && hl.has(b);
+        return pa && pb ? <line key={i} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} className={on ? "g-edge hl" : "g-edge"} /> : null;
       })}
       {g.nodes.map((n) => {
         const p = pos.get(n.id);
@@ -50,11 +62,11 @@ export function GraphSvg({ g, label, onPick, height = 320 }: { g: Graph; label: 
         return (
           <g
             key={n.id}
-            className={`g-node ${n.tone}`}
+            className={`g-node ${n.tone}${hl.size ? (hl.has(n.id) ? " hl" : " dim") : ""}`}
             transform={`translate(${p.x} ${p.y})`}
             role="button"
             tabIndex={0}
-            aria-label={n.label}
+            aria-label={hl.has(n.id) ? `${n.label} — ${t("whatif.affected")}` : n.label}
             onClick={() => onPick(n.id)}
             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onPick(n.id))}
           >
@@ -70,7 +82,7 @@ export function GraphSvg({ g, label, onPick, height = 320 }: { g: Graph; label: 
 }
 
 /** WebGL graph (lazy three.js chunk) with SVG fallback. */
-export function GraphScene({ g, label, onPick, height = 360 }: { g: Graph; label: string; onPick: (id: string) => void; height?: number }) {
+export function GraphScene({ g, label, onPick, height = 360, highlight }: GraphProps) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [gl] = useState(webglUsable);
   const [failed, setFailed] = useState(false);
@@ -80,19 +92,19 @@ export function GraphScene({ g, label, onPick, height = 360 }: { g: Graph; label
     let dead = false;
     import("./scene3d")
       .then((m) => {
-        if (!dead && ref.current) dispose = m.mountGraph(ref.current, g, onPick);
+        if (!dead && ref.current) dispose = m.mountGraph(ref.current, g, onPick, highlighted(g, highlight));
       })
       .catch(() => setFailed(true));
     return () => {
       dead = true;
       dispose?.();
     };
-    // Rebuild only when the graph identity changes.
-  }, [gl, g]);
+    // Rebuild only when the graph or the highlight changes.
+  }, [gl, g, highlight]);
   return (
     <figure className="graph">
       {!gl || failed ? (
-        <GraphSvg g={g} label={label} onPick={onPick} height={height} />
+        <GraphSvg g={g} label={label} onPick={onPick} height={height} highlight={highlight} />
       ) : (
         <div className="graph-gl" style={{ height }}>
           <canvas ref={ref} aria-label={label} role="img" />

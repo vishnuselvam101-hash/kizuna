@@ -9,8 +9,8 @@ use std::str::FromStr;
 use axum::Json;
 use axum::extract::{Path, State};
 use entity_resolution::safe_normalize;
-use integrity_signals::cert::{Certificate, DateField, Limit, Limits, Reading};
-use integrity_signals::drift::{DocVersion, FieldValue};
+use integrity_signals::cert::{Certificate, DateField, Limit, Limits, Reading, Signal};
+use integrity_signals::drift::{DocVersion, Drift, FieldValue};
 use integrity_signals::{ENGINE_VERSION, Settings};
 use policy_engine::{Permission, Resource};
 use rust_decimal::Decimal;
@@ -24,6 +24,7 @@ use crate::audit::{self, Record};
 use crate::auth::Principal;
 use crate::db::{self, Tx};
 use crate::error::{ApiError, ApiJson, ApiQuery, ApiResult};
+use crate::simulations::Overlay;
 
 // ---- Settings -------------------------------------------------------------------------------------------------
 
@@ -129,15 +130,17 @@ struct Row {
     display_name: String,
     sha256: String,
     created_at: i64,
+    created_ts: OffsetDateTime,
 }
 
 /// Current, usable claims of accepted documents (same evidence rules as conflict detection: no superseded,
-/// rejected or unreviewed-AI claims), with the artifact they came from.
-async fn load_rows(tx: &mut Tx, kinds: &[&str]) -> ApiResult<Vec<Row>> {
-    Ok(sqlx::query_as::<_, Row>(
+/// rejected or unreviewed-AI claims), with the artifact they came from. `ov` applies a simulated change (what-if).
+async fn load_rows(tx: &mut Tx, kinds: &[&str], ov: &Overlay) -> ApiResult<Vec<Row>> {
+    let mut rows = sqlx::query_as::<_, Row>(
         "SELECT c.id AS claim, c.subject_key, c.predicate, c.value_text, c.value_num::text AS value_num, c.value_unit, \
                 c.revision, c.scope, c.source_location, a.id AS artifact, a.display_name, \
-                encode(a.sha256, 'hex') AS sha256, extract(epoch FROM a.created_at)::bigint AS created_at \
+                encode(a.sha256, 'hex') AS sha256, extract(epoch FROM a.created_at)::bigint AS created_at, \
+                a.created_at AS created_ts \
          FROM claims c JOIN artifacts a ON a.id = c.artifact_id \
          WHERE c.subject_type = 'part' AND c.superseded_at IS NULL AND c.review_status NOT IN ('rejected', 'needs_evidence') \
            AND (c.extraction_method NOT LIKE 'ai:%' OR c.review_status = 'accepted') \
@@ -146,7 +149,42 @@ async fn load_rows(tx: &mut Tx, kinds: &[&str]) -> ApiResult<Vec<Row>> {
     )
     .bind(kinds)
     .fetch_all(&mut **tx)
-    .await?)
+    .await?;
+    if ov.is_empty() {
+        return Ok(rows);
+    }
+    rows.retain(|r| ov.keeps(&r.claim));
+    if let Some(s) = &ov.added
+        && let Some(a) = &s.artifact
+        && s.claim.subject_type == "part"
+        && !matches!(a.status.as_str(), "quarantined" | "rejected")
+        && kinds.contains(&a.kind.as_str())
+    {
+        let c = &s.claim;
+        let row = Row {
+            claim: c.id,
+            subject_key: c.subject_key.clone(),
+            predicate: c.predicate.clone(),
+            value_text: c.value_text.clone(),
+            value_num: c.value_num.clone(),
+            value_unit: c.value_unit.clone(),
+            revision: c.revision.clone(),
+            scope: c.scope.clone(),
+            source_location: c.source_location.clone(),
+            artifact: a.id,
+            display_name: a.display_name.clone(),
+            sha256: a.sha256.clone(),
+            created_at: a.created_ts.unix_timestamp(),
+            created_ts: a.created_ts,
+        };
+        // The new claim is the most recently recorded one of its document: last within that document.
+        let at = rows
+            .iter()
+            .rposition(|r| (r.created_ts, r.artifact) <= (a.created_ts, a.id))
+            .map_or(0, |i| i + 1);
+        rows.insert(at, row);
+    }
+    Ok(rows)
 }
 
 async fn aliases(tx: &mut Tx, subject_type: &str) -> ApiResult<HashMap<String, String>> {
@@ -174,12 +212,12 @@ fn scope_str(r: &Row, k: &str) -> Option<String> {
 }
 
 /// Certificates (inspection reports) and spec limits (from drawings / spec documents, latest document wins).
-async fn load_certificates(tx: &mut Tx) -> ApiResult<(Vec<Certificate>, Limits)> {
+async fn load_certificates(tx: &mut Tx, ov: &Overlay) -> ApiResult<(Vec<Certificate>, Limits)> {
     let parts = aliases(tx, "part").await?;
     let suppliers = aliases(tx, "supplier").await?;
     // One certificate per artifact, part and lot/heat (a CSV report can hold one row per lot).
     let mut certs: BTreeMap<(Uuid, String, Option<String>, Option<String>), Certificate> = BTreeMap::new();
-    for r in load_rows(tx, &["inspection_report"]).await? {
+    for r in load_rows(tx, &["inspection_report"], ov).await? {
         let part = canon(&parts, &r.subject_key);
         let (lot, heat) = (scope_str(&r, "lot"), scope_str(&r, "heat"));
         let id = format!(
@@ -247,7 +285,7 @@ async fn load_certificates(tx: &mut Tx) -> ApiResult<(Vec<Certificate>, Limits)>
         Vec<String>,
     );
     let mut specs: BTreeMap<(String, String), Spec> = BTreeMap::new();
-    for r in load_rows(tx, &["drawing", "spec_document"]).await? {
+    for r in load_rows(tx, &["drawing", "spec_document"], ov).await? {
         let part = canon(&parts, &r.subject_key);
         let (dim, slot) = if let Some(d) = r.predicate.strip_prefix("mfg.dimension.") {
             (d.to_string(), 0)
@@ -298,10 +336,10 @@ async fn load_certificates(tx: &mut Tx) -> ApiResult<(Vec<Certificate>, Limits)>
 }
 
 /// Versions of drawings / specs: one per (artifact, part); key = drawing number (図番) when extracted, else part.
-async fn load_versions(tx: &mut Tx) -> ApiResult<Vec<DocVersion>> {
+async fn load_versions(tx: &mut Tx, ov: &Overlay) -> ApiResult<Vec<DocVersion>> {
     let parts = aliases(tx, "part").await?;
     let mut vs: BTreeMap<(Uuid, String), DocVersion> = BTreeMap::new();
-    for r in load_rows(tx, &["drawing", "spec_document"]).await? {
+    for r in load_rows(tx, &["drawing", "spec_document"], ov).await? {
         let part = canon(&parts, &r.subject_key);
         let v = vs.entry((r.artifact, part.clone())).or_insert_with(|| DocVersion {
             id: r.artifact.to_string(),
@@ -337,6 +375,16 @@ async fn load_versions(tx: &mut Tx) -> ApiResult<Vec<DocVersion>> {
         }
     }
     Ok(vs.into_values().collect())
+}
+
+/// Signals and drift findings the engines produce over the current claims with `ov` applied (no writes).
+pub(crate) async fn live(tx: &mut Tx, ov: &Overlay) -> ApiResult<(i32, Vec<Signal>, Vec<Drift>)> {
+    let (sv, s) = effective(tx).await?;
+    let (certs, limits) = load_certificates(tx, ov).await?;
+    let signals = integrity_signals::cert::analyze(&certs, &limits, &s);
+    let versions = load_versions(tx, ov).await?;
+    let drifts = integrity_signals::drift::detect(&versions, &s);
+    Ok((sv, signals, drifts))
 }
 
 // ---- Run ------------------------------------------------------------------------------------------------------
@@ -388,9 +436,7 @@ pub async fn run_in_tx(tx: &mut Tx, tenant: Uuid) -> ApiResult<RunResp> {
         .bind(tenant.to_string())
         .execute(&mut **tx)
         .await?;
-    let (sv, s) = effective(tx).await?;
-    let (certs, limits) = load_certificates(tx).await?;
-    let signals = integrity_signals::cert::analyze(&certs, &limits, &s);
+    let (sv, signals, drifts) = live(tx, &Overlay::default()).await?;
     let mut signals_new = 0;
     for g in &signals {
         let inserted: Option<bool> = sqlx::query_scalar(
@@ -422,8 +468,6 @@ pub async fn run_in_tx(tx: &mut Tx, tenant: Uuid) -> ApiResult<RunResp> {
         .await?;
         signals_new += usize::from(inserted == Some(true));
     }
-    let versions = load_versions(tx).await?;
-    let drifts = integrity_signals::drift::detect(&versions, &s);
     let mut drift_new = 0;
     for d in &drifts {
         let (Ok(a), Ok(b)) = (Uuid::parse_str(&d.earlier), Uuid::parse_str(&d.later)) else {

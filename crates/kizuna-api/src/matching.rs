@@ -22,20 +22,46 @@ use crate::claims::{self, CLAIM_COLS, ClaimOut};
 use crate::db::{self, Tx};
 use crate::decisions::{self, CreateReq, Prepared};
 use crate::error::{ApiError, ApiJson, ApiQuery, ApiResult};
-use crate::verification::load_facts;
+use crate::simulations::Overlay;
+use crate::verification::load_facts_with;
 
 /// Current part facts and the document each came from.
 async fn load(tx: &mut Tx) -> ApiResult<(Vec<Fact>, BTreeMap<String, String>)> {
-    let facts = load_facts(tx, None).await?;
+    load_with(tx, &Overlay::default()).await
+}
+
+/// [`load`] with a simulated change applied (what-if).
+pub(crate) async fn load_with(tx: &mut Tx, ov: &Overlay) -> ApiResult<(Vec<Fact>, BTreeMap<String, String>)> {
+    let facts = load_facts_with(tx, "part", None, ov).await?;
     let docs: Vec<(Uuid, Uuid)> = sqlx::query_as(
         "SELECT id, artifact_id FROM claims WHERE subject_type = 'part' AND artifact_id IS NOT NULL AND superseded_at IS NULL",
     )
     .fetch_all(&mut **tx)
     .await?;
-    Ok((
-        facts,
-        docs.into_iter().map(|(c, a)| (c.to_string(), a.to_string())).collect(),
-    ))
+    let mut docs: BTreeMap<String, String> = docs
+        .into_iter()
+        .filter(|(c, _)| ov.keeps(c))
+        .map(|(c, a)| (c.to_string(), a.to_string()))
+        .collect();
+    if let Some(s) = &ov.added
+        && s.claim.subject_type == "part"
+        && let Some(a) = s.claim.artifact_id
+    {
+        docs.insert(s.claim.id.to_string(), a.to_string());
+    }
+    Ok((facts, docs))
+}
+
+/// Findings of every PO line (`mfg-match@1`) over `facts`.
+pub(crate) fn all_findings(facts: &[Fact], docs: &BTreeMap<String, String>) -> Vec<(PoLine, MatchSet)> {
+    let parts = by_part(facts);
+    three_way::po_lines(facts)
+        .into_iter()
+        .map(|l| {
+            let m = three_way::evaluate(&l, parts.get(l.part.as_str()).map_or(&[][..], |v| v), docs);
+            (l, m)
+        })
+        .collect()
 }
 
 fn by_part(facts: &[Fact]) -> BTreeMap<&str, Vec<Fact>> {
