@@ -13,6 +13,9 @@ sha2.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "zeroize"] }
+# RFC 6962 Merkle tree over the chain hashes (inclusion proofs for evidence packs); digest 0.11 hence sha2 0.11.
+ct-merkle = "0.3"
+sha2-11 = { package = "sha2", version = "0.11" }
 
 [dev-dependencies]
 proptest.workspace = true

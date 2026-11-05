@@ -44,6 +44,22 @@ export class Api {
     return data as T;
   }
 
+  /** Binary download (e.g. an evidence pack ZIP); JSON errors become ApiError like `request`. */
+  async blob(method: string, path: string, body?: unknown, retry = true): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers["content-type"] = "application/json";
+    if (this.tokens) headers.authorization = `Bearer ${this.tokens.access_token}`;
+    const res = await this.fetchFn(this.base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (res.status === 401 && retry && this.tokens) {
+      if (await this.refresh()) return this.blob(method, path, body, false);
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, (data as { error?: string }).error ?? "unknown");
+    }
+    return res.blob();
+  }
+
   async text(path: string): Promise<string> {
     const headers: Record<string, string> = {};
     if (this.tokens) headers.authorization = `Bearer ${this.tokens.access_token}`;

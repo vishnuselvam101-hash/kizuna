@@ -1090,6 +1090,30 @@ pub async fn report(
     ApiQuery(q): ApiQuery<ReportQuery>,
 ) -> ApiResult<Response> {
     p.require(&st, Permission::DecisionRead).await?;
+    let body = report_body(&st, &p, id).await?;
+    let report_sha = body["report_sha256"].as_str().unwrap_or_default().to_string();
+    crate::security_events::record(
+        &st.pool,
+        Some(p.tenant_id),
+        crate::security_events::Kind::ExportReport,
+        Some(p.user_id),
+        Some(&p.ip),
+        json!({ "decision_id": id, "format": q.format.as_deref().unwrap_or("json"), "report_sha256": report_sha }),
+    )
+    .await;
+    if q.format.as_deref() == Some("markdown") {
+        let mut res = render_markdown(&body).into_response();
+        res.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/markdown; charset=utf-8"),
+        );
+        return Ok(res);
+    }
+    Ok(Json(body).into_response())
+}
+
+/// The verification report of a decision (JSON body, hashed and, when a key is configured, signed).
+pub(crate) async fn report_body(st: &AppState, p: &Principal, id: Uuid) -> ApiResult<Value> {
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
     let trace = build_trace(&mut tx, id).await?;
     let claim_ids: Vec<Uuid> = trace["evidence"]
@@ -1153,17 +1177,7 @@ pub async fn report(
             "message": "\"KZRP1\" || report_sha256 bytes",
         });
     }
-    crate::security_events::record(&st.pool, Some(p.tenant_id), crate::security_events::Kind::ExportReport, Some(p.user_id), Some(&p.ip),
-        json!({ "decision_id": id, "format": q.format.as_deref().unwrap_or("json"), "report_sha256": hex::encode(report_sha) })).await;
-    if q.format.as_deref() == Some("markdown") {
-        let mut res = render_markdown(&body).into_response();
-        res.headers_mut().insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("text/markdown; charset=utf-8"),
-        );
-        return Ok(res);
-    }
-    Ok(Json(body).into_response())
+    Ok(body)
 }
 
 fn md_escape(v: &Value) -> String {

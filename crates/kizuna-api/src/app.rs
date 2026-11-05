@@ -18,7 +18,8 @@ use crate::config::Config;
 use crate::ratelimit::RateLimiter;
 use crate::storage::{FsStore, ObjectStore};
 use crate::{
-    artifacts, audit, auth, claims, decisions, incidents, insights, security_events, users, verification, webauthn,
+    artifacts, audit, auth, claims, decisions, evidence_pack, incidents, insights, security_events, users,
+    verification, webauthn,
 };
 
 #[derive(Clone)]
@@ -131,6 +132,7 @@ pub fn router(st: AppState) -> Router {
         .route("/decisions/{id}", get(decisions::get))
         .route("/decisions/{id}/trace", get(decisions::trace))
         .route("/decisions/{id}/report", get(decisions::report))
+        .route("/decisions/{id}/evidence-pack", post(evidence_pack::export))
         .route("/decisions/{id}/reconfirm", post(decisions::reconfirm))
         .route("/decisions/{id}/revoke", post(decisions::revoke))
         .route("/review-batches", get(crate::review_batches::list))

@@ -14,6 +14,7 @@ members = [
     "crates/kizuna-bench",
     "crates/quality-stats",
     "crates/tolerance",
+    "crates/kizuna-verify-pack",
 ]
 
 [workspace.package]

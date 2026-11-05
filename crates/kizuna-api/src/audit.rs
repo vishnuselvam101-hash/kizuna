@@ -41,7 +41,7 @@ pub fn now_us() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp_nanos(ns - ns % 1000).unwrap_or(OffsetDateTime::UNIX_EPOCH)
 }
 
-fn micros(t: OffsetDateTime) -> i64 {
+pub(crate) fn micros(t: OffsetDateTime) -> i64 {
     (t.unix_timestamp_nanos() / 1000) as i64
 }
 
@@ -97,7 +97,7 @@ pub async fn append(tx: &mut Tx, tenant: Uuid, r: Record<'_>) -> Result<i64, Api
     Ok(ev.seq)
 }
 
-type Row = (
+pub(crate) type Row = (
     i64,
     OffsetDateTime,
     Option<Uuid>,
@@ -128,7 +128,7 @@ fn to_stored(tenant: Uuid, r: Row) -> StoredEvent {
     }
 }
 
-const COLS: &str =
+pub(crate) const COLS: &str =
     "seq, occurred_at, actor_user_id, actor_kind, action, target_type, target_id, details, prev_hash, hash";
 
 #[derive(Debug, Serialize)]
@@ -283,6 +283,9 @@ pub struct Checkpoint {
     /// KZCP2 chain link: SHA-256 (hex) of the previous checkpoint's signature; absent on legacy KZCP1 checkpoints.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prev_signature_sha256: Option<String>,
+    /// KZCP3: RFC 6962 Merkle root (hex) over the chain hashes of events `1..=seq`; absent on older checkpoints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merkle_root: Option<String>,
 }
 
 /// The chain link a checkpoint must carry: SHA-256 of the previous signature, or zeros for the first one.
@@ -290,19 +293,56 @@ fn expected_prev(last_sig: Option<&[u8]>) -> [u8; 32] {
     last_sig.map(crate::crypto::sha256).unwrap_or([0u8; 32])
 }
 
-fn message_of(c: &Checkpoint, head: &[u8]) -> Vec<u8> {
-    match c
-        .prev_signature_sha256
-        .as_deref()
-        .and_then(|h| hex::decode(h).ok())
+fn hex32(h: Option<&str>) -> Option<[u8; 32]> {
+    h.and_then(|h| hex::decode(h).ok())
         .and_then(|v| <[u8; 32]>::try_from(v).ok())
-    {
-        Some(prev) => audit_engine::checkpoint::message_v2(c.tenant_id, c.seq, head, c.signed_at_us, &prev),
-        None => audit_engine::checkpoint::message(c.tenant_id, c.seq, head, c.signed_at_us),
+}
+
+pub(crate) fn message_of(c: &Checkpoint, head: &[u8]) -> Vec<u8> {
+    match (
+        hex32(c.prev_signature_sha256.as_deref()),
+        hex32(c.merkle_root.as_deref()),
+    ) {
+        (Some(prev), Some(root)) => {
+            audit_engine::checkpoint::message_v3(c.tenant_id, c.seq, head, c.signed_at_us, &prev, &root)
+        }
+        (Some(prev), None) => audit_engine::checkpoint::message_v2(c.tenant_id, c.seq, head, c.signed_at_us, &prev),
+        _ => audit_engine::checkpoint::message(c.tenant_id, c.seq, head, c.signed_at_us),
     }
 }
 
-fn signing_key(st: &AppState) -> ApiResult<[u8; 32]> {
+/// Chain hashes of events `1..=upto` in order (leaves of the KZCP3 Merkle tree); errors when a sequence number is
+/// missing. Call inside the same snapshot transaction as the chain verification.
+pub(crate) async fn chain_hashes(tx: &mut Tx, tenant: Uuid, upto: i64) -> ApiResult<Vec<[u8; 32]>> {
+    let mut out = Vec::with_capacity(usize::try_from(upto).unwrap_or(0));
+    let mut last = 0i64;
+    while last < upto {
+        let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+            "SELECT seq, hash FROM audit_events WHERE tenant_id = $1 AND seq > $2 AND seq <= $3 ORDER BY seq LIMIT 50000",
+        )
+        .bind(tenant)
+        .bind(last)
+        .bind(upto)
+        .fetch_all(&mut **tx)
+        .await?;
+        if rows.is_empty() {
+            break;
+        }
+        for (seq, h) in rows {
+            if seq != last + 1 {
+                return Err(ApiError::Conflict("audit_chain_not_intact"));
+            }
+            out.push(<[u8; 32]>::try_from(h.as_slice()).map_err(|_| ApiError::Conflict("audit_chain_not_intact"))?);
+            last = seq;
+        }
+    }
+    if last != upto {
+        return Err(ApiError::Conflict("audit_chain_not_intact"));
+    }
+    Ok(out)
+}
+
+pub(crate) fn signing_key(st: &AppState) -> ApiResult<[u8; 32]> {
     st.cfg
         .audit_signing_key
         .as_ref()
@@ -310,12 +350,12 @@ fn signing_key(st: &AppState) -> ApiResult<[u8; 32]> {
         .ok_or(ApiError::Conflict("signing_key_not_configured"))
 }
 
-fn key_id(public: &[u8; 32]) -> String {
+pub(crate) fn key_id(public: &[u8; 32]) -> String {
     hex::encode(&crate::crypto::sha256(public)[..8])
 }
 
 /// Verification keys by key id: the current signing key and retired ones (review M5-M7 L4).
-fn verification_keys(st: &AppState) -> Vec<(String, [u8; 32], bool)> {
+pub(crate) fn verification_keys(st: &AppState) -> Vec<(String, [u8; 32], bool)> {
     let mut out = Vec::new();
     if let Some(k) = &st.cfg.audit_signing_key {
         let p = audit_engine::checkpoint::public_key(k.expose());
@@ -328,8 +368,16 @@ fn verification_keys(st: &AppState) -> Vec<(String, [u8; 32], bool)> {
     out
 }
 
-type CpRow = (i64, Vec<u8>, OffsetDateTime, String, Vec<u8>, Option<Vec<u8>>);
-const CP_COLS: &str = "seq, head_hash, signed_at, key_id, signature, prev_sig_sha256";
+pub(crate) type CpRow = (
+    i64,
+    Vec<u8>,
+    OffsetDateTime,
+    String,
+    Vec<u8>,
+    Option<Vec<u8>>,
+    Option<Vec<u8>>,
+);
+pub(crate) const CP_COLS: &str = "seq, head_hash, signed_at, key_id, signature, prev_sig_sha256, merkle_root";
 
 /// Signs the chain head of a consistent snapshot (only if the chain verifies). Verification starts at the latest
 /// checkpoint whose signature and stored hash still check out (incremental), and no lock is held while verifying,
@@ -337,8 +385,14 @@ const CP_COLS: &str = "seq, head_hash, signed_at, key_id, signature, prev_sig_sh
 pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Checkpoint>> {
     p.require(&st, Permission::AuditVerify).await?;
     heavy_limit(&st, &p)?;
-    let seed = signing_key(&st)?;
-    let keys = verification_keys(&st);
+    Ok(Json(sign_checkpoint(&st, &p).await?))
+}
+
+/// Verifies the chain (incrementally from the newest valid checkpoint) and signs a KZCP3 checkpoint of its head.
+/// Callers check permissions and rate limits.
+pub(crate) async fn sign_checkpoint(st: &AppState, p: &Principal) -> ApiResult<Checkpoint> {
+    let seed = signing_key(st)?;
+    let keys = verification_keys(st);
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
     // Every checkpoint under a known key must still match the chain; otherwise refuse and alarm instead of
     // signing a (possibly re-chained) head (deep review KZ-C1). The newest valid one is the anchor.
@@ -349,7 +403,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
     .await?;
     let mut anchor = None;
     let mut last_sig: Option<Vec<u8>> = None;
-    for (seq, head, at, kid, sig, prev) in rows {
+    for (seq, head, at, kid, sig, prev, root) in rows {
         // Chain link: a KZCP2 checkpoint must point at the signature of the one before it.
         let link_ok = prev
             .as_ref()
@@ -367,6 +421,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
             public_key: hex::encode(public),
             signature: hex::encode(&sig),
             prev_signature_sha256: prev.map(hex::encode),
+            merkle_root: root.map(hex::encode),
         };
         let r = check_one(&mut tx, &keys, &c).await?;
         if r["signature_valid"] != true || r["chain_matches"] != true || !link_ok {
@@ -387,19 +442,26 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
         }
     }
     let status = verify_from(&mut tx, p.tenant_id, anchor).await?;
-    tx.commit().await?;
     if !status.intact {
+        tx.commit().await?;
         return Err(ApiError::Conflict("audit_chain_not_intact"));
     }
+    // Same snapshot: the Merkle leaves are exactly the verified chain up to the head.
+    let leaves = chain_hashes(&mut tx, p.tenant_id, status.head_seq).await?;
+    tx.commit().await?;
+    let tree = tokio::task::spawn_blocking(move || audit_engine::merkle::Tree::from_leaves(leaves))
+        .await
+        .map_err(ApiError::internal)?;
+    let root = tree.root();
     let head = hex::decode(&status.head_hash).map_err(ApiError::internal)?;
     let at = micros(now_us());
     let prev = expected_prev(last_sig.as_deref());
-    let msg = audit_engine::checkpoint::message_v2(p.tenant_id, status.head_seq, &head, at, &prev);
+    let msg = audit_engine::checkpoint::message_v3(p.tenant_id, status.head_seq, &head, at, &prev, &root);
     let sig = audit_engine::checkpoint::sign(&seed, &msg);
     let public = audit_engine::checkpoint::public_key(&seed);
     let kid = key_id(&public);
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    sqlx::query("INSERT INTO audit_checkpoints (id, tenant_id, seq, head_hash, signed_at, key_id, signature, created_by, prev_sig_sha256) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+    sqlx::query("INSERT INTO audit_checkpoints (id, tenant_id, seq, head_hash, signed_at, key_id, signature, created_by, prev_sig_sha256, merkle_root) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
         .bind(Uuid::now_v7())
         .bind(p.tenant_id)
         .bind(status.head_seq)
@@ -409,6 +471,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
         .bind(sig.to_vec())
         .bind(p.user_id)
         .bind(prev.to_vec())
+        .bind(root.to_vec())
         .execute(&mut *tx)
         .await?;
     append(
@@ -433,6 +496,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
         public_key: hex::encode(public),
         signature: hex::encode(sig),
         prev_signature_sha256: Some(hex::encode(prev)),
+        merkle_root: Some(hex::encode(root)),
     };
     // Export off-host automatically (KZ-C3); delivery failures never fail the checkpoint.
     if st.alerts.enabled() {
@@ -440,7 +504,7 @@ pub async fn create_checkpoint(State(st): State<AppState>, p: Principal) -> ApiR
         let a = crate::alerts::checkpoint_alert(alerts.label(), &json!(cp));
         let _ = tokio::task::spawn_blocking(move || alerts.send(&a)).await;
     }
-    Ok(Json(cp))
+    Ok(cp)
 }
 
 /// Checks a checkpoint's signature against the key named by its key id (current or retired) and that the stored
@@ -483,7 +547,7 @@ pub async fn verify_checkpoints(State(st): State<AppState>, p: Principal) -> Api
     let mut results = Vec::new();
     let mut last_sig: Option<Vec<u8>> = None;
     let mut links_ok = true;
-    for (seq, head, at, kid, sig, prev) in rows {
+    for (seq, head, at, kid, sig, prev, root) in rows {
         if let Some(p) = &prev
             && p.as_slice() != expected_prev(last_sig.as_deref())
         {
@@ -504,6 +568,7 @@ pub async fn verify_checkpoints(State(st): State<AppState>, p: Principal) -> Api
             public_key: public,
             signature: hex::encode(&sig),
             prev_signature_sha256: prev.map(hex::encode),
+            merkle_root: root.map(hex::encode),
         };
         results.push(check_one(&mut tx, &keys, &c).await?);
     }

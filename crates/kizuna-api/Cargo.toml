@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 audit-engine = { path = "../audit-engine" }
+kizuna-verify-pack = { path = "../kizuna-verify-pack" }
 policy-engine = { path = "../policy-engine" }
 evidence-core = { path = "../evidence-core" }
 entity-resolution = { path = "../entity-resolution" }
@@ -52,6 +53,7 @@ lettre = { version = "0.11", default-features = false, features = ["smtp-transpo
 [dev-dependencies]
 proptest.workspace = true
 http-body-util = "0.1"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 http-body = "1"
 webauthn-authenticator-rs = { version = "0.6", features = ["softpasskey"] }
 

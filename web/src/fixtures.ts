@@ -72,6 +72,12 @@ export const decision: Decision = {
 export const trace: Trace = {
   decision: { ...decision, rationale: "Material and finish match the drawing." },
   derivation_reproducible: true,
+  derivation: {
+    evidence: [
+      { claim_id: "c-a", predicate: "mfg.material", artifact_id: "a-1111111111", source_location: { page: 1 } },
+      { claim_id: "c-f", predicate: "mfg.finish", artifact_id: null },
+    ],
+  },
   evidence: [
     { claim_id: "c-a", predicate: "mfg.material", snapshot_at_decision: { text: "S355" }, current_value: { text: "S275" }, changed: true },
     { claim_id: "c-f", predicate: "mfg.finish", snapshot_at_decision: { text: "zinc" }, current_value: { text: "zinc" }, changed: false },

@@ -6,7 +6,7 @@ import { GraphScene, type Graph } from "./graph";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
 import type { Decision, Trace } from "./types";
-import { Badge, Empty, Loading, Notice, PageTitle, Panel, short, useLoad } from "./ui";
+import { Badge, download, Empty, Loading, Notice, PageTitle, Panel, short, useLoad } from "./ui";
 
 export function traceGraph(t: Trace): Graph {
   const d = t.decision;
@@ -100,6 +100,7 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
           ))}
         </ol>
       )}
+      <EvidencePack t={t} />
       {d.status === "potentially_affected" && <p className="callout crit">{tr("trace.mustReview")}</p>}
       {open && canAct && (
         <section className="review-box" aria-labelledby="trace-act">
@@ -131,6 +132,68 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
         </section>
       )}
     </article>
+  );
+}
+
+/** Offline-verifiable evidence pack (ZIP) of the decision; selected documents can be exported as hash only. */
+function EvidencePack({ t }: { t: Trace }) {
+  const { api } = useSession();
+  const { t: tr } = useI18n();
+  const docs = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const e of t.derivation?.evidence ?? []) {
+      if (!e.artifact_id) continue;
+      const preds = m.get(e.artifact_id) ?? [];
+      if (e.predicate && !preds.includes(e.predicate)) preds.push(e.predicate);
+      m.set(e.artifact_id, preds);
+    }
+    return [...m.entries()];
+  }, [t]);
+  const [hashOnly, setHashOnly] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  async function exportPack() {
+    setBusy(true);
+    setErr(null);
+    setMsg("");
+    try {
+      const zip = await api.blob("POST", `/decisions/${t.decision.id}/evidence-pack`, { hash_only: hashOnly });
+      download(`kizuna-evidence-pack-${short(t.decision.id)}.zip`, zip, "application/zip");
+      setMsg(tr("pack.done"));
+    } catch (x) {
+      setErr(x);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="review-box" aria-labelledby="pack-h">
+      <h3 id="pack-h">{tr("pack.title")}</h3>
+      <p className="muted">{tr("pack.lead")}</p>
+      {docs.length > 0 && (
+        <fieldset className="faulty">
+          <legend>{tr("pack.hashOnlyLegend")}</legend>
+          {docs.map(([id, preds]) => (
+            <label key={id} className="check">
+              <input
+                type="checkbox"
+                checked={hashOnly.includes(id)}
+                onChange={(e) => setHashOnly((h) => (e.target.checked ? [...h, id] : h.filter((x) => x !== id)))}
+              />
+              {tr("pack.hashOnly", { doc: short(id), preds: preds.join(", ") || "—" })}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      <p className="hint">{tr("pack.notProven")}</p>
+      <div className="actions">
+        <button type="button" onClick={exportPack} disabled={busy} aria-busy={busy}>
+          {busy ? tr("pack.exporting") : tr("pack.export")}
+        </button>
+      </div>
+      <Notice msg={msg} error={err} />
+    </section>
   );
 }
 

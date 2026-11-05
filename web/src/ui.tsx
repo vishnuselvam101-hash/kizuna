@@ -92,9 +92,9 @@ export function Empty({ text }: { text: string }) {
 }
 
 /** Triggers a client-side download. Data never leaves the browser except through the API. */
-export function download(filename: string, text: string, mime: string) {
+export function download(filename: string, text: string | Blob, mime: string) {
   if (typeof URL.createObjectURL !== "function") return;
-  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const url = URL.createObjectURL(typeof text === "string" ? new Blob([text], { type: mime }) : text);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;

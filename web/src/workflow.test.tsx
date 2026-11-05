@@ -171,6 +171,34 @@ test("decision trace: revoke needs explicit confirmation; reconfirm posts the co
   await waitFor(() => expect(posted).toEqual(["reconfirm:S275 accepted by design"]));
 });
 
+test("decision trace: evidence pack export sends hash-only choices and downloads the ZIP; errors are explained", async () => {
+  let sent: unknown = null;
+  let fail = false;
+  const { api } = fakeApi({
+    "GET /decisions": [decision],
+    "GET /decisions/d-1/trace": trace,
+    "POST /decisions/d-1/evidence-pack": (b: unknown) =>
+      fail
+        ? new Response(JSON.stringify({ error: "checkpoint_required" }), { status: 409 })
+        : ((sent = b), new Response("PK\u0003\u0004zip", { status: 200, headers: { "content-type": "application/zip" } })),
+  });
+  const created: Blob[] = [];
+  URL.createObjectURL = ((b: Blob) => (created.push(b), "blob:x")) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = () => {};
+  renderWithSession(<DecisionsView />, { api });
+  fireEvent.click(await screen.findByRole("button", { name: "Release BRK-100 from Supplier A" }));
+  await screen.findByText(/does not prove that their content is true/);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Hash only: document a-111111… (mfg.material)" }));
+  fireEvent.click(screen.getByRole("button", { name: "Export evidence pack" }));
+  await screen.findByText("Evidence pack downloaded.");
+  expect(sent).toEqual({ hash_only: ["a-1111111111"] });
+  expect(created).toHaveLength(1);
+  expect(await created[0].text()).toContain("zip");
+  fail = true;
+  fireEvent.click(screen.getByRole("button", { name: "Export evidence pack" }));
+  expect((await screen.findByRole("alert")).textContent).toMatch(/No signed audit checkpoint covers this decision/);
+});
+
 test("users: disabling asks for confirmation before PATCH", async () => {
   const patches: unknown[] = [];
   const { api } = fakeApi({ "GET /users": users, "PATCH /users/u-2": (b: unknown) => (patches.push(b), users[1]) });
