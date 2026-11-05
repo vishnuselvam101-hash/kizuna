@@ -85,6 +85,11 @@ pub struct ExtractResp {
     pub extractor: String,
     pub records: usize,
     pub claims_created: usize,
+    /// Of `claims_created`, stored as `ai_suggested` (0 unless the tenant opted in to AI-assisted extraction).
+    pub ai_claims_suggested: usize,
+    pub ai_model: Option<String>,
+    /// Version of the tenant's import settings used (0 = defaults).
+    pub import_settings_version: i32,
     pub unmapped_labels: Vec<String>,
     pub warnings: Vec<String>,
 }
@@ -211,7 +216,18 @@ async fn extract_locked(
     }
     let _permit = st.worker_permits.acquire().await.map_err(ApiError::internal)?;
     let started = OffsetDateTime::now_utc();
-    let (out, out_hash) = match extraction::run_worker(&st.cfg, &art.media_type, &bytes).await {
+    // The tenant's saved import settings (latest version) drive the worker and the long-table mapping.
+    let import = {
+        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+        let row: Option<(i32, Value)> =
+            sqlx::query_as("SELECT version, settings FROM import_settings ORDER BY version DESC LIMIT 1")
+                .fetch_optional(&mut *tx)
+                .await?;
+        tx.commit().await?;
+        let (v, s) = row.unwrap_or((0, json!({})));
+        extraction::import_options(v, &s, &art.media_type)
+    };
+    let (out, out_hash) = match extraction::run_worker(&st.cfg, &art.media_type, &bytes, &import).await {
         Ok(r) => r,
         Err(e) => {
             record_failed_run(st, p, id, started, e.code()).await?;
@@ -234,6 +250,9 @@ async fn extract_locked(
     for r in &mut records {
         integerize(&mut r.location);
     }
+    if let Some(m) = &import.mapping {
+        records = domain_manufacturing::apply_column_mapping(&records, m);
+    }
     let mapped = map_records(&art.kind, &records, confidence_for(&extractor));
     let method = format!("worker:{extractor}+{MAPPING_VERSION}");
     let run = Uuid::now_v7();
@@ -244,11 +263,42 @@ async fn extract_locked(
         .take(50)
         .collect();
     warnings.extend(mapped.warnings.iter().take(50).cloned());
+    warnings.extend(import.ignored.iter().map(|k| format!("import_setting_ignored:{k}")));
+    // Optional AI label mapping on the already-extracted records (never on raw document bytes). Any failure keeps
+    // the deterministic result only.
+    let ai = match crate::ai::suggest(&st.pool, st.cfg.ai.as_ref(), p.tenant_id, id, &art.kind, &records).await? {
+        Ok(s) => s,
+        Err(code) => {
+            warnings.push(format!("ai_fallback:{code}"));
+            let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+            let model = st.cfg.ai.as_ref().map(|a| a.model.clone());
+            audit::append(
+                &mut tx,
+                p.tenant_id,
+                Record::user(
+                    p.user_id,
+                    "extraction.ai_call",
+                    "artifact",
+                    id,
+                    json!({ "status": code, "model": model, "fallback": MAPPING_VERSION }),
+                ),
+            )
+            .await?;
+            tx.commit().await?;
+            None
+        }
+    };
+    let ai_method = ai.as_ref().map(|a| crate::ai::method(&a.model)).unwrap_or_default();
+    let mut all: Vec<(&evidence_core::claim::ClaimInput, bool)> = mapped.claims.iter().map(|c| (c, false)).collect();
+    if let Some(a) = &ai {
+        all.extend(a.claims.iter().map(|c| (c, true)));
+    }
 
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let mut created = 0usize;
+    let mut ai_created = 0usize;
     let mut claim_ids = Vec::new();
-    for c in &mapped.claims {
+    for (c, is_ai) in all {
         let v = match evidence_core::claim::validate(c) {
             Ok(v) => v,
             Err(e) => {
@@ -264,20 +314,52 @@ async fn extract_locked(
                 artifact_id: Some(id),
                 valid_from: None,
                 valid_to: None,
-                extraction_method: &method,
-                provenance: json!({
-                    "extraction_run": run, "artifact_sha256": art.sha256, "worker_version": out.worker_version,
-                    "extractor": extractor, "mapping": MAPPING_VERSION,
-                }),
+                extraction_method: if is_ai { &ai_method } else { &method },
+                provenance: match (&ai, is_ai) {
+                    (Some(a), true) => json!({
+                        "extraction_run": run, "artifact_sha256": art.sha256, "worker_version": out.worker_version,
+                        "extractor": extractor, "mapping": MAPPING_VERSION, "import_settings_version": import.version,
+                        "ai": { "model": a.model, "mapper": domain_manufacturing::ai::AI_MAPPER_VERSION,
+                                "prompt": domain_manufacturing::ai::SYSTEM_PROMPT_VERSION,
+                                "prompt_sha256": hex::encode(a.prompt_sha256) },
+                    }),
+                    _ => json!({
+                        "extraction_run": run, "artifact_sha256": art.sha256, "worker_version": out.worker_version,
+                        "extractor": extractor, "mapping": MAPPING_VERSION, "import_settings_version": import.version,
+                    }),
+                },
                 recorded_by: Some(p.user_id),
+                ai_suggested: is_ai,
             },
         )
         .await?;
-        let fresh = claims::fetch(&mut tx, cid).await?;
-        crate::decisions::on_claim_change(&mut tx, p.tenant_id, p.user_id, crate::decisions::new_evidence(&fresh))
-            .await?;
+        // AI suggestions do not touch decisions until a reviewer accepts them.
+        if !is_ai {
+            let fresh = claims::fetch(&mut tx, cid).await?;
+            crate::decisions::on_claim_change(&mut tx, p.tenant_id, p.user_id, crate::decisions::new_evidence(&fresh))
+                .await?;
+        }
         claim_ids.push(cid);
         created += 1;
+        ai_created += usize::from(is_ai);
+    }
+    if let Some(a) = &ai {
+        audit::append(
+            &mut tx,
+            p.tenant_id,
+            Record::user(
+                p.user_id,
+                "extraction.ai_call",
+                "artifact",
+                id,
+                json!({
+                    "status": "ok", "model": a.model, "prompt_sha256": hex::encode(a.prompt_sha256),
+                    "labels_sent": a.labels_sent, "mappings": a.mappings, "claims_suggested": ai_created,
+                    "tokens": a.tokens, "duration_ms": a.duration_ms as u64,
+                }),
+            ),
+        )
+        .await?;
     }
     sqlx::query(
         "INSERT INTO extraction_runs (id, tenant_id, artifact_id, extractor, mapping_version, status, records, claims_created, \
@@ -291,7 +373,7 @@ async fn extract_locked(
     .bind(out.records.len() as i32)
     .bind(created as i32)
     .bind(out_hash.to_vec())
-    .bind(json!({ "warnings": warnings, "unmapped_labels": mapped.unmapped_labels.iter().take(50).collect::<Vec<_>>() }))
+    .bind(json!({ "warnings": warnings, "import_settings_version": import.version, "unmapped_labels": mapped.unmapped_labels.iter().take(50).collect::<Vec<_>>() }))
     .bind(p.user_id)
     .bind(started)
     .execute(&mut *tx)
@@ -314,6 +396,9 @@ async fn extract_locked(
         extractor,
         records: out.records.len(),
         claims_created: created,
+        ai_claims_suggested: ai_created,
+        import_settings_version: import.version,
+        ai_model: ai.as_ref().map(|a| a.model.clone()),
         unmapped_labels: mapped.unmapped_labels,
         warnings,
     }))
@@ -353,7 +438,7 @@ pub async fn load_facts_of(tx: &mut Tx, subject_type: &str, only_subject: Option
     let rows: Vec<FactRow> = sqlx::query_as(
         "SELECT c.id, c.subject_key, c.predicate, c.value_text, c.value_num::text, c.value_unit, c.revision, c.scope, \
                 CASE WHEN c.extraction_method = 'manual' THEN 'manual' ELSE coalesce(a.kind, 'manual') END FROM claims c LEFT JOIN artifacts a ON a.id = c.artifact_id \
-         WHERE c.subject_type = $1 AND c.superseded_at IS NULL AND c.review_status <> 'rejected'",
+         WHERE c.subject_type = $1 AND c.superseded_at IS NULL AND c.review_status NOT IN ('rejected', 'ai_suggested')",
     )
     .bind(subject_type)
     .fetch_all(&mut **tx)
@@ -793,6 +878,11 @@ pub async fn review_claim(
     )
     .await?;
     let out = claims::fetch(&mut tx, id).await?;
+    // An accepted AI suggestion becomes evidence now (it was kept away from decisions while ai_suggested).
+    if current == "ai_suggested" && status == "accepted" {
+        crate::decisions::on_claim_change(&mut tx, p.tenant_id, p.user_id, crate::decisions::new_evidence(&out))
+            .await?;
+    }
     if status == "rejected" {
         crate::decisions::on_claim_change(
             &mut tx,

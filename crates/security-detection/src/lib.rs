@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const RULES_VERSION: &str = "sec-rules@1";
 
@@ -81,7 +81,8 @@ pub struct Detection {
     pub actions: Vec<ProposedAction>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Thresholds {
     pub brute_force: usize,
     pub brute_force_lock: usize,
@@ -108,6 +109,149 @@ impl Default for Thresholds {
             exports: 20,
         }
     }
+}
+
+/// How thresholds are chosen for a tenant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    /// The configured thresholds are used as they are.
+    #[default]
+    Static,
+    /// Activity-volume rules (authorization probing, privileged bursts, upload abuse, extraction failures, exports)
+    /// rise to just above the tenant's own busiest normal window, never below the configured value and never above
+    /// `configured × adaptive_max_factor`. Credential, token and integrity rules are never adapted.
+    Adaptive,
+}
+
+/// Per-tenant detection settings (stored versioned in `tenant_settings`, kind `detection`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DetectionSettings {
+    pub mode: Mode,
+    pub thresholds: Thresholds,
+    pub adaptive_max_factor: u32,
+    pub baseline_days: u32,
+}
+
+impl Default for DetectionSettings {
+    fn default() -> Self {
+        DetectionSettings {
+            mode: Mode::Static,
+            thresholds: Thresholds::default(),
+            adaptive_max_factor: 3,
+            baseline_days: 7,
+        }
+    }
+}
+
+/// Allowed range per setting. Lower bounds keep every rule able to fire; upper bounds stop a tenant (or a stolen
+/// admin session) from switching detection off by setting absurd thresholds.
+const BOUNDS: [(&str, usize, usize); 11] = [
+    ("brute_force", 3, 50),
+    ("brute_force_lock", 3, 100),
+    ("spray_failures", 3, 200),
+    ("spray_users", 2, 50),
+    ("authz_denials", 3, 500),
+    ("privileged_ops", 2, 200),
+    ("upload_abuse", 2, 200),
+    ("extraction_failures", 2, 200),
+    ("exports", 3, 1000),
+    ("adaptive_max_factor", 1, 5),
+    ("baseline_days", 1, 30),
+];
+
+impl DetectionSettings {
+    pub fn bounds() -> BTreeMap<&'static str, [usize; 2]> {
+        BOUNDS.iter().map(|(k, lo, hi)| (*k, [*lo, *hi])).collect()
+    }
+
+    pub fn validate(&self) -> Result<(), &'static str> {
+        let t = &self.thresholds;
+        let vals = [
+            t.brute_force,
+            t.brute_force_lock,
+            t.spray_failures,
+            t.spray_users,
+            t.authz_denials,
+            t.privileged_ops,
+            t.upload_abuse,
+            t.extraction_failures,
+            t.exports,
+            self.adaptive_max_factor as usize,
+            self.baseline_days as usize,
+        ];
+        for ((name, lo, hi), v) in BOUNDS.iter().zip(vals) {
+            if v < *lo || v > *hi {
+                return Err(name);
+            }
+        }
+        if t.brute_force_lock < t.brute_force {
+            return Err("brute_force_lock");
+        }
+        Ok(())
+    }
+}
+
+/// Activity-volume rules that adaptive mode may raise: (window seconds, event kinds, grouped per user).
+const VOLUME_RULES: [(usize, i64, &[&str], bool); 5] = [
+    (0, 600, &["authz.denied"], true),
+    (
+        1,
+        600,
+        &[
+            "admin.role_changed",
+            "admin.user_disabled",
+            "auth.mfa_reset",
+            "auth.sessions_revoked",
+        ],
+        true,
+    ),
+    (
+        2,
+        1800,
+        &["ingest.upload_rejected", "ingest.artifact_quarantined"],
+        true,
+    ),
+    (3, 1800, &["ingest.extraction_failed"], false),
+    (4, 3600, &["export.report"], true),
+];
+
+/// Thresholds for adaptive mode. `history` are the tenant's past security events; only events older than one hour
+/// and inside `baseline_days` form the baseline, so an attack in progress cannot raise its own threshold. For each
+/// volume rule the baseline is the largest count seen in one window (per user where the rule is per user); the
+/// threshold becomes `baseline + 1`, clamped to `[configured, configured × adaptive_max_factor]`.
+pub fn effective_thresholds(s: &DetectionSettings, history: &[Event], now: i64) -> Thresholds {
+    let mut t = s.thresholds.clone();
+    if s.mode == Mode::Static {
+        return t;
+    }
+    let from = now - i64::from(s.baseline_days) * 86_400;
+    let to = now - 3600;
+    for (idx, win, kinds, per_user) in VOLUME_RULES {
+        let mut buckets: BTreeMap<(i64, Option<&str>), usize> = BTreeMap::new();
+        for e in history {
+            if e.at >= from && e.at < to && kinds.contains(&e.kind.as_str()) {
+                let key = if per_user { e.user.as_deref() } else { None };
+                if per_user && key.is_none() {
+                    continue;
+                }
+                *buckets.entry((e.at.div_euclid(win), key)).or_default() += 1;
+            }
+        }
+        let peak = buckets.values().copied().max().unwrap_or(0);
+        let slot = match idx {
+            0 => &mut t.authz_denials,
+            1 => &mut t.privileged_ops,
+            2 => &mut t.upload_abuse,
+            3 => &mut t.extraction_failures,
+            _ => &mut t.exports,
+        };
+        let base = *slot;
+        let cap = base.saturating_mul(s.adaptive_max_factor.max(1) as usize);
+        *slot = (peak + 1).clamp(base, cap);
+    }
+    t
 }
 
 fn act(kind: ActionKind, target: &str, policy: Policy) -> ProposedAction {
@@ -341,6 +485,85 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_defaults_bounds_and_unknown_keys() {
+        let d = DetectionSettings::default();
+        assert!(d.validate().is_ok());
+        assert_eq!(d.thresholds, Thresholds::default());
+        let partial: DetectionSettings =
+            serde_json::from_value(serde_json::json!({"mode": "adaptive", "thresholds": {"exports": 40}})).unwrap();
+        assert_eq!(partial.thresholds.exports, 40);
+        assert_eq!(partial.thresholds.brute_force, 5);
+        assert!(serde_json::from_value::<DetectionSettings>(serde_json::json!({"disable": true})).is_err());
+        let mut off = d.clone();
+        off.thresholds.brute_force = 1_000_000;
+        assert_eq!(off.validate(), Err("brute_force"));
+        let mut low = d.clone();
+        low.thresholds.authz_denials = 1;
+        assert_eq!(low.validate(), Err("authz_denials"));
+        let mut inv = d;
+        inv.thresholds.brute_force_lock = 4;
+        assert_eq!(inv.validate(), Err("brute_force_lock"));
+    }
+
+    #[test]
+    fn adaptive_raises_volume_rules_within_cap_and_ignores_recent_and_credential_events() {
+        let now = 100 * 86_400;
+        let mut hist = Vec::new();
+        // A busy exporter: 30 exports in one hour, two days ago.
+        for i in 0..30 {
+            hist.push(ev(
+                i,
+                "export.report",
+                Some("u1"),
+                "1.1.1.1",
+                now - 2 * 86_400 + i as i64,
+                "",
+            ));
+        }
+        // 200 denials in the last 10 minutes (an attack in progress): must not count as baseline.
+        for i in 0..200 {
+            hist.push(ev(1000 + i, "authz.denied", Some("u2"), "1.1.1.1", now - 100, ""));
+        }
+        // Many failed logins long ago: credential rules are never adapted.
+        for i in 0..100 {
+            hist.push(ev(
+                2000 + i,
+                "auth.login_failed",
+                Some("u3"),
+                "1.1.1.1",
+                now - 3 * 86_400,
+                "bad_password",
+            ));
+        }
+        let mut s = DetectionSettings::default();
+        assert_eq!(
+            effective_thresholds(&s, &hist, now),
+            Thresholds::default(),
+            "static mode"
+        );
+        s.mode = Mode::Adaptive;
+        let t = effective_thresholds(&s, &hist, now);
+        assert_eq!(t.exports, 31);
+        assert_eq!(t.authz_denials, 10);
+        assert_eq!(t.brute_force, 5);
+        // Cap: never above configured × factor.
+        for i in 0..300 {
+            hist.push(ev(
+                3000 + i,
+                "export.report",
+                Some("u1"),
+                "1.1.1.1",
+                now - 2 * 86_400 + 10,
+                "",
+            ));
+        }
+        assert_eq!(effective_thresholds(&s, &hist, now).exports, 60);
+        // Outside the baseline window: ignored.
+        s.baseline_days = 1;
+        assert_eq!(effective_thresholds(&s, &hist, now).exports, 20);
+    }
 
     fn ev(i: usize, kind: &str, user: Option<&str>, ip: &str, at: i64, reason: &str) -> Event {
         Event {

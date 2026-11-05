@@ -8,8 +8,9 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use base64::Engine;
-use domain_manufacturing::Record;
+use domain_manufacturing::{ColumnMapping, Record};
 use serde::Deserialize;
+use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
@@ -186,7 +187,123 @@ pub fn command_argv(cfg: &Config) -> Vec<String> {
     a
 }
 
-pub async fn run_worker(cfg: &Config, media_type: &str, data: &[u8]) -> Result<(WorkerOutput, [u8; 32]), WorkerError> {
+/// The tenant's saved import settings (`import_settings`, API gap #1) translated into what the worker and the
+/// mapper consume. Values outside the whitelist are ignored (and reported), never passed on.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ImportOptions {
+    pub version: i32,
+    /// Worker limits (the worker only ever lowers its own defaults).
+    pub limits: serde_json::Map<String, Value>,
+    /// Worker options (validated again by the worker).
+    pub options: serde_json::Map<String, Value>,
+    /// Long-table column mapping for CSV/XLSX.
+    pub mapping: Option<ColumnMapping>,
+    pub ignored: Vec<String>,
+}
+
+const XLSX: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+pub fn import_options(version: i32, s: &Value, media_type: &str) -> ImportOptions {
+    let mut o = ImportOptions {
+        version,
+        ..Default::default()
+    };
+    let num = |o: &mut ImportOptions, path: &str, key: &str, lo: u64, hi: u64, limit: bool| {
+        let (a, b) = path.split_once('.').unwrap_or((path, ""));
+        let v = &s[a][b];
+        if v.is_null() {
+            return;
+        }
+        match v.as_u64().filter(|n| (lo..=hi).contains(n)) {
+            Some(n) if limit => {
+                o.limits.insert(key.into(), json!(n));
+            }
+            Some(n) => {
+                o.options.insert(key.into(), json!(n));
+            }
+            None => o.ignored.push(path.into()),
+        }
+    };
+    let pick = |o: &mut ImportOptions, path: &str, key: &str, allowed: &[&str]| {
+        let (a, b) = path.split_once('.').unwrap_or((path, ""));
+        match &s[a][b] {
+            Value::Null => {}
+            Value::String(x) if allowed.contains(&x.as_str()) => {
+                o.options.insert(key.into(), json!(x));
+            }
+            _ => o.ignored.push(path.into()),
+        }
+    };
+    match media_type {
+        "text/csv" => {
+            pick(&mut o, "csv.delimiter", "csv_delimiter", &[",", ";", "\t"]);
+            pick(&mut o, "csv.encoding", "csv_encoding", &["utf-8", "shift_jis"]);
+            num(&mut o, "csv.header_row", "header_row", 0, 100, false);
+            num(&mut o, "csv.max_records", "max_records", 1, 20_000, true);
+        }
+        XLSX => {
+            match &s["xlsx"]["sheet"] {
+                Value::Null => {}
+                Value::String(x) if x.chars().count() <= 100 => {
+                    o.options.insert("xlsx_sheet".into(), json!(x));
+                }
+                _ => o.ignored.push("xlsx.sheet".into()),
+            }
+            num(&mut o, "xlsx.header_row", "header_row", 0, 100, false);
+            num(&mut o, "xlsx.max_sheets", "max_sheets", 1, 50, true);
+            num(&mut o, "xlsx.max_records", "max_records", 1, 20_000, true);
+        }
+        "application/pdf" | "image/png" | "image/jpeg" | "image/tiff" => {
+            match &s["pdf"]["ocr"] {
+                Value::Null => {}
+                Value::Bool(b) => {
+                    o.options.insert("ocr".into(), json!(b));
+                }
+                _ => o.ignored.push("pdf.ocr".into()),
+            }
+            pick(
+                &mut o,
+                "pdf.ocr_language",
+                "ocr_language",
+                &["jpn+eng", "eng+jpn", "eng", "jpn"],
+            );
+            if media_type == "application/pdf" {
+                num(&mut o, "pdf.max_pages", "max_pages", 1, 500, true);
+            }
+        }
+        _ => {}
+    }
+    if matches!(media_type, "text/csv" | XLSX)
+        && let Some(m) = s["mapping"].as_object()
+    {
+        let f = |k: &str| {
+            m.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .chars()
+                .take(100)
+                .collect::<String>()
+        };
+        let cm = ColumnMapping {
+            subject_key: f("subject_key"),
+            predicate: f("predicate"),
+            value: f("value"),
+            unit: f("unit"),
+            revision: f("revision"),
+        };
+        if !cm.predicate.is_empty() && !cm.value.is_empty() {
+            o.mapping = Some(cm);
+        }
+    }
+    o
+}
+
+pub async fn run_worker(
+    cfg: &Config,
+    media_type: &str,
+    data: &[u8],
+    import: &ImportOptions,
+) -> Result<(WorkerOutput, [u8; 32]), WorkerError> {
     let argv = command_argv(cfg);
     if !Path::new(&argv[0]).exists() {
         return Err(WorkerError::Sandbox(argv[0].clone()));
@@ -194,6 +311,8 @@ pub async fn run_worker(cfg: &Config, media_type: &str, data: &[u8]) -> Result<(
     let req = serde_json::json!({
         "media_type": media_type,
         "data_b64": base64::engine::general_purpose::STANDARD.encode(data),
+        "limits": import.limits,
+        "options": import.options,
     })
     .to_string();
     let mut child = Command::new(&argv[0])
@@ -247,6 +366,34 @@ pub async fn run_worker(cfg: &Config, media_type: &str, data: &[u8]) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_settings_become_whitelisted_worker_options() {
+        let s = json!({
+            "csv": { "delimiter": ";", "encoding": "shift_jis", "header_row": 3, "max_records": 500 },
+            "xlsx": { "sheet": "BOM", "header_row": 2, "max_sheets": 999, "max_records": 10 },
+            "pdf": { "ocr": false, "ocr_language": "eng; rm -rf /", "max_pages": 20 },
+            "mapping": { "subject_key": "part_number", "predicate": "attribute", "value": "value", "unit": "unit" },
+        });
+        let c = import_options(4, &s, "text/csv");
+        assert_eq!(c.version, 4);
+        assert_eq!(
+            json!(c.options),
+            json!({"csv_delimiter": ";", "csv_encoding": "shift_jis", "header_row": 3})
+        );
+        assert_eq!(json!(c.limits), json!({"max_records": 500}));
+        assert_eq!(c.mapping.as_ref().map(|m| m.predicate.as_str()), Some("attribute"));
+        let x = import_options(4, &s, XLSX);
+        assert_eq!(json!(x.options), json!({"xlsx_sheet": "BOM", "header_row": 2}));
+        assert_eq!(json!(x.limits), json!({"max_records": 10}));
+        assert_eq!(x.ignored, vec!["xlsx.max_sheets"]);
+        let p = import_options(4, &s, "application/pdf");
+        assert_eq!(json!(p.options), json!({"ocr": false}));
+        assert_eq!(json!(p.limits), json!({"max_pages": 20}));
+        assert_eq!(p.ignored, vec!["pdf.ocr_language"]);
+        assert!(p.mapping.is_none());
+        assert_eq!(import_options(0, &json!({}), "text/csv"), ImportOptions::default());
+    }
 
     #[test]
     fn sandbox_argv_isolates_network_and_filesystem() {

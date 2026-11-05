@@ -143,3 +143,57 @@ def test_regression_review_l4_utf16_dtd_refused():
     sst = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE x [<!ENTITY a "aaaa">]><sst/>'.encode("utf-16")
     evil = make_xlsx([["a"], ["b"]], extra={"xl/sharedStrings.xml": sst})
     assert run(XLSX, evil) == {"ok": False, "error": "xlsx_dtd_refused"}
+
+
+def run_opts(media_type: str, data: bytes, options: dict, **limits) -> dict:
+    req = {
+        "media_type": media_type,
+        "data_b64": base64.b64encode(data).decode(),
+        "limits": limits,
+        "options": options,
+    }
+    return handle(json.dumps(req).encode())
+
+
+def test_import_settings_csv_delimiter_encoding_and_header_row():
+    data = "Report 2026\n\nPart Number;Material\nBRK-100;SUS304\n".encode("cp932")
+    r = run_opts("text/csv", data, {"csv_delimiter": ";", "csv_encoding": "shift_jis", "header_row": 3})
+    assert r["ok"], r
+    assert [(x["label"], x["value"]) for x in r["records"]] == [
+        ("Part Number", "BRK-100"),
+        ("Material", "SUS304"),
+    ]
+    # Without the settings the title row becomes the header.
+    r = run("text/csv", data)
+    assert all(x["label"] != "Part Number" for x in r["records"])
+
+
+def test_import_settings_xlsx_sheet_and_max_records():
+    data = make_xlsx([["Part Number", "Rev"], ["A-1", "B"], ["A-2", "C"]])
+    r = run_opts(XLSX, data, {"xlsx_sheet": "Nope"})
+    assert r["ok"] and r["records"] == [] and "xlsx_sheet_not_found" in r["warnings"]
+    r = run_opts(XLSX, data, {"xlsx_sheet": ""}, max_records=2)
+    assert len(r["records"]) == 2 and "records_truncated" in r["warnings"]
+
+
+def test_import_settings_ocr_off_skips_ocr():
+    r = run_opts("image/png", b"\x89PNG\r\n\x1a\n" + b"\0" * 64, {"ocr": False})
+    assert r["ok"] and r["warnings"] == ["ocr_disabled_by_settings"]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"csv_delimiter": "|"},
+        {"header_row": 101},
+        {"header_row": True},
+        {"ocr": "yes"},
+        {"ocr_language": "eng; rm -rf /"},
+        {"xlsx_sheet": "x" * 101},
+        {"path": "/etc/passwd"},
+        [],
+    ],
+)
+def test_import_settings_are_whitelisted(bad):
+    req = {"media_type": "text/csv", "data_b64": base64.b64encode(b"a,b\n1,2\n").decode(), "options": bad}
+    assert handle(json.dumps(req).encode()) == {"ok": False, "error": "bad_request"}

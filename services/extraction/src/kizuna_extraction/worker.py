@@ -1,6 +1,10 @@
 """Worker entry point (run by crates/kizuna-api/src/extraction.rs inside bubblewrap + prlimit).
 
-stdin:  {"media_type": str, "data_b64": str, "limits"?: {...}, "claim_extractor"?: "rules"}
+stdin:  {"media_type": str, "data_b64": str, "limits"?: {...}, "options"?: {...}, "claim_extractor"?: "rules"}
+        options (tenant import settings, all optional, validated against a fixed whitelist):
+        csv_delimiter ","|";"|"\t", csv_encoding "utf-8"|"shift_jis",
+        header_row 0..100 (0 = first non-empty row), xlsx_sheet (name, "" = all), ocr bool,
+        ocr_language "jpn+eng"|"eng+jpn"|"eng"|"jpn"
 stdout: {"ok": true, "extractor": "pdf@2", "worker_version", "records": [...], "claims": [...],
          "unmapped_labels": [...], "warnings": [...]}  or  {"ok": false, "error": code}
 
@@ -47,7 +51,36 @@ DEFAULT_LIMITS = {
 }
 MAX_INPUT = 64 * 1024 * 1024
 MAX_OUTPUT = 15 * 1024 * 1024  # API refuses > 16 MiB
-REQUEST_KEYS = {"media_type", "data_b64", "limits", "claim_extractor"}
+REQUEST_KEYS = {"media_type", "data_b64", "limits", "options", "claim_extractor"}
+DEFAULT_OPTIONS: dict = {
+    "csv_delimiter": None,
+    "csv_encoding": None,
+    "header_row": 0,
+    "xlsx_sheet": "",
+    "ocr": True,
+    "ocr_language": "eng+jpn",
+}
+
+
+def parse_options(raw: object) -> dict:
+    """Tenant import settings, strictly validated: unknown keys or values make the request invalid."""
+    if not isinstance(raw, dict) or set(raw) - set(DEFAULT_OPTIONS):
+        raise ValueError("options")
+    o = dict(DEFAULT_OPTIONS)
+    for k, v in raw.items():
+        ok = {
+            "csv_delimiter": v in (",", ";", "\t"),
+            "csv_encoding": v in ("utf-8", "shift_jis"),
+            "header_row": type(v) is int and 0 <= v <= 100,
+            "xlsx_sheet": isinstance(v, str) and len(v) <= 100,
+            "ocr": type(v) is bool,
+            "ocr_language": v in ("jpn+eng", "eng+jpn", "eng", "jpn"),
+        }[k]
+        if not ok:
+            raise ValueError(f"option {k}")
+        o[k] = v
+    return o
+
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 DXF = {"image/vnd.dxf", "application/dxf"}
@@ -66,22 +99,27 @@ def harden() -> None:
     socket.create_connection = _blocked  # type: ignore[assignment]
 
 
-def extract(media_type: str, data: bytes, limits: dict) -> tuple[str, list[dict], list[str]]:
+def extract(
+    media_type: str, data: bytes, limits: dict, options: dict | None = None
+) -> tuple[str, list[dict], list[str]]:
+    opts = options or dict(DEFAULT_OPTIONS)
     sink = Sink(limits["max_records"])
     warnings: list[str] = []
     if media_type == "text/csv":
-        warnings += csv_records(data, limits, sink)
+        warnings += csv_records(data, limits, sink, opts)
         name = "csv@2"
     elif media_type == XLSX:
-        warnings += xlsx_records(data, limits, sink)
+        warnings += xlsx_records(data, limits, sink, opts)
         name = "xlsx@2"
     elif media_type == "application/pdf":
         lines, meta, w = pdf_extract(data, limits)
         warnings += w
         method = "pdf"
-        if not lines:
+        if not lines and not opts["ocr"]:
+            warnings.append("pdf_without_text_layer_ocr_disabled_by_settings")
+        elif not lines:
             # Scanned PDF: render pages and OCR them (bounded page count), still inside the sandbox.
-            ocr = TesseractOcr()
+            ocr = TesseractOcr(opts["ocr_language"])
             if ocr.available():
                 for pno, png in enumerate(
                     rasterize_pdf(data, min(limits["max_pages"], limits["max_ocr_pages"])), 1
@@ -102,7 +140,9 @@ def extract(media_type: str, data: bytes, limits: dict) -> tuple[str, list[dict]
         px = image_pixels(data)
         if px is not None and px > limits["max_image_pixels"]:
             raise ExtractionError("image_too_large")
-        ocr = TesseractOcr()
+        if not opts["ocr"]:
+            return "ocr-none@1", [], ["ocr_disabled_by_settings"]
+        ocr = TesseractOcr(opts["ocr_language"])
         if not ocr.available():
             return "ocr-none@1", [], ["ocr_unavailable"]
         lines = ocr.recognize(data)
@@ -126,7 +166,7 @@ def _bounded(out: dict) -> str:
     return s
 
 
-def _parse_request(raw: bytes) -> tuple[str, bytes, dict, str]:
+def _parse_request(raw: bytes) -> tuple[str, bytes, dict, dict, str]:
     req = json.loads(raw)
     if not isinstance(req, dict) or set(req) - REQUEST_KEYS:
         raise ValueError("unexpected request shape")
@@ -138,17 +178,18 @@ def _parse_request(raw: bytes) -> tuple[str, bytes, dict, str]:
     for k, v in user_limits.items():
         if k in DEFAULT_LIMITS:
             limits[k] = min(int(v), DEFAULT_LIMITS[k])  # callers may only tighten limits
-    return str(req["media_type"]), data, limits, str(req.get("claim_extractor", "rules"))
+    options = parse_options(req.get("options", {}))
+    return str(req["media_type"]), data, limits, options, str(req.get("claim_extractor", "rules"))
 
 
 def handle(raw: bytes) -> dict:
     try:
-        media_type, data, limits, claimer_name = _parse_request(raw)
+        media_type, data, limits, options, claimer_name = _parse_request(raw)
     except (KeyError, ValueError, TypeError, binascii.Error):
         return {"ok": False, "error": "bad_request"}
     try:
         claimer = get_claim_extractor(claimer_name)
-        extractor, records, warnings = extract(media_type, data, limits)
+        extractor, records, warnings = extract(media_type, data, limits, options)
         claims, unmapped, cw = claimer.extract(records)
         return {
             "ok": True,

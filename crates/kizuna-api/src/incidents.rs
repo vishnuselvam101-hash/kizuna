@@ -27,6 +27,60 @@ pub const EXTRACTION_SUSPEND_SECS: i64 = 1800;
 
 type EvRow = (Uuid, String, Option<Uuid>, Option<String>, OffsetDateTime, Value);
 
+type BaselineCache = std::sync::Mutex<std::collections::HashMap<Uuid, (i64, Thresholds)>>;
+static BASELINES: std::sync::OnceLock<BaselineCache> = std::sync::OnceLock::new();
+const BASELINE_TTL_SECS: i64 = 600;
+
+/// Drops the cached adaptive thresholds of a tenant (after its settings change).
+pub fn forget_baseline(tenant: Uuid) {
+    if let Ok(mut m) = BASELINES.get_or_init(Default::default).lock() {
+        m.remove(&tenant);
+    }
+}
+
+/// The tenant's thresholds: configured values (defaults if unset); in adaptive mode raised from the tenant's own
+/// history, recomputed at most every 10 minutes.
+pub async fn thresholds_for(tx: &mut Tx, tenant: Uuid) -> ApiResult<Thresholds> {
+    let settings = crate::tenant_settings::detection(tx).await?;
+    if settings.mode == security_detection::Mode::Static {
+        return Ok(settings.thresholds);
+    }
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    if let Ok(m) = BASELINES.get_or_init(Default::default).lock()
+        && let Some((at, t)) = m.get(&tenant)
+        && now - at < BASELINE_TTL_SECS
+    {
+        return Ok(t.clone());
+    }
+    let rows: Vec<(String, Option<Uuid>, OffsetDateTime)> = sqlx::query_as(
+        "SELECT kind, user_id, occurred_at FROM security_events WHERE tenant_id = $1          AND occurred_at > now() - make_interval(days => $2) AND occurred_at <= now() - interval '1 hour'          AND kind IN ('authz.denied', 'admin.role_changed', 'admin.user_disabled', 'auth.mfa_reset',          'auth.sessions_revoked', 'ingest.upload_rejected', 'ingest.artifact_quarantined', 'ingest.extraction_failed',          'export.report') ORDER BY occurred_at DESC LIMIT 100000",
+    )
+    .bind(tenant)
+    .bind(settings.baseline_days as i32)
+    .fetch_all(&mut **tx)
+    .await?;
+    let history: Vec<Event> = rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, (kind, user, at))| Event {
+            id: i.to_string(),
+            kind,
+            user: user.map(|u| u.to_string()),
+            ip: None,
+            at: at.unix_timestamp(),
+            details: Default::default(),
+        })
+        .collect();
+    let t = security_detection::effective_thresholds(&settings, &history, now);
+    if let Ok(mut m) = BASELINES.get_or_init(Default::default).lock() {
+        if m.len() > 10_000 {
+            m.clear();
+        }
+        m.insert(tenant, (now, t.clone()));
+    }
+    Ok(t)
+}
+
 /// Runs all detection rules over the tenant's last hour of security events.
 pub async fn run_detection(pool: &PgPool, tenant: Uuid) -> ApiResult<usize> {
     let mut tx = db::tenant_tx(pool, tenant).await?;
@@ -66,11 +120,8 @@ pub async fn run_detection(pool: &PgPool, tenant: Uuid) -> ApiResult<usize> {
                 .unwrap_or_default(),
         })
         .collect();
-    let detections = detect(
-        &events,
-        OffsetDateTime::now_utc().unix_timestamp(),
-        &Thresholds::default(),
-    );
+    let thresholds = thresholds_for(&mut tx, tenant).await?;
+    let detections = detect(&events, OffsetDateTime::now_utc().unix_timestamp(), &thresholds);
     let mut touched = 0;
     let mut alerts = Vec::new();
     for d in detections {

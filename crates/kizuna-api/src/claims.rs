@@ -77,6 +77,8 @@ pub struct NewClaim<'a> {
     pub extraction_method: &'a str,
     pub provenance: Value,
     pub recorded_by: Option<Uuid>,
+    /// Created by AI-assisted extraction: stored as `ai_suggested` until a human reviews it.
+    pub ai_suggested: bool,
 }
 
 pub async fn insert_claim(tx: &mut Tx, tenant: Uuid, n: NewClaim<'_>) -> ApiResult<Uuid> {
@@ -99,8 +101,9 @@ pub async fn insert_claim(tx: &mut Tx, tenant: Uuid, n: NewClaim<'_>) -> ApiResu
     let c = n.claim;
     sqlx::query(
         "INSERT INTO claims (id, tenant_id, model_version, subject_type, subject_key, predicate, value_text, value_num, value_unit, \
-         scope, valid_from, valid_to, revision, artifact_id, source_location, extraction_method, confidence_bps, provenance, recorded_by) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::numeric,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)",
+         scope, valid_from, valid_to, revision, artifact_id, source_location, extraction_method, confidence_bps, provenance, recorded_by, \
+         review_status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::numeric,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, \
+         CASE WHEN $20 THEN 'ai_suggested' ELSE 'unreviewed' END)",
     )
     .bind(id)
     .bind(tenant)
@@ -121,6 +124,7 @@ pub async fn insert_claim(tx: &mut Tx, tenant: Uuid, n: NewClaim<'_>) -> ApiResu
     .bind(c.confidence_bps)
     .bind(&n.provenance)
     .bind(n.recorded_by)
+    .bind(n.ai_suggested)
     .execute(&mut **tx)
     .await?;
     Ok(id)
@@ -154,6 +158,7 @@ pub async fn create(
             extraction_method: "manual",
             provenance: json!({ "entered_by": p.user_id, "via": "api" }),
             recorded_by: Some(p.user_id),
+            ai_suggested: false,
         },
     )
     .await?;
@@ -217,6 +222,7 @@ pub async fn supersede(
             extraction_method: "manual",
             provenance: json!({ "entered_by": p.user_id, "via": "api", "supersedes": old, "reason": reason }),
             recorded_by: Some(p.user_id),
+            ai_suggested: false,
         },
     )
     .await?;

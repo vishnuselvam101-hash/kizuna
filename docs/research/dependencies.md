@@ -9,6 +9,7 @@ review is manual (this table).
 |---|---|---|---|---|
 | axum / tower / tower-http | 0.8 / 0.5 / 0.6 | MIT | HTTP server, limits, headers | tokio-rs project |
 | tokio | 1 | MIT | async runtime | |
+| reqwest | 0.12 (rustls, ring) | MIT/Apache-2.0 | outbound HTTPS to the opt-in AI provider (ADR 0016) | no default features, no redirects, no env proxy; only client in the server |
 | sqlx | 0.8 (0.9 exists) | MIT/Apache-2.0 | PostgreSQL, migrations | RUSTSEC-2024-0363 fixed in 0.8.1; lockfile lists `rsa` via unused sqlx-mysql (RUSTSEC-2023-0071, not compiled; ignored with reason in `.cargo/audit.toml`) |
 | argon2 | 0.5 | MIT/Apache-2.0 | password hashing | RustCrypto |
 | aes-gcm | 0.10 | MIT/Apache-2.0 | secret encryption at rest | RustCrypto; NCC audit 2020 |

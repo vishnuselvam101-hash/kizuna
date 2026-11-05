@@ -28,12 +28,17 @@ def col_name(n: int) -> str:
     return s
 
 
-def rows_to_records(rows, sink: Sink, sheet: str | None, method: str, formulas: set | None = None) -> None:
+def rows_to_records(
+    rows, sink: Sink, sheet: str | None, method: str, formulas: set | None = None, header_row: int = 0
+) -> None:
+    """`header_row` 0: first non-empty row is the header; N: row N is the header, earlier rows skipped."""
     header: list[str] | None = None
     for rno, row in rows:
         cells = [(c or "").strip() for c in row]
         if header is None:
-            if any(cells):
+            if header_row and rno < header_row:
+                continue
+            if any(cells) or header_row:
                 header = cells
             continue
         for cno, (h, v) in enumerate(zip(header, cells, strict=False), start=1):
@@ -52,9 +57,11 @@ def rows_to_records(rows, sink: Sink, sheet: str | None, method: str, formulas: 
             sink.add(_rec(h, v, loc, f"{sheet or 'csv'}:{rno}", m, conf))
 
 
-def csv_records(data: bytes, limits: dict, sink: Sink) -> list[str]:
+def csv_records(data: bytes, limits: dict, sink: Sink, opts: dict | None = None) -> list[str]:
+    opts = opts or {}
     warnings: list[str] = []
-    for enc in ("utf-8-sig", "cp932"):
+    encodings = ("cp932",) if opts.get("csv_encoding") == "shift_jis" else ("utf-8-sig", "cp932")
+    for enc in encodings:
         try:
             text = data.decode(enc)
             break
@@ -64,10 +71,18 @@ def csv_records(data: bytes, limits: dict, sink: Sink) -> list[str]:
         raise ExtractionError("csv_bad_encoding")
     if enc != "utf-8-sig":
         warnings.append(f"csv_decoded_as:{enc}")
-    try:
-        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
+    dialect: type[csv.Dialect] | csv.Dialect
+    if opts.get("csv_delimiter"):
+
+        class _Fixed(csv.excel):
+            delimiter = opts["csv_delimiter"]
+
+        dialect = _Fixed
+    else:
+        try:
+            dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+        except csv.Error:
+            dialect = csv.excel
 
     def rows():
         reader = csv.reader(io.StringIO(text), dialect)
@@ -78,7 +93,7 @@ def csv_records(data: bytes, limits: dict, sink: Sink) -> list[str]:
             yield rno, row[: limits["max_cols"]]
 
     try:
-        rows_to_records(rows(), sink, None, "csv-cell")
+        rows_to_records(rows(), sink, None, "csv-cell", header_row=opts.get("header_row", 0))
     except csv.Error as e:
         raise ExtractionError("csv_malformed") from e
     return warnings
@@ -158,7 +173,8 @@ def _sheet_path(target: str) -> str | None:
     return p if p.startswith("xl/") else None
 
 
-def xlsx_records(data: bytes, limits: dict, sink: Sink) -> list[str]:
+def xlsx_records(data: bytes, limits: dict, sink: Sink, opts: dict | None = None) -> list[str]:
+    opts = opts or {}
     z = _Zip(data, limits)
     warnings: list[str] = []
     shared: list[str] = []
@@ -173,6 +189,10 @@ def xlsx_records(data: bytes, limits: dict, sink: Sink) -> list[str]:
         for r in z.xml("xl/_rels/workbook.xml.rels"):
             rels[r.get("Id")] = r.get("Target", "")
     sheets = wb.findall("m:sheets/m:sheet", NS)
+    if opts.get("xlsx_sheet"):
+        sheets = [sh for sh in sheets if sh.get("name") == opts["xlsx_sheet"]]
+        if not sheets:
+            warnings.append("xlsx_sheet_not_found")
     if len(sheets) > limits["max_sheets"]:
         warnings.append("xlsx_sheets_truncated")
     cells_seen = 0
@@ -210,5 +230,7 @@ def xlsx_records(data: bytes, limits: dict, sink: Sink) -> list[str]:
                 rno = len(rows) + 1
             width = max(cells) if cells else 0
             rows.append((rno, [cells.get(i, "") for i in range(1, width + 1)]))
-        rows_to_records(rows, sink, sh.get("name", "sheet"), "xlsx-cell", formulas)
+        rows_to_records(
+            rows, sink, sh.get("name", "sheet"), "xlsx-cell", formulas, header_row=opts.get("header_row", 0)
+        )
     return warnings

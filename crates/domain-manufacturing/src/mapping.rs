@@ -29,7 +29,7 @@ pub struct Mapped {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Field {
+pub(crate) enum Field {
     Part,
     Drawing,
     Revision,
@@ -73,7 +73,7 @@ fn dim(s: &str) -> Option<&'static str> {
 }
 
 /// Splits "Length (mm)" into ("length", Some("mm")) and normalises the label.
-fn normalize_label(raw: &str) -> (String, Option<String>) {
+pub(crate) fn normalize_label(raw: &str) -> (String, Option<String>) {
     let s = safe_normalize(raw).to_lowercase();
     let (base, unit) = match (s.find('('), s.rfind(')')) {
         (Some(a), Some(b)) if b > a => (
@@ -98,7 +98,7 @@ fn normalize_label(raw: &str) -> (String, Option<String>) {
     )
 }
 
-fn field(label: &str) -> Option<Field> {
+pub(crate) fn field(label: &str) -> Option<Field> {
     let f = match label {
         "part number" | "part no" | "part #" | "part" | "partno" | "p/n" | "pn" | "item number" | "item no"
         | "品番" | "部品番号" => Field::Part,
@@ -147,6 +147,70 @@ fn field(label: &str) -> Option<Field> {
         }
     };
     Some(f)
+}
+
+/// Column names of a "long" table (one row per attribute: part, attribute name, value, unit), from the tenant's
+/// import settings. Empty names are unused.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ColumnMapping {
+    pub subject_key: String,
+    pub predicate: String,
+    pub value: String,
+    pub unit: String,
+    pub revision: String,
+}
+
+/// Rewrites rows of a long table into label/value records: in every row (`group`) that has both the predicate and
+/// the value column, `<attribute> (<unit>)` = value; the subject column becomes "part number" and the revision
+/// column "revision". Rows without those columns are left unchanged. The attribute text is still only a label: it
+/// must match the fixed vocabulary to become a claim.
+pub fn apply_column_mapping(records: &[Record], m: &ColumnMapping) -> Vec<Record> {
+    let norm = |s: &str| normalize_label(s).0;
+    let (pk, vk) = (norm(&m.predicate), norm(&m.value));
+    if pk.is_empty() || vk.is_empty() || pk == vk {
+        return records.to_vec();
+    }
+    let (sk, uk, rk) = (norm(&m.subject_key), norm(&m.unit), norm(&m.revision));
+    let mut groups: BTreeMap<&str, Vec<&Record>> = BTreeMap::new();
+    for r in records {
+        groups.entry(r.group.as_str()).or_default().push(r);
+    }
+    let mut out = Vec::with_capacity(records.len());
+    for r in records {
+        let row = &groups[r.group.as_str()];
+        let cell = |k: &str| row.iter().find(|x| !k.is_empty() && norm(&x.label) == k);
+        let (Some(p), Some(v)) = (cell(&pk), cell(&vk)) else {
+            out.push(r.clone());
+            continue;
+        };
+        let l = norm(&r.label);
+        if !sk.is_empty() && l == sk {
+            out.push(Record {
+                label: "part number".into(),
+                ..r.clone()
+            });
+        } else if !rk.is_empty() && l == rk {
+            out.push(Record {
+                label: "revision".into(),
+                ..r.clone()
+            });
+        } else if l == vk {
+            let unit = cell(&uk)
+                .map(|u| u.value.trim())
+                .filter(|u| !u.is_empty() && !u.contains(['(', ')']));
+            let attr = p.value.trim().replace(['(', ')'], " ");
+            out.push(Record {
+                label: match unit {
+                    Some(u) => format!("{attr} ({u})"),
+                    None => attr,
+                },
+                ..(*v).clone()
+            });
+        } else if l != pk && l != uk {
+            out.push(r.clone());
+        }
+    }
+    out
 }
 
 /// "120.5 mm" → (decimal, unit). Comma decimals and exponents are not accepted (kept as text instead).
@@ -492,6 +556,53 @@ mod tests {
         );
         assert_eq!(parse_tolerance("abc", None), None);
         assert_eq!(parse_quantity("1,5", None), None);
+    }
+
+    #[test]
+    fn long_table_column_mapping() {
+        let m = ColumnMapping {
+            subject_key: "part_number".into(),
+            predicate: "attribute".into(),
+            value: "value".into(),
+            unit: "unit".into(),
+            revision: "rev".into(),
+        };
+        let r = vec![
+            rec("Part_Number", "A-1", "r2"),
+            rec("Attribute", "Length", "r2"),
+            rec("Value", "120.5", "r2"),
+            rec("Unit", "mm", "r2"),
+            rec("Rev", "B", "r2"),
+            rec("Part_Number", "A-1", "r3"),
+            rec("Attribute", "Material", "r3"),
+            rec("Value", "SUS304", "r3"),
+        ];
+        let out = map_records("spec_document", &apply_column_mapping(&r, &m), 9000);
+        let preds: Vec<(&str, Option<&str>, Option<&str>)> = out
+            .claims
+            .iter()
+            .map(|c| (c.predicate.as_str(), c.value_num.as_deref(), c.value_text.as_deref()))
+            .collect();
+        assert!(
+            preds.contains(&("mfg.dimension.length", Some("120.5"), None)),
+            "{preds:?}"
+        );
+        assert!(preds.contains(&("mfg.material", None, Some("SUS304"))));
+        assert!(preds.contains(&("mfg.revision", None, Some("B"))));
+        // Wide tables are unaffected.
+        let wide = vec![rec("Part Number", "A-1", "g"), rec("Material", "S45C", "g")];
+        assert_eq!(apply_column_mapping(&wide, &m), wide);
+        // An attribute that is not in the vocabulary stays unmapped.
+        let odd = vec![
+            rec("Part_Number", "A-1", "r"),
+            rec("Attribute", "Colour", "r"),
+            rec("Value", "red", "r"),
+        ];
+        assert!(
+            map_records("spec_document", &apply_column_mapping(&odd, &m), 9000)
+                .claims
+                .is_empty()
+        );
     }
 }
 

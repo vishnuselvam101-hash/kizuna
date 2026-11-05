@@ -124,6 +124,14 @@ pub fn router(st: AppState) -> Router {
             "/integrations/import-settings",
             get(insights::get_settings).put(insights::put_settings),
         )
+        .route(
+            "/integrations/ai-extraction",
+            get(crate::tenant_settings::get_ai).put(crate::tenant_settings::put_ai),
+        )
+        .route(
+            "/security/detection-settings",
+            get(crate::tenant_settings::get_detection).put(crate::tenant_settings::put_detection),
+        )
         .route("/users/{id}/sessions", get(insights::user_sessions))
         .route("/security/incidents", get(incidents::list))
         .route("/security/incidents/{id}", get(incidents::get))

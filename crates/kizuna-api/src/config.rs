@@ -66,6 +66,45 @@ pub struct Config {
     pub extraction_timeout_secs: u64,
     /// Ed25519 seed for signed audit checkpoints (keep outside the database).
     pub audit_signing_key: Option<Secret<[u8; 32]>>,
+    /// External AI label mapping (OFF unless configured; tenants must still opt in). See ADR 0016.
+    pub ai: Option<AiConfig>,
+}
+
+/// OpenAI-compatible chat-completions endpoint for AI-assisted extraction.
+#[derive(Debug, Clone)]
+pub struct AiConfig {
+    /// Base URL ending before `/chat/completions`, e.g. `http://127.0.0.1:11434/v1`.
+    pub base_url: String,
+    pub model: String,
+    pub api_key: Option<Secret<String>>,
+    pub timeout_secs: u64,
+    /// Per-tenant budget: calls per UTC day and prompt characters per UTC day.
+    pub daily_calls: i64,
+    pub daily_chars: i64,
+    /// Per-tenant rate limit: calls per minute.
+    pub calls_per_min: i64,
+}
+
+/// Accepts `https://host[:port]/path`, or `http://` only for loopback hosts. No credentials, query or fragment.
+pub fn valid_ai_base_url(u: &str) -> bool {
+    let (scheme, rest) = match u.split_once("://") {
+        Some(x) => x,
+        None => return false,
+    };
+    if rest.is_empty() || rest.contains(['@', '?', '#', ' ', '\\']) || !u.is_ascii() {
+        return false;
+    }
+    let authority = rest.split('/').next().unwrap_or("");
+    let host = if let Some(h) = authority.strip_prefix('[') {
+        h.split(']').next().unwrap_or("")
+    } else {
+        authority.split(':').next().unwrap_or("")
+    };
+    if host.is_empty() {
+        return false;
+    }
+    let loopback = host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback());
+    scheme == "https" || (scheme == "http" && loopback)
 }
 
 impl Config {
@@ -142,6 +181,35 @@ impl Config {
                 Some(v) => Some(Secret::new(crate::keyring::parse_key(&v, "KIZUNA_AUDIT_SIGNING_KEY")?)),
             },
             extraction_timeout_secs: num("KIZUNA_EXTRACTION_TIMEOUT_SECS", 45, 5, 50)? as u64,
+            ai: match (
+                get("KIZUNA_AI_BASE_URL").filter(|v| !v.is_empty()),
+                get("KIZUNA_AI_MODEL"),
+            ) {
+                (None, _) => None,
+                (Some(base), model) => {
+                    let base = base.trim_end_matches('/').to_string();
+                    if !valid_ai_base_url(&base) {
+                        return Err(ConfigError::Invalid("KIZUNA_AI_BASE_URL"));
+                    }
+                    let model = model
+                        .filter(|m| !m.is_empty() && m.len() <= 100 && m.chars().all(|c| c.is_ascii_graphic()))
+                        .ok_or(ConfigError::Invalid("KIZUNA_AI_MODEL"))?;
+                    let timeout_secs = num("KIZUNA_AI_TIMEOUT_SECS", 12, 1, 30)? as u64;
+                    // The whole extract request (worker + AI) must finish inside the 60 s request timeout.
+                    if timeout_secs + num("KIZUNA_EXTRACTION_TIMEOUT_SECS", 45, 5, 50)? as u64 > 58 {
+                        return Err(ConfigError::Invalid("KIZUNA_AI_TIMEOUT_SECS"));
+                    }
+                    Some(AiConfig {
+                        base_url: base,
+                        model,
+                        api_key: get("KIZUNA_AI_API_KEY").filter(|v| !v.is_empty()).map(Secret::new),
+                        timeout_secs,
+                        daily_calls: num("KIZUNA_AI_DAILY_CALLS", 50, 1, 100_000)?,
+                        daily_chars: num("KIZUNA_AI_DAILY_CHARS", 200_000, 1000, 100_000_000)?,
+                        calls_per_min: num("KIZUNA_AI_CALLS_PER_MIN", 5, 1, 1000)?,
+                    })
+                }
+            },
         })
     }
 }
@@ -182,6 +250,35 @@ mod tests {
             Config::from_lookup(|k| m.get(k).cloned()).unwrap().extraction_sandbox,
             "none"
         );
+    }
+
+    #[test]
+    fn ai_is_off_by_default_and_validated() {
+        let mut m = base();
+        let c = Config::from_lookup(|k| m.get(k).cloned()).unwrap();
+        assert!(c.ai.is_none());
+        m.insert("KIZUNA_AI_BASE_URL", "http://127.0.0.1:11434/v1/".into());
+        assert!(Config::from_lookup(|k| m.get(k).cloned()).is_err(), "model required");
+        m.insert("KIZUNA_AI_MODEL", "gemma4:cloud".into());
+        m.insert("KIZUNA_AI_API_KEY", "sk-topsecretkey".into());
+        let c = Config::from_lookup(|k| m.get(k).cloned()).unwrap();
+        let ai = c.ai.clone().unwrap();
+        assert_eq!(ai.base_url, "http://127.0.0.1:11434/v1");
+        assert!(!format!("{c:?}").contains("topsecretkey"));
+        for bad in [
+            "http://example.com/v1",
+            "ftp://127.0.0.1/",
+            "https://user:pw@example.com/v1",
+            "https://example.com/v1?x=1",
+            "https://",
+            "http://127.0.0.1.evil.com/v1",
+        ] {
+            assert!(!valid_ai_base_url(bad), "{bad}");
+        }
+        assert!(valid_ai_base_url("https://integrate.api.nvidia.com/v1"));
+        assert!(valid_ai_base_url("http://[::1]:8080/v1"));
+        m.insert("KIZUNA_AI_TIMEOUT_SECS", "20".into());
+        assert!(Config::from_lookup(|k| m.get(k).cloned()).is_err(), "45 + 20 > 58");
     }
 
     #[test]
