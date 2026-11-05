@@ -13,6 +13,8 @@ export interface Tokens {
 
 export class Api {
   private tokens: Tokens | null = null;
+  /** Called when the session ends without an explicit logout (refresh failed). */
+  onSessionEnd: (() => void) | null = null;
   constructor(private base = "/api/v1", private fetchFn: typeof fetch = (...a) => fetch(...a)) {}
 
   get authenticated(): boolean {
@@ -51,13 +53,16 @@ export class Api {
   private async refresh(): Promise<boolean> {
     const rt = this.tokens?.refresh_token;
     this.tokens = null;
-    if (!rt) return false;
-    try {
-      this.tokens = await this.request<Tokens>("POST", "/auth/refresh", { refresh_token: rt }, false);
-      return true;
-    } catch {
-      return false;
+    if (rt) {
+      try {
+        this.tokens = await this.request<Tokens>("POST", "/auth/refresh", { refresh_token: rt }, false);
+        return true;
+      } catch {
+        /* fall through: session is over */
+      }
     }
+    this.onSessionEnd?.();
+    return false;
   }
 
   async login(tenant: string, email: string, password: string, totp_code?: string) {
