@@ -2,30 +2,54 @@ import io
 import zipfile
 
 
-def make_pdf(lines: list[str]) -> bytes:
-    def esc(s: str) -> str:
-        return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+def esc(s: str) -> str:
+    return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
-    content = "BT /F1 11 Tf 72 740 Td 14 TL " + " ".join(f"({esc(t)}) '" for t in lines) + " ET"
-    objs = [
-        "<< /Type /Catalog /Pages 2 0 R >>",
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
-        "/Resources << /Font << /F1 5 0 R >> >> >>",
-        f"<< /Length {len(content)} >>\nstream\n{content}\nendstream",
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+
+def text_at(x: float, y: float, s: str, size: int = 11) -> str:
+    return f"BT /F1 {size} Tf {x} {y} Td ({esc(s)}) Tj ET"
+
+
+def build_pdf(
+    pages: list[bytes | str], info: dict | None = None, mediabox: str = "0 0 612 792", filters: str = ""
+) -> bytes:
+    """Minimal valid PDF: one content stream per page (raw bytes allowed for hostile streams)."""
+    n = len(pages)
+    kids = " ".join(f"{3 + 2 * i} 0 R" for i in range(n))
+    objs: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        f"<< /Type /Pages /Kids [{kids}] /Count {n} >>".encode(),
     ]
+    font = 3 + 2 * n
+    for i, content in enumerate(pages):
+        body = content.encode("latin-1") if isinstance(content, str) else content
+        objs.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [{mediabox}] /Contents {4 + 2 * i} 0 R "
+            f"/Resources << /Font << /F1 {font} 0 R >> >> >>".encode()
+        )
+        objs.append(f"<< /Length {len(body)} {filters}>>\nstream\n".encode() + body + b"\nendstream")
+    objs.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+    trailer_info = ""
+    if info:
+        objs.append(("<< " + " ".join(f"/{k} ({esc(v)})" for k, v in info.items()) + " >>").encode())
+        trailer_info = f" /Info {len(objs)} 0 R"
     out = b"%PDF-1.4\n"
     offsets = []
     for i, o in enumerate(objs, start=1):
         offsets.append(len(out))
-        out += f"{i} 0 obj\n{o}\nendobj\n".encode()
+        out += f"{i} 0 obj\n".encode() + o + b"\nendobj\n"
     xref = len(out)
     out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
     for off in offsets:
         out += f"{off:010d} 00000 n \n".encode()
-    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    out += (
+        f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R{trailer_info} >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    )
     return out
+
+
+def make_pdf(lines: list[str]) -> bytes:
+    return build_pdf([" ".join(text_at(72, 740 - 14 * i, t) for i, t in enumerate(lines))])
 
 
 def make_xlsx(rows: list[list[str]], extra: dict[str, bytes] | None = None, shared: bool = True) -> bytes:

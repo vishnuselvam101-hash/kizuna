@@ -13,9 +13,13 @@ step "rust tests";   cargo test -q -j"$JOBS" --workspace
 if [[ "${1:-}" != "--no-audit" ]]; then
   step "cargo audit"; cargo audit -q
   step "pnpm audit"; (cd web && pnpm audit)
+  step "pip-audit"
+  req=$(mktemp); trap 'rm -f "$req"' EXIT
+  (cd services/extraction && uv export -q --frozen --all-groups -o "$req" && uvx -q pip-audit --strict --require-hashes -r "$req")
 fi
 step "python lint+tests"
-(cd services/extraction && uv run -q ruff check . && uv run -q ruff format --check . && uv run -q pytest -q)
+(cd services/extraction && uv lock --check -q && uv run -q --locked ruff check . \
+  && uv run -q --locked ruff format --check . && uv run -q --locked pytest -q)
 step "web typecheck+tests"
 (cd web && pnpm -s lint && pnpm -s test)
 if command -v gitleaks >/dev/null; then

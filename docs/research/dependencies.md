@@ -27,8 +27,9 @@ Not adopted: `governor` (own 60-line limiter, ADR 0008), `jsonwebtoken` (opaque 
 ## Python (services/extraction, via uv)
 | Package | Licence | Use |
 |---|---|---|
-| pypdf 6.x | BSD-3-Clause | PDF text extraction (inside sandbox) |
+| pypdf 6.21.4 (exact pin) | BSD-3-Clause | PDF text with positions + document info (inside sandbox) |
 | pytest (dev) | MIT | tests |
+| hypothesis (dev) | MPL-2.0 | property/fuzz tests of the worker on mutated documents (dev only, not shipped) |
 | ruff (dev) | MIT | lint/format |
 
 ## Web (pnpm)
@@ -51,5 +52,20 @@ sqlx 0.9, rand 0.10, sha2 0.11, argon2 0.6, aes-gcm 0.11 (new majors; API change
 | prlimit (util-linux) | GPL-2.0 | worker resource limits |
 | tesseract 5.5 | Apache-2.0 | OCR of image uploads, when installed |
 | ImageMagick (tests only) | ImageMagick licence | renders an OCR test image |
+
+Python pins: `services/extraction/uv.lock` (hashes); `scripts/check.sh` runs `uv lock --check` and `uv run --locked`.
+
+Python licence/advisory check (2026-11-05): `uv export --frozen --all-groups` → `uvx pip-audit --strict
+--require-hashes` (PyPI/OSV advisories): **No known vulnerabilities found** for pypdf 6.21.4, hypothesis 6.170.14,
+pytest 9.2.0, ruff 0.17.3, sortedcontainers 2.4.0, packaging 26.3, pluggy 1.7.0, iniconfig 2.3.1, pygments 2.21.0.
+Licences (PyPI metadata): pypdf BSD-3-Clause; hypothesis MPL-2.0 (file-level copyleft, dev-only, unmodified);
+pytest/pluggy/iniconfig MIT; ruff MIT; sortedcontainers Apache-2.0; packaging Apache-2.0/BSD-2-Clause; pygments
+BSD-2-Clause. Only pypdf enters the sandbox. pip-audit now runs in `scripts/check.sh` (audit section).
+
+Not adopted (Python): ezdxf (MIT, maintained) for DXF: it pulls numpy, fonttools and pyparsing into the sandbox for
+what is a HEADER/ATTRIB read, so a ~90-line stdlib group-code reader is used (`drawing.py`, fuzzed);
+pdfplumber/camelot (table extraction; add pdfminer.six/OpenCV/Ghostscript) - tables are rebuilt from pypdf text
+positions instead; pytesseract (thin wrapper; the CLI is called directly with a fixed argv); any hosted AI SDK
+(ADR 0012: no external providers).
 
 Not adopted: defusedxml (stdlib ElementTree + DTD refusal + size caps instead, see `tabular.py`), ClamAV (ADR 0011).

@@ -1,7 +1,14 @@
-"""Worker entry point. Protocol: one JSON object on stdin
-   {"media_type": str, "data_b64": str, "limits": {...}}
-and one JSON object on stdout
-   {"ok": true, "extractor": "pdf@1", "records": [...], "warnings": [...]} or {"ok": false, "error": code}.
+"""Worker entry point (run by crates/kizuna-api/src/extraction.rs inside bubblewrap + prlimit).
+
+stdin:  {"media_type": str, "data_b64": str, "limits"?: {...}, "claim_extractor"?: "rules"}
+stdout: {"ok": true, "extractor": "pdf@2", "worker_version", "records": [...], "claims": [...],
+         "unmapped_labels": [...], "warnings": [...]}  or  {"ok": false, "error": code}
+
+The request carries document bytes only: no paths, tenant ids or URLs are accepted, so the worker cannot be
+pointed
+at another tenant's data; unknown request keys are refused. Records keep the {label, value, location, group}
+shape
+the Rust mapping consumes and add `method` and `confidence`.
 """
 
 import base64
@@ -12,25 +19,42 @@ import socket
 import sys
 
 from . import __version__
-from .documents import TesseractOcr, pdf_pages
-from .tabular import ExtractionError, csv_records, xlsx_records
-from .textrules import records_from_text
+from .claims import get_claim_extractor
+from .documents import pdf_extract
+from .drawing import dxf_records, pdf_metadata, title_block
+from .errors import ExtractionError
+from .ocr import TesseractOcr, image_pixels
+from .records import Sink, records_from_lines
+from .tabular import csv_records, xlsx_records
 
 DEFAULT_LIMITS = {
     "max_records": 20000,
     "max_pages": 500,
+    "max_page_chars": 1_000_000,
     "max_text_chars": 5_000_000,
+    "max_fragments_per_page": 50_000,
+    "max_stream_bytes": 32 * 1024 * 1024,
     "max_member_bytes": 50 * 1024 * 1024,
+    "max_total_unzipped": 200 * 1024 * 1024,
+    "max_zip_members": 2000,
     "max_sheets": 50,
+    "max_cells": 2_000_000,
+    "max_rows": 1_000_000,
+    "max_cols": 1000,
+    "max_dxf_pairs": 5_000_000,
+    "max_image_pixels": 60_000_000,
 }
 MAX_INPUT = 64 * 1024 * 1024
+MAX_OUTPUT = 15 * 1024 * 1024  # API refuses > 16 MiB
+REQUEST_KEYS = {"media_type", "data_b64", "limits", "claim_extractor"}
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+DXF = {"image/vnd.dxf", "application/dxf"}
 IMAGES = {"image/png", "image/jpeg", "image/tiff"}
 
 
 def harden() -> None:
-    """Defence in depth inside the sandbox: no new files, bounded CPU, no sockets."""
+    """Defence in depth inside the sandbox: no new files, no core dumps, no sockets."""
     resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
@@ -42,44 +66,94 @@ def harden() -> None:
 
 
 def extract(media_type: str, data: bytes, limits: dict) -> tuple[str, list[dict], list[str]]:
+    sink = Sink(limits["max_records"])
     warnings: list[str] = []
     if media_type == "text/csv":
-        return "csv@1", csv_records(data, limits), warnings
-    if media_type == XLSX:
-        return "xlsx@1", xlsx_records(data, limits), warnings
-    if media_type == "application/pdf":
-        pages = pdf_pages(data, limits)
-        if not any(p.strip() for p in pages):
+        warnings += csv_records(data, limits, sink)
+        name = "csv@2"
+    elif media_type == XLSX:
+        warnings += xlsx_records(data, limits, sink)
+        name = "xlsx@2"
+    elif media_type == "application/pdf":
+        lines, meta, w = pdf_extract(data, limits)
+        warnings += w
+        if not lines:
             warnings.append("pdf_has_no_text_layer_ocr_not_applied")
-        return "pdf@1", records_from_text(pages, limits["max_records"]), warnings
-    if media_type in IMAGES:
+        records_from_lines(lines, "pdf", sink)
+        title_block(lines, sink)
+        pdf_metadata(meta, sink)
+        name = "pdf@2"
+    elif media_type in DXF:
+        warnings += dxf_records(data, limits, sink)
+        name = "dxf@1"
+    elif media_type in IMAGES:
+        px = image_pixels(data)
+        if px is not None and px > limits["max_image_pixels"]:
+            raise ExtractionError("image_too_large")
         ocr = TesseractOcr()
         if not ocr.available():
             return "ocr-none@1", [], ["ocr_unavailable"]
-        return "ocr-tesseract@1", records_from_text([ocr.image_text(data)], limits["max_records"]), warnings
-    raise ExtractionError("unsupported_media_type")
+        lines = ocr.recognize(data)
+        records_from_lines(lines, "ocr", sink)
+        name = "ocr-tesseract@2"
+    else:
+        raise ExtractionError("unsupported_media_type")
+    if sink.full:
+        warnings.append("records_truncated")
+    return name, sink.items, warnings
+
+
+def _bounded(out: dict) -> str:
+    s = json.dumps(out, ensure_ascii=False)
+    while len(s.encode()) > MAX_OUTPUT and (out.get("records") or out.get("claims")):
+        out["records"] = out["records"][: len(out["records"]) // 2]
+        out["claims"] = out["claims"][: len(out["claims"]) // 2]
+        if "output_truncated" not in out["warnings"]:
+            out["warnings"].append("output_truncated")
+        s = json.dumps(out, ensure_ascii=False)
+    return s
+
+
+def _parse_request(raw: bytes) -> tuple[str, bytes, dict, str]:
+    req = json.loads(raw)
+    if not isinstance(req, dict) or set(req) - REQUEST_KEYS:
+        raise ValueError("unexpected request shape")
+    data = base64.b64decode(req["data_b64"], validate=True)
+    user_limits = req.get("limits", {})
+    if not isinstance(user_limits, dict):
+        raise TypeError("limits")
+    limits = dict(DEFAULT_LIMITS)
+    for k, v in user_limits.items():
+        if k in DEFAULT_LIMITS:
+            limits[k] = min(int(v), DEFAULT_LIMITS[k])  # callers may only tighten limits
+    return str(req["media_type"]), data, limits, str(req.get("claim_extractor", "rules"))
 
 
 def handle(raw: bytes) -> dict:
     try:
-        req = json.loads(raw)
-        data = base64.b64decode(req["data_b64"], validate=True)
-        limits = {
-            **DEFAULT_LIMITS,
-            **{k: int(v) for k, v in req.get("limits", {}).items() if k in DEFAULT_LIMITS},
-        }
-        extractor, records, warnings = extract(str(req["media_type"]), data, limits)
+        media_type, data, limits, claimer_name = _parse_request(raw)
+    except (KeyError, ValueError, TypeError, binascii.Error):
+        return {"ok": False, "error": "bad_request"}
+    try:
+        claimer = get_claim_extractor(claimer_name)
+        extractor, records, warnings = extract(media_type, data, limits)
+        claims, unmapped, cw = claimer.extract(records)
         return {
             "ok": True,
             "extractor": extractor,
             "worker_version": __version__,
-            "records": records[: limits["max_records"]],
-            "warnings": warnings,
+            "records": records,
+            "claims": claims,
+            "claim_extractor": claimer.name,
+            "unmapped_labels": unmapped,
+            "warnings": warnings + cw,
         }
     except ExtractionError as e:
         return {"ok": False, "error": str(e)}
-    except (KeyError, ValueError, TypeError, binascii.Error):
-        return {"ok": False, "error": "bad_request"}
+    except RecursionError:
+        return {"ok": False, "error": "document_too_deeply_nested"}
+    except MemoryError:
+        return {"ok": False, "error": "resource_limit"}
     except Exception:  # noqa: BLE001  (malformed documents must never crash without a structured answer)
         return {"ok": False, "error": "extractor_crashed"}
 
@@ -87,11 +161,8 @@ def handle(raw: bytes) -> dict:
 def main() -> None:
     harden()
     raw = sys.stdin.buffer.read(MAX_INPUT + 1)
-    if len(raw) > MAX_INPUT:
-        out = {"ok": False, "error": "input_too_large"}
-    else:
-        out = handle(raw)
-    sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    out = {"ok": False, "error": "input_too_large"} if len(raw) > MAX_INPUT else handle(raw)
+    sys.stdout.write(_bounded(out) if out.get("ok") else json.dumps(out))
     sys.stdout.flush()
 
 
