@@ -6,11 +6,13 @@
 //! identity-preserving normalisation) may be treated as the same key without a human, exactly as in v1.
 
 pub mod block;
+pub mod context;
 pub mod em;
 pub mod normalize;
 
 use crate::Outcome;
 use block::{BlockConfig, RecordKeys, qgrams};
+pub use context::{PartContext, TypoReview};
 use em::{EmReport, FsParams, Gamma};
 use normalize::{CompanyKey, LegalForm, company_key, ocr_fold, part_key, part_loose, split_revision};
 use serde::Serialize;
@@ -373,6 +375,10 @@ pub struct Config {
     pub max_pairs_per_record: f64,
     /// Seeded random (non-blocked) pairs per record added to the EM training set.
     pub random_pairs_per_record: usize,
+    /// One-character (typo) rule: off / strict (needs context agreement) / broad (always review).
+    pub typo_review: TypoReview,
+    /// Strict mode: minimum mean context agreement (description/supplier/drawing/material) for review.
+    pub context_floor: f64,
 }
 
 impl Default for Config {
@@ -387,6 +393,8 @@ impl Default for Config {
             min_training_pairs: 50,
             random_pairs_per_record: 4,
             max_pairs_per_record: 2.0,
+            typo_review: TypoReview::Strict,
+            context_floor: 0.6,
         }
     }
 }
@@ -412,8 +420,11 @@ pub struct Stats {
     pub params: FsParams,
     pub t_match: f64,
     pub t_possible: f64,
+    pub typo_review: TypoReview,
     /// Pairs sent to review by the one-character rule (whatever their weight).
     pub typo_reviews: usize,
+    /// Typo-shaped pairs the strict rule left to FS because their context disagrees.
+    pub typo_left_to_fs: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -422,12 +433,30 @@ pub struct Resolution {
     pub stats: Stats,
 }
 
-/// Resolves distinct keys. Deterministic for a given (keys as a set, config).
+/// Resolves distinct keys without context. Deterministic for a given (keys as a set, config).
 pub fn resolve(kind: Kind, keys: &[String], cfg: &Config) -> Resolution {
+    resolve_with_context(kind, keys, &HashMap::new(), cfg)
+}
+
+/// Resolves distinct keys; `context` (by raw key, parts only) feeds the strict typo rule. Deterministic for a given
+/// (keys as a set, context, config).
+pub fn resolve_with_context(
+    kind: Kind,
+    keys: &[String],
+    context: &HashMap<String, PartContext>,
+    cfg: &Config,
+) -> Resolution {
     let mut ks: Vec<&String> = keys.iter().collect();
     ks.sort();
     ks.dedup();
     let prep: Vec<Prepared> = ks.iter().map(|k| prepare(kind, k)).collect();
+    let ctx: Vec<context::Prepared> = if kind == Kind::Part && cfg.typo_review == TypoReview::Strict {
+        ks.iter()
+            .map(|k| context.get(k.as_str()).map(context::prepare).unwrap_or_default())
+            .collect()
+    } else {
+        Vec::new()
+    };
     let bk: Vec<RecordKeys> = prep.iter().map(|p| block_keys(kind, p)).collect();
     let pairs = block::candidate_pairs(&bk, &cfg.block);
     let gammas: Vec<Gamma> = pairs
@@ -466,11 +495,20 @@ pub fn resolve(kind: Kind, keys: &[String], cfg: &Config) -> Resolution {
 
     let mut out = Vec::new();
     let mut typo_reviews = 0usize;
+    let mut typo_left_to_fs = 0usize;
     for (&(i, j), g) in pairs.iter().zip(&gammas) {
         let (a, b) = (&prep[i as usize], &prep[j as usize]);
         let w = em::weight(&params, g);
         let safe = a.safe == b.safe;
-        let typo = kind == Kind::Part && !safe && possible_typo(a, b, g);
+        let shaped = kind == Kind::Part && !safe && cfg.typo_review != TypoReview::Off && possible_typo(a, b, g);
+        let why = match cfg.typo_review {
+            TypoReview::Strict if shaped => {
+                context::strict_review_reason(&ctx[i as usize], &ctx[j as usize], cfg.context_floor)
+            }
+            _ => None,
+        };
+        let typo = shaped && (cfg.typo_review == TypoReview::Broad || why.is_some());
+        typo_left_to_fs += usize::from(shaped && !typo);
         let outcome = if typo {
             // One keyed character apart: a typo and a different part look identical to the model, so neither
             // `match` nor a silent drop is acceptable; a human decides.
@@ -485,6 +523,7 @@ pub fn resolve(kind: Kind, keys: &[String], cfg: &Config) -> Resolution {
         let mut r = reasons(kind, g);
         if typo {
             r = vec!["possible_typo_or_different_part"];
+            r.extend(why);
             typo_reviews += 1;
         }
         if safe {
@@ -533,7 +572,9 @@ pub fn resolve(kind: Kind, keys: &[String], cfg: &Config) -> Resolution {
             params,
             t_match,
             t_possible,
+            typo_review: cfg.typo_review,
             typo_reviews,
+            typo_left_to_fs,
         },
     }
 }
@@ -650,6 +691,60 @@ mod tests {
         }
         assert!(r.stats.typo_reviews >= 3);
         assert!(is_transposition("10234", "10324") && !is_transposition("10234", "13204"));
+    }
+
+    #[test]
+    fn typo_rule_modes_use_context_in_strict_mode() {
+        let k = keys(&["BRK-10234", "BRK-10235", "SHF-77810", "SHF-77811"]);
+        let c = |d: &str, s: &str, g: &str| PartContext {
+            descriptions: vec![d.into()],
+            suppliers: vec![s.into()],
+            drawings: vec![g.into()],
+            materials: vec![],
+        };
+        let ctx: HashMap<String, PartContext> = [
+            // A sibling part: other size, other drawing, other supplier.
+            ("BRK-10234", c("BRACKET L50", "東海精機", "D-1")),
+            ("BRK-10235", c("BRACKET L80", "大阪金属", "D-2")),
+            // A typo of the same part: same supplier and drawing.
+            ("SHF-77810", c("SHAFT 12", "東海精機", "D-9")),
+            ("SHF-77811", c("シャフト", "東海精機", "D-9")),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let run = |m: TypoReview| {
+            resolve_with_context(
+                Kind::Part,
+                &k,
+                &ctx,
+                &Config {
+                    typo_review: m,
+                    ..Config::default()
+                },
+            )
+        };
+        let strict = run(TypoReview::Strict);
+        let typo_pair = |r: &Resolution, a: &str, b: &str| {
+            r.candidates.iter().any(|c| {
+                ((c.left == a && c.right == b) || (c.left == b && c.right == a))
+                    && c.outcome == Outcome::RequiresHumanReview
+                    && c.reasons[0] == "possible_typo_or_different_part"
+            })
+        };
+        assert!(typo_pair(&strict, "SHF-77810", "SHF-77811"), "{strict:?}");
+        assert!(!typo_pair(&strict, "BRK-10234", "BRK-10235"), "{strict:?}");
+        assert_eq!((strict.stats.typo_reviews, strict.stats.typo_left_to_fs), (1, 1));
+        let broad = run(TypoReview::Broad);
+        assert!(typo_pair(&broad, "SHF-77810", "SHF-77811") && typo_pair(&broad, "BRK-10234", "BRK-10235"));
+        let off = run(TypoReview::Off);
+        assert_eq!((off.stats.typo_reviews, off.stats.typo_left_to_fs), (0, 0));
+        // Nothing is ever merged: no candidate in any mode is `safe` here.
+        assert!(
+            [&strict, &broad, &off]
+                .iter()
+                .all(|r| r.candidates.iter().all(|c| !c.safe))
+        );
     }
 
     #[test]

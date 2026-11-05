@@ -4,7 +4,7 @@
 //! entity it was generated from, so pairwise ground truth is exact. Names are invented combinations of common
 //! place/business words; no real company list is used.
 
-use entity_resolution::v2::{Kind, Rng};
+use entity_resolution::v2::{Kind, PartContext, Rng};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// (standard kanji, itaiji variant or same, katakana reading, wāpuro romaji)
@@ -80,6 +80,8 @@ pub struct Dataset {
     pub name: String,
     pub kind: Kind,
     pub items: Vec<Item>,
+    /// Evidence context by surface string (part sets only; see `part_contexts`).
+    pub context: BTreeMap<String, PartContext>,
 }
 
 impl Dataset {
@@ -297,6 +299,7 @@ pub fn ja_suppliers(seed: u64, n: usize) -> Dataset {
         name: format!("ja_suppliers_seed{seed}_{n}"),
         kind: Kind::Company,
         items,
+        context: BTreeMap::new(),
     }
 }
 
@@ -323,11 +326,64 @@ fn ocr_swap(s: &str, rng: &mut Rng) -> Option<String> {
     Some(c2.into_iter().collect())
 }
 
+/// One noisy surface form of a part number (or `None` when the drawn transform does not apply).
+fn noisy_form(pn: &str, rng: &mut Rng) -> Option<(String, &'static str)> {
+    Some(match rng.below(11) {
+        0 => (
+            pn.chars()
+                .map(|c| {
+                    if c.is_ascii_graphic() {
+                        char::from_u32(c as u32 + 0xFEE0).unwrap_or(c)
+                    } else {
+                        c
+                    }
+                })
+                .collect(),
+            "fullwidth",
+        ),
+        1 => {
+            let k = 1 + rng.below(pn.len() as u64 - 1) as usize;
+            (format!("{}\u{200B}{}", &pn[..k], &pn[k..]), "zero_width")
+        }
+        2 => (
+            pn.replace('-', pick::<&str>(rng, &["‐", "–", "−", "ー", "ｰ"])),
+            "dash_variant",
+        ),
+        3 => (pn.replace('-', ""), "separator_removed"),
+        4 => (pn.replace('-', " "), "space_separator"),
+        5 => (pn.to_lowercase(), "lowercase"),
+        6 => (format!("{pn} REV {}", pick(rng, &["A", "B", "C"])), "revision_suffix"),
+        7 => (format!("{pn}-R{}", 1 + rng.below(3)), "revision_suffix"),
+        8 | 9 => match ocr_swap(pn, rng) {
+            Some(s) => (s, "ocr_confusion"),
+            None => return None,
+        },
+        _ => {
+            // Rare non-OCR keying error: the hardest case, indistinguishable from a sibling part.
+            if rng.below(4) != 0 {
+                return None;
+            }
+            let mut c: Vec<char> = pn.chars().collect();
+            let digits: Vec<usize> = (0..c.len()).filter(|&i| c[i].is_ascii_digit()).collect();
+            let i = *pick(rng, &digits);
+            if rng.below(2) == 0 && i + 1 < c.len() && c[i + 1].is_ascii_digit() && c[i] != c[i + 1] {
+                c.swap(i, i + 1);
+                (c.into_iter().collect(), "keying_transposition")
+            } else {
+                c[i] = char::from_digit((c[i].to_digit(10).unwrap_or(0) + 5) % 10, 10).unwrap_or('0');
+                (c.into_iter().collect(), "keying_error")
+            }
+        }
+    })
+}
+
 /// Japanese-supplier part numbers: `n` entities, ~20 % with a one-digit-different sibling (a genuinely different
 /// part), 0–3 noisy surface forms each.
 pub fn ja_parts(seed: u64, n: usize) -> Dataset {
     let mut rng = Rng::new(seed ^ 0x5041_5254);
     let mut canon: Vec<String> = Vec::new();
+    // Entity index of the part a sibling was derived from (context generation only; draws no random numbers).
+    let mut sibling_of: Vec<Option<usize>> = Vec::new();
     let mut seen = BTreeSet::new();
     while canon.len() < n {
         let pn = match rng.below(3) {
@@ -347,6 +403,7 @@ pub fn ja_parts(seed: u64, n: usize) -> Dataset {
         };
         if seen.insert(pn.clone()) {
             canon.push(pn.clone());
+            sibling_of.push(None);
         }
         // Sibling: a different part whose number differs in one digit.
         if rng.below(5) == 0 && canon.len() < n {
@@ -356,6 +413,8 @@ pub fn ja_parts(seed: u64, n: usize) -> Dataset {
             c[i] = char::from_digit((c[i].to_digit(10).unwrap_or(0) + 1 + rng.below(8) as u32) % 10, 10).unwrap_or('0');
             let sib: String = c.into_iter().collect();
             if seen.insert(sib.clone()) {
+                // The parent is the entity of `pn` (pushed above, or earlier when `pn` was already seen).
+                sibling_of.push(canon.iter().position(|c| *c == pn));
                 canon.push(sib);
             }
         }
@@ -365,55 +424,8 @@ pub fn ja_parts(seed: u64, n: usize) -> Dataset {
     for (eid, pn) in canon.iter().enumerate() {
         let mut forms: Vec<(String, &'static str)> = vec![(pn.clone(), "canonical")];
         for _ in 0..rng.below(4) {
-            let f = match rng.below(11) {
-                0 => (
-                    pn.chars()
-                        .map(|c| {
-                            if c.is_ascii_graphic() {
-                                char::from_u32(c as u32 + 0xFEE0).unwrap_or(c)
-                            } else {
-                                c
-                            }
-                        })
-                        .collect(),
-                    "fullwidth",
-                ),
-                1 => {
-                    let k = 1 + rng.below(pn.len() as u64 - 1) as usize;
-                    (format!("{}\u{200B}{}", &pn[..k], &pn[k..]), "zero_width")
-                }
-                2 => (
-                    pn.replace('-', pick::<&str>(&mut rng, &["‐", "–", "−", "ー", "ｰ"])),
-                    "dash_variant",
-                ),
-                3 => (pn.replace('-', ""), "separator_removed"),
-                4 => (pn.replace('-', " "), "space_separator"),
-                5 => (pn.to_lowercase(), "lowercase"),
-                6 => (
-                    format!("{pn} REV {}", pick(&mut rng, &["A", "B", "C"])),
-                    "revision_suffix",
-                ),
-                7 => (format!("{pn}-R{}", 1 + rng.below(3)), "revision_suffix"),
-                8 | 9 => match ocr_swap(pn, &mut rng) {
-                    Some(s) => (s, "ocr_confusion"),
-                    None => continue,
-                },
-                _ => {
-                    // Rare non-OCR keying error: the hardest case, indistinguishable from a sibling part.
-                    if rng.below(4) != 0 {
-                        continue;
-                    }
-                    let mut c: Vec<char> = pn.chars().collect();
-                    let digits: Vec<usize> = (0..c.len()).filter(|&i| c[i].is_ascii_digit()).collect();
-                    let i = *pick(&mut rng, &digits);
-                    if rng.below(2) == 0 && i + 1 < c.len() && c[i + 1].is_ascii_digit() && c[i] != c[i + 1] {
-                        c.swap(i, i + 1);
-                        (c.into_iter().collect(), "keying_transposition")
-                    } else {
-                        c[i] = char::from_digit((c[i].to_digit(10).unwrap_or(0) + 5) % 10, 10).unwrap_or('0');
-                        (c.into_iter().collect(), "keying_error")
-                    }
-                }
+            let Some(f) = noisy_form(pn, &mut rng) else {
+                continue;
             };
             if !used.contains(&f.0) && !seen.contains(&f.0) && !forms.iter().any(|(s, _)| *s == f.0) {
                 forms.push(f);
@@ -432,6 +444,213 @@ pub fn ja_parts(seed: u64, n: usize) -> Dataset {
     Dataset {
         name: format!("ja_parts_seed{seed}_{n}"),
         kind: Kind::Part,
+        context: part_contexts(seed, &canon, &sibling_of, &items),
+        items,
+    }
+}
+
+/// Part family by prefix: English noun, Japanese noun, size letter, typical materials.
+fn family(prefix: &str) -> (&'static str, &'static str, &'static str, &'static [&'static str]) {
+    match prefix {
+        "BRK" => ("BRACKET", "ブラケット", "L", &["SS400", "SPCC", "SUS304"]),
+        "SHF" => ("SHAFT", "シャフト", "φ", &["S45C", "SCM440", "SUS303"]),
+        "HSG" => ("HOUSING", "ハウジング", "W", &["ADC12", "FC250"]),
+        "FLG" => ("FLANGE", "フランジ", "φ", &["SS400", "SUS304"]),
+        "PIN" => ("PIN", "ピン", "φ", &["S45C", "SUS304", "SK4"]),
+        "GER" => ("GEAR", "歯車", "M", &["S45C", "SCM415"]),
+        "BSH" => ("BUSHING", "ブッシュ", "φ", &["C3604", "POM"]),
+        "CVR" => ("COVER", "カバー", "W", &["SPCC", "A5052", "ABS"]),
+        "MTR" => ("MOTOR MOUNT", "モーター台", "W", &["SS400", "A5052"]),
+        "VLV" => ("VALVE BODY", "バルブ本体", "φ", &["SCS13", "C3771"]),
+        "SPR" => ("SPRING", "ばね", "φ", &["SWP-B", "SUS304-WPB"]),
+        "WSH" => ("WASHER", "座金", "φ", &["SPCC", "SUS304"]),
+        "CAM" => ("CAM", "カム", "R", &["SCM440", "S50C"]),
+        "RTR" => ("ROTOR", "ロータ", "φ", &["S45C", "SUS420J2"]),
+        "SUS" => ("PLATE", "プレート", "T", &["SUS304", "SUS316"]),
+        "AL" => ("BLOCK", "ブロック", "W", &["A5052", "A6061", "A7075"]),
+        _ => ("PART", "部品", "L", &["SS400", "S45C", "SUS304", "A5052"]),
+    }
+}
+
+/// Invented supplier names (place + business words from the supplier set), so supplier context can be written in
+/// the forms the supplier normaliser folds.
+fn supplier_pool(rng: &mut Rng, k: usize) -> Vec<String> {
+    let mut v = BTreeSet::new();
+    while v.len() < k {
+        v.insert(format!("{}{}", pick(rng, PLACES).0, pick(rng, BUSINESSES).0));
+    }
+    v.into_iter().collect()
+}
+
+fn alpha_prefix(pn: &str) -> String {
+    pn.chars().take_while(|c| c.is_ascii_alphabetic()).collect()
+}
+
+/// Evidence context for every surface form of a part set (`er_eval::ja_parts*`).
+///
+/// Assumptions (SIMULATED; invented, not measured on a real part master):
+/// - each entity has a master record: description `<noun> <size>` (English or Japanese, 50/50), one supplier
+///   from a pool of 40, its own drawing number (`D-` + 6 digits) and a family material;
+/// - a sibling (a different part one digit away) keeps the parent's supplier with p = 0.7, its material with
+///   p = 0.7, its drawing with p = 0.15 (tabulated drawing) and its size with p = 0.15;
+/// - the canonical form carries the full master record; every other surface form is a document occurrence that
+///   shows each field independently (description 0.5, supplier 0.85, drawing 0.6, material 0.5), writes the
+///   description in either language (50/50), and names a different (second-source) supplier with p = 0.03.
+///
+/// Uses its own random stream, so the keys and truth of a dataset do not depend on it.
+pub fn part_contexts(
+    seed: u64,
+    canon: &[String],
+    sibling_of: &[Option<usize>],
+    items: &[Item],
+) -> BTreeMap<String, PartContext> {
+    struct Master {
+        noun: (&'static str, &'static str),
+        size: String,
+        supplier: String,
+        drawing: String,
+        material: &'static str,
+    }
+    let mut rng = Rng::new(seed ^ 0x4354_5854_2026_1105);
+    let suppliers = supplier_pool(&mut rng, 40);
+    let mut masters: Vec<Master> = Vec::with_capacity(canon.len());
+    for (e, pn) in canon.iter().enumerate() {
+        let (en, ja, letter, mats) = family(&alpha_prefix(pn));
+        let fresh_size = |rng: &mut Rng| format!("{letter}{}", 3 + rng.below(198));
+        let mut m = Master {
+            noun: (en, ja),
+            size: fresh_size(&mut rng),
+            supplier: pick(&mut rng, &suppliers).clone(),
+            drawing: format!("D-{:06}", rng.below(1_000_000)),
+            material: mats[rng.below(mats.len() as u64) as usize],
+        };
+        if let Some(p) = sibling_of.get(e).copied().flatten().and_then(|p| masters.get(p)) {
+            if rng.unit() < 0.7 {
+                m.supplier = p.supplier.clone();
+            }
+            if rng.unit() < 0.7 {
+                m.material = p.material;
+            }
+            if rng.unit() < 0.15 {
+                m.drawing = p.drawing.clone();
+            }
+            if rng.unit() < 0.15 {
+                m.size = p.size.clone();
+            }
+        }
+        masters.push(m);
+    }
+    let mut out = BTreeMap::new();
+    for it in items {
+        let m = &masters[it.entity as usize];
+        let desc = |rng: &mut Rng| {
+            let noun = if rng.below(2) == 0 { m.noun.0 } else { m.noun.1 };
+            format!("{noun} {}", m.size)
+        };
+        let c = if it.variant == "canonical" {
+            PartContext {
+                descriptions: vec![desc(&mut rng)],
+                suppliers: vec![m.supplier.clone()],
+                drawings: vec![m.drawing.clone()],
+                materials: vec![m.material.to_string()],
+            }
+        } else {
+            let mut c = PartContext::default();
+            if rng.unit() < 0.5 {
+                c.descriptions.push(desc(&mut rng));
+            }
+            if rng.unit() < 0.85 {
+                c.suppliers.push(if rng.unit() < 0.03 {
+                    pick(&mut rng, &suppliers).clone()
+                } else {
+                    m.supplier.clone()
+                });
+            }
+            if rng.unit() < 0.6 {
+                c.drawings.push(m.drawing.clone());
+            }
+            if rng.unit() < 0.5 {
+                c.materials.push(m.material.to_string());
+            }
+            c
+        };
+        out.insert(it.text.clone(), c);
+    }
+    out
+}
+
+/// A sparser part master than `ja_parts` (SIMULATED; assumptions, not measurements):
+/// - 12 prefixes (product families), numbers drawn at random from a 6-digit space per prefix (e.g. legacy masters
+///   or drawing-derived numbers; sequentially allocated masters are denser and closer to `ja_parts`);
+/// - two formats: `BRK-123456` and `BRK123-456`;
+/// - 5 % of parts have a hand/variant sibling whose number differs in the last digit (a different part);
+/// - most keys are clean: 0–2 noisy surface forms per part (P = 0.55 / 0.30 / 0.15), drawn from the same
+///   transforms as `ja_parts` (including the rare keying typos).
+pub fn ja_parts_sparse(seed: u64, n: usize) -> Dataset {
+    let mut rng = Rng::new(seed ^ 0x5350_4152_5345);
+    let prefixes: Vec<&str> = PART_PREFIXES.iter().copied().take(12).collect();
+    let mut canon: Vec<String> = Vec::new();
+    let mut sibling_of: Vec<Option<usize>> = Vec::new();
+    let mut seen = BTreeSet::new();
+    let fmt = |p: &str, num: u64, style: u64| {
+        if style == 0 {
+            format!("{p}-{num:06}")
+        } else {
+            format!("{p}{:03}-{:03}", num / 1000, num % 1000)
+        }
+    };
+    while canon.len() < n {
+        let p = *pick(&mut rng, &prefixes);
+        let style = u64::from(p.len() > 2 && rng.below(3) == 0);
+        let num = 100_000 + rng.below(900_000);
+        let pn = fmt(p, num, style);
+        if !seen.insert(pn.clone()) {
+            continue;
+        }
+        canon.push(pn.clone());
+        sibling_of.push(None);
+        if rng.unit() < 0.05 && canon.len() < n {
+            let sib = fmt(p, num - num % 10 + (num % 10 + 1 + rng.below(8)) % 10, style);
+            if seen.insert(sib.clone()) {
+                sibling_of.push(Some(canon.len() - 1));
+                canon.push(sib);
+            }
+        }
+    }
+    let mut items = Vec::new();
+    let mut used = BTreeSet::new();
+    for (eid, pn) in canon.iter().enumerate() {
+        let mut forms: Vec<(String, &'static str)> = vec![(pn.clone(), "canonical")];
+        let u = rng.unit();
+        let k = if u < 0.55 {
+            0
+        } else if u < 0.85 {
+            1
+        } else {
+            2
+        };
+        for _ in 0..k {
+            let Some(f) = noisy_form(pn, &mut rng) else {
+                continue;
+            };
+            if !used.contains(&f.0) && !seen.contains(&f.0) && !forms.iter().any(|(s, _)| *s == f.0) {
+                forms.push(f);
+            }
+        }
+        for (text, variant) in forms {
+            if used.insert(text.clone()) {
+                items.push(Item {
+                    text,
+                    entity: eid as u32,
+                    variant,
+                });
+            }
+        }
+    }
+    Dataset {
+        name: format!("ja_parts_sparse_seed{seed}_{n}"),
+        kind: Kind::Part,
+        context: part_contexts(seed, &canon, &sibling_of, &items),
         items,
     }
 }
@@ -468,6 +687,7 @@ pub fn from_e2e_truth(name: &str, truth: &serde_json::Value) -> Dataset {
         name: name.to_string(),
         kind: Kind::Part,
         items,
+        context: BTreeMap::new(),
     }
 }
 
@@ -531,6 +751,32 @@ mod tests {
             assert_eq!(d.keys(), again.keys());
             assert!(d.truth().len() > 50, "{} {}", d.name, d.truth().len());
         }
+    }
+
+    #[test]
+    fn dense_set_is_unchanged_by_context_generation() {
+        // Key and truth counts of the 2026-11-05 report (reports/er/er_v2_compare.json at 1668d37).
+        let d = ja_parts(20261105, 1000);
+        assert_eq!((d.keys().len(), d.truth().len()), (2307, 2055));
+        assert_eq!(d.context.len(), d.keys().len());
+    }
+
+    #[test]
+    fn sparse_set_is_deterministic_sparser_and_has_context() {
+        let (a, b) = (ja_parts_sparse(9, 2000), ja_parts_sparse(9, 2000));
+        assert_eq!(a.keys(), b.keys());
+        assert_eq!(a.context, b.context);
+        assert_eq!(a.context.len(), a.keys().len());
+        let dense = ja_parts(9, 2000);
+        let per_key = |d: &Dataset| d.truth().len() as f64 / d.keys().len() as f64;
+        assert!(per_key(&a) < per_key(&dense), "{} vs {}", per_key(&a), per_key(&dense));
+        assert!(a.items.iter().any(|i| i.variant.starts_with("keying")));
+        // Canonical forms carry the full master record.
+        let c = a.items.iter().find(|i| i.variant == "canonical").unwrap();
+        let m = &a.context[&c.text];
+        assert!(
+            !m.descriptions.is_empty() && !m.suppliers.is_empty() && !m.drawings.is_empty() && !m.materials.is_empty()
+        );
     }
 
     #[test]

@@ -203,6 +203,13 @@ fn routes() -> Vec<(Method, &'static str, Value, &'static str)> {
             json!({"expected_version":0,"enabled":false}),
             "UserManage",
         ),
+        (Method::GET, "/settings/entity-resolution", Value::Null, "UserRead"),
+        (
+            Method::PUT,
+            "/settings/entity-resolution",
+            json!({"expected_version":0,"typo_review":"strict"}),
+            "UserManage",
+        ),
         (
             Method::GET,
             "/security/detection-settings",

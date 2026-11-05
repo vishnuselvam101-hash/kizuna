@@ -1,0 +1,2340 @@
+{
+  "command": "/tmp/claude-0/-root/a9f19c99-9d9b-4499-bc91-507a745c1ea1/scratchpad/rt/release/kizuna-er-compare --runs 5 --e2e e2e_seed7_24=/tmp/claude-0/-root/a9f19c99-9d9b-4499-bc91-507a745c1ea1/scratchpad/e2e_7/ground_truth.json --e2e e2e_seed11_48=/tmp/claude-0/-root/a9f19c99-9d9b-4499-bc91-507a745c1ea1/scratchpad/e2e_11/ground_truth.json --e2e e2e_seed13_400=/tmp/claude-0/-root/a9f19c99-9d9b-4499-bc91-507a745c1ea1/scratchpad/e2e_13/ground_truth.json --out reports/er/er_typo_tuning.json",
+  "commit": "be409ab",
+  "environment": {
+    "commit": "be409ab",
+    "cpu": "AMD EPYC 9354P 32-Core Processor",
+    "kernel": "7.0.0-38-generic",
+    "loadavg_at_start": "16.20 20.21 20.70 19/1005 1427804",
+    "logical_cpus": 8,
+    "memory": "MemTotal:       32859784 kB",
+    "profile": "release",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "worktree_dirty": true
+  },
+  "kind_note": "predicted = every pair v1/v2 surfaces (match, possible_match, requires_human_review); nothing is merged automatically",
+  "results": [
+    {
+      "all_pairs": 325,
+      "dataset": "e2e_seed7_24",
+      "entities": 24,
+      "keys": 26,
+      "kind": "part",
+      "per_variant_recall": {
+        "duplicate_component_id": {
+          "pairs": 2,
+          "v1": 2,
+          "v2": 2
+        }
+      },
+      "typo_modes": {
+        "broad": {
+          "context_floor": 0.6,
+          "listed_for_decision": 2,
+          "mode": "broad",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 2,
+            "recall": 1.0,
+            "tp": 2,
+            "true_pairs": 2
+          },
+          "time_ms": 0.575607,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "off": {
+          "context_floor": 0.6,
+          "listed_for_decision": 2,
+          "mode": "off",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 2,
+            "recall": 1.0,
+            "tp": 2,
+            "true_pairs": 2
+          },
+          "time_ms": 0.5557179999999999,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict": {
+          "context_floor": 0.6,
+          "listed_for_decision": 2,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 2,
+            "recall": 1.0,
+            "tp": 2,
+            "true_pairs": 2
+          },
+          "time_ms": 0.570998,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.4": {
+          "context_floor": 0.4,
+          "listed_for_decision": 2,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 2,
+            "recall": 1.0,
+            "tp": 2,
+            "true_pairs": 2
+          },
+          "time_ms": 0.589287,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.5": {
+          "context_floor": 0.5,
+          "listed_for_decision": 2,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 2,
+            "recall": 1.0,
+            "tp": 2,
+            "true_pairs": 2
+          },
+          "time_ms": 0.585568,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.8": {
+          "context_floor": 0.8,
+          "listed_for_decision": 2,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 2,
+            "recall": 1.0,
+            "tp": 2,
+            "true_pairs": 2
+          },
+          "time_ms": 0.579038,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        }
+      },
+      "v1": {
+        "pairs_compared": 2,
+        "review": {
+          "listed_for_decision": 2,
+          "review_load": 0,
+          "review_true": 0,
+          "typo_in_review": 0,
+          "typo_pairs": 0,
+          "typo_surfaced": 0
+        },
+        "score": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 2,
+          "recall": 1.0,
+          "tp": 2,
+          "true_pairs": 2
+        },
+        "score_same_script": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 2,
+          "recall": 1.0,
+          "tp": 2,
+          "true_pairs": 2
+        },
+        "time_ms_median": 0.101111
+      },
+      "v2": {
+        "em": {
+          "converged": true,
+          "distinct_patterns": 3,
+          "fallback_reason": null,
+          "iterations": 4,
+          "log_likelihood": -111.15864828630293,
+          "monotone": true,
+          "training_pairs": 226,
+          "used": "estimated"
+        },
+        "outcomes": {
+          "match": 2
+        },
+        "pairs_compared": 123,
+        "params": {
+          "m": [
+            [
+              3.33332666668e-7,
+              0.9999980000039997,
+              3.33332666668e-7,
+              3.33332666668e-7,
+              3.33332666668e-7,
+              3.33332666668e-7,
+              3.33332666668e-7
+            ],
+            [
+              0.9999996666667778,
+              3.3333322222225935e-7
+            ],
+            [
+              0.9999996666667778,
+              3.333332222222223e-7
+            ],
+            [
+              0.9999993333337777,
+              3.3333311111122225e-7,
+              3.3333311111122225e-7
+            ]
+          ],
+          "p": 0.013274336283187313,
+          "u": [
+            [
+              4.484304812081491e-9,
+              4.484304812081491e-9,
+              4.484304812081491e-9,
+              4.484304812081491e-9,
+              4.484304812081491e-9,
+              4.484304812081491e-9,
+              0.9999999730941711
+            ],
+            [
+              4.4843049126264424e-9,
+              0.9999999955156951
+            ],
+            [
+              0.15246636771300323,
+              0.8475336322869969
+            ],
+            [
+              0.9999999910313903,
+              4.484304892517452e-9,
+              4.484304892517452e-9
+            ]
+          ]
+        },
+        "score": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 2,
+          "recall": 1.0,
+          "tp": 2,
+          "true_pairs": 2
+        },
+        "score_same_script": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 2,
+          "recall": 1.0,
+          "tp": 2,
+          "true_pairs": 2
+        },
+        "t_match": 58.17836924640418,
+        "t_possible": 58.17836924640418,
+        "time_ms_median": 0.596017,
+        "typo_left_to_fs": 0,
+        "typo_review": "strict",
+        "typo_reviews": 0,
+        "typo_reviews_true": 0
+      },
+      "v2_false_positive_sample": [],
+      "v2_missed_same_script_sample": []
+    },
+    {
+      "all_pairs": 1326,
+      "dataset": "e2e_seed11_48",
+      "entities": 48,
+      "keys": 52,
+      "kind": "part",
+      "per_variant_recall": {
+        "duplicate_component_id": {
+          "pairs": 4,
+          "v1": 4,
+          "v2": 4
+        }
+      },
+      "typo_modes": {
+        "broad": {
+          "context_floor": 0.6,
+          "listed_for_decision": 4,
+          "mode": "broad",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 4,
+            "recall": 1.0,
+            "tp": 4,
+            "true_pairs": 4
+          },
+          "time_ms": 1.218656,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "off": {
+          "context_floor": 0.6,
+          "listed_for_decision": 4,
+          "mode": "off",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 4,
+            "recall": 1.0,
+            "tp": 4,
+            "true_pairs": 4
+          },
+          "time_ms": 1.164175,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict": {
+          "context_floor": 0.6,
+          "listed_for_decision": 4,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 4,
+            "recall": 1.0,
+            "tp": 4,
+            "true_pairs": 4
+          },
+          "time_ms": 1.219366,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.4": {
+          "context_floor": 0.4,
+          "listed_for_decision": 4,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 4,
+            "recall": 1.0,
+            "tp": 4,
+            "true_pairs": 4
+          },
+          "time_ms": 1.2313370000000001,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.5": {
+          "context_floor": 0.5,
+          "listed_for_decision": 4,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 4,
+            "recall": 1.0,
+            "tp": 4,
+            "true_pairs": 4
+          },
+          "time_ms": 1.217484,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.8": {
+          "context_floor": 0.8,
+          "listed_for_decision": 4,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 4,
+            "recall": 1.0,
+            "tp": 4,
+            "true_pairs": 4
+          },
+          "time_ms": 1.2139060000000002,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        }
+      },
+      "v1": {
+        "pairs_compared": 4,
+        "review": {
+          "listed_for_decision": 4,
+          "review_load": 0,
+          "review_true": 0,
+          "typo_in_review": 0,
+          "typo_pairs": 0,
+          "typo_surfaced": 0
+        },
+        "score": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 4,
+          "recall": 1.0,
+          "tp": 4,
+          "true_pairs": 4
+        },
+        "score_same_script": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 4,
+          "recall": 1.0,
+          "tp": 4,
+          "true_pairs": 4
+        },
+        "time_ms_median": 0.199292
+      },
+      "v2": {
+        "em": {
+          "converged": true,
+          "distinct_patterns": 3,
+          "fallback_reason": null,
+          "iterations": 5,
+          "log_likelihood": -256.7273886897817,
+          "monotone": true,
+          "training_pairs": 493,
+          "used": "estimated"
+        },
+        "outcomes": {
+          "match": 4
+        },
+        "pairs_compared": 287,
+        "params": {
+          "m": [
+            [
+              2.4999962500056243e-7,
+              0.9999985000022498,
+              2.4999962500056243e-7,
+              2.4999962500056243e-7,
+              2.4999962500056243e-7,
+              2.4999962500056243e-7,
+              2.4999962500056243e-7
+            ],
+            [
+              0.9999997500000625,
+              2.499999375000156e-7
+            ],
+            [
+              0.9999997500000625,
+              2.4999993750000003e-7
+            ],
+            [
+              0.99999950000025,
+              2.4999987500004686e-7,
+              2.4999987500004686e-7
+            ]
+          ],
+          "p": 0.00811359026369219,
+          "u": [
+            [
+              2.044989749959227e-9,
+              2.044989749959227e-9,
+              2.044989749959227e-9,
+              2.044989749959227e-9,
+              2.044989749959227e-9,
+              2.044989749959227e-9,
+              0.9999999877300615
+            ],
+            [
+              2.0449897708691422e-9,
+              0.9999999979550103
+            ],
+            [
+              0.1840490797546008,
+              0.8159509202453992
+            ],
+            [
+              0.9999999959100204,
+              2.0449897666871594e-9,
+              2.0449897666871594e-9
+            ]
+          ]
+        },
+        "score": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 4,
+          "recall": 1.0,
+          "tp": 4,
+          "true_pairs": 4
+        },
+        "score_same_script": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 4,
+          "recall": 1.0,
+          "tp": 4,
+          "true_pairs": 4
+        },
+        "t_match": 60.17235242699234,
+        "t_possible": 60.17235242699234,
+        "time_ms_median": 1.237366,
+        "typo_left_to_fs": 0,
+        "typo_review": "strict",
+        "typo_reviews": 0,
+        "typo_reviews_true": 0
+      },
+      "v2_false_positive_sample": [],
+      "v2_missed_same_script_sample": []
+    },
+    {
+      "all_pairs": 93528,
+      "dataset": "e2e_seed13_400",
+      "entities": 400,
+      "keys": 433,
+      "kind": "part",
+      "per_variant_recall": {
+        "duplicate_component_id": {
+          "pairs": 33,
+          "v1": 33,
+          "v2": 33
+        }
+      },
+      "typo_modes": {
+        "broad": {
+          "context_floor": 0.6,
+          "listed_for_decision": 33,
+          "mode": "broad",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 33,
+            "recall": 1.0,
+            "tp": 33,
+            "true_pairs": 33
+          },
+          "time_ms": 12.917839,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "off": {
+          "context_floor": 0.6,
+          "listed_for_decision": 33,
+          "mode": "off",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 33,
+            "recall": 1.0,
+            "tp": 33,
+            "true_pairs": 33
+          },
+          "time_ms": 11.818265,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict": {
+          "context_floor": 0.6,
+          "listed_for_decision": 33,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 33,
+            "recall": 1.0,
+            "tp": 33,
+            "true_pairs": 33
+          },
+          "time_ms": 13.641488,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.4": {
+          "context_floor": 0.4,
+          "listed_for_decision": 33,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 33,
+            "recall": 1.0,
+            "tp": 33,
+            "true_pairs": 33
+          },
+          "time_ms": 12.565244,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.5": {
+          "context_floor": 0.5,
+          "listed_for_decision": 33,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 33,
+            "recall": 1.0,
+            "tp": 33,
+            "true_pairs": 33
+          },
+          "time_ms": 12.529933999999999,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict_floor_0.8": {
+          "context_floor": 0.8,
+          "listed_for_decision": 33,
+          "mode": "strict",
+          "review_load": 0,
+          "review_true": 0,
+          "score": {
+            "f1": 1.0,
+            "precision": 1.0,
+            "predicted": 33,
+            "recall": 1.0,
+            "tp": 33,
+            "true_pairs": 33
+          },
+          "time_ms": 12.804556999999999,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 0,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        }
+      },
+      "v1": {
+        "pairs_compared": 33,
+        "review": {
+          "listed_for_decision": 33,
+          "review_load": 0,
+          "review_true": 0,
+          "typo_in_review": 0,
+          "typo_pairs": 0,
+          "typo_surfaced": 0
+        },
+        "score": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 33,
+          "recall": 1.0,
+          "tp": 33,
+          "true_pairs": 33
+        },
+        "score_same_script": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 33,
+          "recall": 1.0,
+          "tp": 33,
+          "true_pairs": 33
+        },
+        "time_ms_median": 1.900915
+      },
+      "v2": {
+        "em": {
+          "converged": true,
+          "distinct_patterns": 4,
+          "fallback_reason": null,
+          "iterations": 5,
+          "log_likelihood": -3341.418937751112,
+          "monotone": true,
+          "training_pairs": 4765,
+          "used": "estimated"
+        },
+        "outcomes": {
+          "match": 33
+        },
+        "pairs_compared": 3036,
+        "params": {
+          "m": [
+            [
+              2.7027022644323763e-8,
+              0.9999998378378645,
+              2.7027022644323763e-8,
+              2.7027022644323763e-8,
+              2.7027022644323763e-8,
+              2.7027022644323763e-8,
+              2.7027022644323763e-8
+            ],
+            [
+              0.9999999729729737,
+              2.7027026296623983e-8
+            ],
+            [
+              0.9999999729729737,
+              2.7027026296623993e-8
+            ],
+            [
+              0.999999945945949,
+              2.7027025566163832e-8,
+              2.7027025566163832e-8
+            ]
+          ],
+          "p": 0.007764952780676144,
+          "u": [
+            [
+              2.115059218974121e-10,
+              2.115059218974121e-10,
+              2.115059218974121e-10,
+              2.115059218974121e-10,
+              2.115059218974121e-10,
+              2.115059218974121e-10,
+              0.9999999987309645
+            ],
+            [
+              0.00021150592218235664,
+              0.9997884940778177
+            ],
+            [
+              0.3699238578680307,
+              0.6300761421319693
+            ],
+            [
+              0.999999999576988,
+              2.115059220763476e-10,
+              2.115059220763476e-10
+            ]
+          ]
+        },
+        "score": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 33,
+          "recall": 1.0,
+          "tp": 33,
+          "true_pairs": 33
+        },
+        "score_same_script": {
+          "f1": 1.0,
+          "precision": 1.0,
+          "predicted": 33,
+          "recall": 1.0,
+          "tp": 33,
+          "true_pairs": 33
+        },
+        "t_match": 45.78029656834583,
+        "t_possible": 45.78029656834583,
+        "time_ms_median": 12.670644999999999,
+        "typo_left_to_fs": 0,
+        "typo_review": "strict",
+        "typo_reviews": 0,
+        "typo_reviews_true": 0
+      },
+      "v2_false_positive_sample": [],
+      "v2_missed_same_script_sample": []
+    },
+    {
+      "all_pairs": 385881,
+      "dataset": "ja_suppliers_seed20261105_300",
+      "entities": 300,
+      "keys": 879,
+      "kind": "company",
+      "per_variant_recall": {
+        "fullwidth_space": {
+          "pairs": 121,
+          "v1": 55,
+          "v2": 99
+        },
+        "halfwidth_katakana": {
+          "pairs": 67,
+          "v1": 0,
+          "v2": 0
+        },
+        "kana_small_or_long_vowel": {
+          "pairs": 85,
+          "v1": 0,
+          "v2": 9
+        },
+        "kanji_variant": {
+          "pairs": 58,
+          "v1": 10,
+          "v2": 49
+        },
+        "katakana_reading": {
+          "pairs": 127,
+          "v1": 6,
+          "v2": 26
+        },
+        "legal_form_dropped": {
+          "pairs": 104,
+          "v1": 31,
+          "v2": 90
+        },
+        "legal_form_notation": {
+          "pairs": 102,
+          "v1": 5,
+          "v2": 80
+        },
+        "romaji": {
+          "pairs": 140,
+          "v1": 0,
+          "v2": 28
+        },
+        "romaji_macron_upper": {
+          "pairs": 145,
+          "v1": 5,
+          "v2": 42
+        }
+      },
+      "typo_modes": {},
+      "v1": {
+        "pairs_compared": 135,
+        "review": {
+          "listed_for_decision": 119,
+          "review_load": 25,
+          "review_true": 20,
+          "typo_in_review": 0,
+          "typo_pairs": 0,
+          "typo_surfaced": 0
+        },
+        "score": {
+          "f1": 0.20915032679738563,
+          "precision": 0.9180327868852459,
+          "predicted": 122,
+          "recall": 0.11801896733403583,
+          "tp": 112,
+          "true_pairs": 949
+        },
+        "score_same_script": {
+          "f1": 0.4110091743119266,
+          "precision": 0.9180327868852459,
+          "predicted": 122,
+          "recall": 0.2647754137115839,
+          "tp": 112,
+          "true_pairs": 423
+        },
+        "time_ms_median": 5.756956
+      },
+      "v2": {
+        "em": {
+          "converged": true,
+          "distinct_patterns": 25,
+          "fallback_reason": null,
+          "iterations": 101,
+          "log_likelihood": -22427.88692384241,
+          "monotone": true,
+          "training_pairs": 15312,
+          "used": "estimated"
+        },
+        "outcomes": {
+          "match": 204,
+          "possible_match": 5,
+          "requires_human_review": 293
+        },
+        "pairs_compared": 11802,
+        "params": {
+          "m": [
+            [
+              0.5385061767891466,
+              0.02428568913569297,
+              2.5628827555768814e-6,
+              0.43720557119240483
+            ],
+            [
+              0.7491897962569632,
+              0.2508101967539622,
+              6.9890745471192e-9
+            ],
+            [
+              0.6851098001424615,
+              0.304201034335345,
+              0.010689165522193626
+            ]
+          ],
+          "p": 0.04475110422035053,
+          "u": [
+            [
+              6.836778901318991e-11,
+              0.0015286178758362778,
+              0.10357708029011399,
+              0.894894301765682
+            ],
+            [
+              0.00035648729182454327,
+              0.01937127745711909,
+              0.9802722352510564
+            ],
+            [
+              0.5743265486941691,
+              0.1534551025198168,
+              0.27221834878601414
+            ]
+          ]
+        },
+        "score": {
+          "f1": 0.5830461750516884,
+          "precision": 0.8426294820717132,
+          "predicted": 502,
+          "recall": 0.4457323498419389,
+          "tp": 423,
+          "true_pairs": 949
+        },
+        "score_same_script": {
+          "f1": 0.9145945945945946,
+          "precision": 0.8426294820717132,
+          "predicted": 502,
+          "recall": 1.0,
+          "tp": 423,
+          "true_pairs": 423
+        },
+        "t_match": 5.333316200598887,
+        "t_possible": 2.9156634626310565,
+        "time_ms_median": 26.491586,
+        "typo_left_to_fs": 0,
+        "typo_review": "strict",
+        "typo_reviews": 0,
+        "typo_reviews_true": 0
+      },
+      "v2_false_positive_sample": [
+        "(株)サクライコウギョウ | SAKURAI KŌGYŌ K.K.",
+        "(株)タカハシセイキ | TAKAHASHI SEIMITSU Corporation",
+        "(株)チバコーギヨー | CHIBA KŌGYŌ Corporation",
+        "(株)チバコーギヨー | Chiba Kogyo K.K.",
+        "(株)マルイチコーキ | Maruichi Tekko K.K.",
+        "Daito Chuzo K.K. | Saito Chuzo G.K.",
+        "Daito Chuzo K.K. | ﾀﾞｲﾄｳﾊﾂｼﾞｮｳ(株)",
+        "FUJI KŌGYŌ Co., Ltd. | 株式会社フジコーギヨー",
+        "Hiroshima Chuzo K.K. | ヒロシマハツジヨー株式会社",
+        "KIKUCHI GIKEN Corporation | Kikuchi Denki Co., Ltd.",
+        "KIKUCHI GIKEN Corporation | キクチデンキ㈱",
+        "KITAZAWA KŌGYŌ K.K. | KITAZAWA KŌKI Co., Ltd."
+      ],
+      "v2_missed_same_script_sample": []
+    },
+    {
+      "all_pairs": 2659971,
+      "dataset": "ja_parts_seed20261105_1000",
+      "entities": 1000,
+      "keys": 2307,
+      "kind": "part",
+      "per_variant_recall": {
+        "dash_variant": {
+          "pairs": 212,
+          "v1": 171,
+          "v2": 212
+        },
+        "fullwidth": {
+          "pairs": 126,
+          "v1": 126,
+          "v2": 126
+        },
+        "keying_error": {
+          "pairs": 48,
+          "v1": 38,
+          "v2": 44
+        },
+        "keying_transposition": {
+          "pairs": 20,
+          "v1": 0,
+          "v2": 19
+        },
+        "lowercase": {
+          "pairs": 146,
+          "v1": 146,
+          "v2": 146
+        },
+        "ocr_confusion": {
+          "pairs": 408,
+          "v1": 369,
+          "v2": 408
+        },
+        "revision_suffix": {
+          "pairs": 447,
+          "v1": 355,
+          "v2": 447
+        },
+        "separator_removed": {
+          "pairs": 182,
+          "v1": 179,
+          "v2": 182
+        },
+        "space_separator": {
+          "pairs": 272,
+          "v1": 261,
+          "v2": 272
+        },
+        "zero_width": {
+          "pairs": 194,
+          "v1": 193,
+          "v2": 194
+        }
+      },
+      "typo_modes": {
+        "broad": {
+          "context_floor": 0.6,
+          "listed_for_decision": 2111,
+          "mode": "broad",
+          "review_load": 2003,
+          "review_true": 1283,
+          "score": {
+            "f1": 0.8497409326424871,
+            "precision": 0.740072202166065,
+            "predicted": 2770,
+            "recall": 0.9975669099756691,
+            "tp": 2050,
+            "true_pairs": 2055
+          },
+          "time_ms": 97.829235,
+          "typo_in_review": 70,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 75,
+          "typo_reviews": 787,
+          "typo_reviews_true": 70,
+          "typo_surfaced": 70
+        },
+        "off": {
+          "context_floor": 0.6,
+          "listed_for_decision": 1324,
+          "mode": "off",
+          "review_load": 1165,
+          "review_true": 1162,
+          "score": {
+            "f1": 0.9806835066864784,
+            "precision": 0.9984871406959153,
+            "predicted": 1983,
+            "recall": 0.9635036496350365,
+            "tp": 1980,
+            "true_pairs": 2055
+          },
+          "time_ms": 107.297809,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 75,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict": {
+          "context_floor": 0.6,
+          "listed_for_decision": 1668,
+          "mode": "strict",
+          "review_load": 1540,
+          "review_true": 1263,
+          "score": {
+            "f1": 0.9356458238247377,
+            "precision": 0.8809626128061883,
+            "predicted": 2327,
+            "recall": 0.9975669099756691,
+            "tp": 2050,
+            "true_pairs": 2055
+          },
+          "time_ms": 119.30373700000001,
+          "typo_in_review": 70,
+          "typo_left_to_fs": 443,
+          "typo_pairs": 75,
+          "typo_reviews": 344,
+          "typo_reviews_true": 70,
+          "typo_surfaced": 70
+        },
+        "strict_floor_0.4": {
+          "context_floor": 0.4,
+          "listed_for_decision": 1888,
+          "mode": "strict",
+          "review_load": 1768,
+          "review_true": 1271,
+          "score": {
+            "f1": 0.8909169926119078,
+            "precision": 0.8048684727129957,
+            "predicted": 2547,
+            "recall": 0.9975669099756691,
+            "tp": 2050,
+            "true_pairs": 2055
+          },
+          "time_ms": 116.40477800000001,
+          "typo_in_review": 70,
+          "typo_left_to_fs": 223,
+          "typo_pairs": 75,
+          "typo_reviews": 564,
+          "typo_reviews_true": 70,
+          "typo_surfaced": 70
+        },
+        "strict_floor_0.5": {
+          "context_floor": 0.5,
+          "listed_for_decision": 1869,
+          "mode": "strict",
+          "review_load": 1747,
+          "review_true": 1269,
+          "score": {
+            "f1": 0.8946105171285185,
+            "precision": 0.8109177215189873,
+            "predicted": 2528,
+            "recall": 0.9975669099756691,
+            "tp": 2050,
+            "true_pairs": 2055
+          },
+          "time_ms": 102.185953,
+          "typo_in_review": 70,
+          "typo_left_to_fs": 242,
+          "typo_pairs": 75,
+          "typo_reviews": 545,
+          "typo_reviews_true": 70,
+          "typo_surfaced": 70
+        },
+        "strict_floor_0.8": {
+          "context_floor": 0.8,
+          "listed_for_decision": 1549,
+          "mode": "strict",
+          "review_load": 1410,
+          "review_true": 1244,
+          "score": {
+            "f1": 0.9580107905231058,
+            "precision": 0.9248188405797102,
+            "predicted": 2208,
+            "recall": 0.9936739659367396,
+            "tp": 2042,
+            "true_pairs": 2055
+          },
+          "time_ms": 100.97528799999999,
+          "typo_in_review": 62,
+          "typo_left_to_fs": 562,
+          "typo_pairs": 75,
+          "typo_reviews": 225,
+          "typo_reviews_true": 62,
+          "typo_surfaced": 62
+        }
+      },
+      "v1": {
+        "pairs_compared": 2495,
+        "review": {
+          "listed_for_decision": 2108,
+          "review_load": 1939,
+          "review_true": 1413,
+          "typo_in_review": 37,
+          "typo_pairs": 75,
+          "typo_surfaced": 40
+        },
+        "score": {
+          "f1": 0.8288613303269448,
+          "precision": 0.7722689075630252,
+          "predicted": 2380,
+          "recall": 0.8944038929440389,
+          "tp": 1838,
+          "true_pairs": 2055
+        },
+        "score_same_script": {
+          "f1": 0.8288613303269448,
+          "precision": 0.7722689075630252,
+          "predicted": 2380,
+          "recall": 0.8944038929440389,
+          "tp": 1838,
+          "true_pairs": 2055
+        },
+        "time_ms_median": 15.947869
+      },
+      "v2": {
+        "em": {
+          "converged": true,
+          "distinct_patterns": 23,
+          "fallback_reason": null,
+          "iterations": 6,
+          "log_likelihood": -55180.28560463536,
+          "monotone": true,
+          "training_pairs": 34234,
+          "used": "estimated"
+        },
+        "outcomes": {
+          "match": 787,
+          "requires_human_review": 1540
+        },
+        "pairs_compared": 25008,
+        "params": {
+          "m": [
+            [
+              0.3318250372069003,
+              0.2036199091951434,
+              0.25842131685507086,
+              0.2061337352345896,
+              5.027652078892429e-10,
+              5.027652078892429e-10,
+              5.027652078892429e-10
+            ],
+            [
+              0.9999999994972347,
+              5.027652083947887e-10
+            ],
+            [
+              0.9431875314228255,
+              0.05681246857717446
+            ],
+            [
+              0.7616892911010558,
+              0.22423328305681248,
+              0.014077425842131725
+            ]
+          ],
+          "p": 0.058100134369340424,
+          "u": [
+            [
+              3.101256008298805e-11,
+              3.101256008298805e-11,
+              3.101256008298805e-11,
+              3.101256008298805e-11,
+              0.024127771744564704,
+              0.004806946812863148,
+              0.9710652813185219
+            ],
+            [
+              3.101256008587339e-11,
+              0.9999999999689875
+            ],
+            [
+              0.5108699023104357,
+              0.4891300976895643
+            ],
+            [
+              0.8185765234920143,
+              0.17413552488757947,
+              0.0072879516204062645
+            ]
+          ]
+        },
+        "score": {
+          "f1": 0.9356458238247377,
+          "precision": 0.8809626128061883,
+          "predicted": 2327,
+          "recall": 0.9975669099756691,
+          "tp": 2050,
+          "true_pairs": 2055
+        },
+        "score_same_script": {
+          "f1": 0.9356458238247377,
+          "precision": 0.8809626128061883,
+          "predicted": 2327,
+          "recall": 0.9975669099756691,
+          "tp": 2050,
+          "true_pairs": 2055
+        },
+        "t_match": 64.32851194946365,
+        "t_possible": 64.32851194946365,
+        "time_ms_median": 108.524474,
+        "typo_left_to_fs": 443,
+        "typo_review": "strict",
+        "typo_reviews": 344,
+        "typo_reviews_true": 70
+      },
+      "v2_false_positive_sample": [
+        "AL 0199 D | AL-0499-D",
+        "AL-0765-F | al-7765-f",
+        "AL-7213-B | AL-7219-B",
+        "AL-7213-B | AL-7219-B REV B",
+        "AL-7213-B | al-7219-b",
+        "BRK 4027 C | BRK-4023-C REV A",
+        "BRK-4023-C REV A | BRK4027C",
+        "BRK-4023-C REV A | brk-4027-c",
+        "BRK-6820-D-R2 | brk-7820-d",
+        "BRK-7664-C | BRK9664C",
+        "BRK-7664-C | BRK−9664−C",
+        "BRK-7820-D | ＢＲＫ－６８２０－Ｄ"
+      ],
+      "v2_missed_same_script_sample": [
+        "CAM-7594-D | CAM-7S99-D",
+        "FLG62-198 | FLGZ6-198",
+        "KZ60-199 | KZ65-l99",
+        "RTR60-512 | RTR65-51Z",
+        "TN-32191 | TN-3Z196"
+      ]
+    },
+    {
+      "all_pairs": 68439150,
+      "dataset": "ja_parts_seed20261106_5000",
+      "entities": 5000,
+      "keys": 11700,
+      "kind": "part",
+      "per_variant_recall": {
+        "dash_variant": {
+          "pairs": 905,
+          "v1": 782,
+          "v2": 905
+        },
+        "fullwidth": {
+          "pairs": 621,
+          "v1": 621,
+          "v2": 621
+        },
+        "keying_error": {
+          "pairs": 208,
+          "v1": 174,
+          "v2": 187
+        },
+        "keying_transposition": {
+          "pairs": 85,
+          "v1": 0,
+          "v2": 69
+        },
+        "lowercase": {
+          "pairs": 671,
+          "v1": 671,
+          "v2": 671
+        },
+        "ocr_confusion": {
+          "pairs": 2112,
+          "v1": 1967,
+          "v2": 2107
+        },
+        "revision_suffix": {
+          "pairs": 2589,
+          "v1": 2157,
+          "v2": 2589
+        },
+        "separator_removed": {
+          "pairs": 979,
+          "v1": 971,
+          "v2": 979
+        },
+        "space_separator": {
+          "pairs": 1426,
+          "v1": 1414,
+          "v2": 1426
+        },
+        "zero_width": {
+          "pairs": 1003,
+          "v1": 994,
+          "v2": 1003
+        }
+      },
+      "typo_modes": {
+        "broad": {
+          "context_floor": 0.6,
+          "listed_for_decision": 12297,
+          "mode": "broad",
+          "review_load": 11809,
+          "review_true": 7012,
+          "score": {
+            "f1": 0.8141415697450513,
+            "precision": 0.6878375740222555,
+            "predicted": 15367,
+            "recall": 0.9972638928200773,
+            "tp": 10570,
+            "true_pairs": 10599
+          },
+          "time_ms": 555.734077,
+          "typo_in_review": 301,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 330,
+          "typo_reviews": 5091,
+          "typo_reviews_true": 301,
+          "typo_surfaced": 301
+        },
+        "off": {
+          "context_floor": 0.6,
+          "listed_for_decision": 7206,
+          "mode": "off",
+          "review_load": 6381,
+          "review_true": 6374,
+          "score": {
+            "f1": 0.9838562874251496,
+            "precision": 0.9993188010899182,
+            "predicted": 10276,
+            "recall": 0.9688649872629493,
+            "tp": 10269,
+            "true_pairs": 10599
+          },
+          "time_ms": 444.988763,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 330,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict": {
+          "context_floor": 0.6,
+          "listed_for_decision": 8911,
+          "mode": "strict",
+          "review_load": 8270,
+          "review_true": 6846,
+          "score": {
+            "f1": 0.9350752878653675,
+            "precision": 0.8811451464819298,
+            "predicted": 11981,
+            "recall": 0.9960373620152845,
+            "tp": 10557,
+            "true_pairs": 10599
+          },
+          "time_ms": 612.1820839999999,
+          "typo_in_review": 288,
+          "typo_left_to_fs": 3386,
+          "typo_pairs": 330,
+          "typo_reviews": 1705,
+          "typo_reviews_true": 288,
+          "typo_surfaced": 288
+        },
+        "strict_floor_0.4": {
+          "context_floor": 0.4,
+          "listed_for_decision": 10081,
+          "mode": "strict",
+          "review_load": 9528,
+          "review_true": 6941,
+          "score": {
+            "f1": 0.8896000000000001,
+            "precision": 0.8032849212987605,
+            "predicted": 13151,
+            "recall": 0.9966978016794037,
+            "tp": 10564,
+            "true_pairs": 10599
+          },
+          "time_ms": 628.110701,
+          "typo_in_review": 295,
+          "typo_left_to_fs": 2216,
+          "typo_pairs": 330,
+          "typo_reviews": 2875,
+          "typo_reviews_true": 295,
+          "typo_surfaced": 295
+        },
+        "strict_floor_0.5": {
+          "context_floor": 0.5,
+          "listed_for_decision": 9932,
+          "mode": "strict",
+          "review_load": 9368,
+          "review_true": 6928,
+          "score": {
+            "f1": 0.8950468200499978,
+            "precision": 0.8123365636055991,
+            "predicted": 13002,
+            "recall": 0.9965091046325125,
+            "tp": 10562,
+            "true_pairs": 10599
+          },
+          "time_ms": 569.625049,
+          "typo_in_review": 293,
+          "typo_left_to_fs": 2365,
+          "typo_pairs": 330,
+          "typo_reviews": 2726,
+          "typo_reviews_true": 293,
+          "typo_surfaced": 293
+        },
+        "strict_floor_0.8": {
+          "context_floor": 0.8,
+          "listed_for_decision": 8397,
+          "mode": "strict",
+          "review_load": 7704,
+          "review_true": 6762,
+          "score": {
+            "f1": 0.9539563128795432,
+            "precision": 0.9178512252550798,
+            "predicted": 11467,
+            "recall": 0.993018209265025,
+            "tp": 10525,
+            "true_pairs": 10599
+          },
+          "time_ms": 605.6499279999999,
+          "typo_in_review": 256,
+          "typo_left_to_fs": 3900,
+          "typo_pairs": 330,
+          "typo_reviews": 1191,
+          "typo_reviews_true": 256,
+          "typo_surfaced": 256
+        }
+      },
+      "v1": {
+        "pairs_compared": 15751,
+        "review": {
+          "listed_for_decision": 11945,
+          "review_load": 11228,
+          "review_true": 7795,
+          "typo_in_review": 173,
+          "typo_pairs": 330,
+          "typo_surfaced": 190
+        },
+        "score": {
+          "f1": 0.818174190300386,
+          "precision": 0.7366472765732417,
+          "predicted": 13237,
+          "recall": 0.9199924521181243,
+          "tp": 9751,
+          "true_pairs": 10599
+        },
+        "score_same_script": {
+          "f1": 0.818174190300386,
+          "precision": 0.7366472765732417,
+          "predicted": 13237,
+          "recall": 0.9199924521181243,
+          "tp": 9751,
+          "true_pairs": 10599
+        },
+        "time_ms_median": 115.11679099999999
+      },
+      "v2": {
+        "em": {
+          "converged": true,
+          "distinct_patterns": 31,
+          "fallback_reason": null,
+          "iterations": 13,
+          "log_likelihood": -348621.77035075484,
+          "monotone": true,
+          "training_pairs": 210659,
+          "used": "estimated"
+        },
+        "outcomes": {
+          "match": 3711,
+          "requires_human_review": 8270
+        },
+        "pairs_compared": 163862,
+        "params": {
+          "m": [
+            [
+              0.2983568321915905,
+              0.202983652109509,
+              0.2584399513221838,
+              0.2389185570284233,
+              0.0013009912796903879,
+              9.712136464570416e-11,
+              1.59714816632056e-8
+            ],
+            [
+              0.9999999999028786,
+              9.712136464572218e-11
+            ],
+            [
+              0.9421156597876837,
+              0.0578843402123163
+            ],
+            [
+              0.7321523648366822,
+              0.2539592797112946,
+              0.013888355452023222
+            ]
+          ],
+          "p": 0.04887707472953109,
+          "u": [
+            [
+              4.990951297529191e-12,
+              4.990951297529191e-12,
+              4.990951297529191e-12,
+              4.990951297529191e-12,
+              0.025182366221282594,
+              0.02023830751148087,
+              0.9545793262472727
+            ],
+            [
+              0.00017769939992256527,
+              0.9998223006000775
+            ],
+            [
+              0.63898952014206,
+              0.3610104798579401
+            ],
+            [
+              0.7947564371823238,
+              0.1951568502609107,
+              0.010086712556765449
+            ]
+          ]
+        },
+        "score": {
+          "f1": 0.9350752878653675,
+          "precision": 0.8811451464819298,
+          "predicted": 11981,
+          "recall": 0.9960373620152845,
+          "tp": 10557,
+          "true_pairs": 10599
+        },
+        "score_same_script": {
+          "f1": 0.9350752878653675,
+          "precision": 0.8811451464819298,
+          "predicted": 11981,
+          "recall": 0.9960373620152845,
+          "tp": 10557,
+          "true_pairs": 10599
+        },
+        "t_match": 45.177522104510935,
+        "t_possible": 45.177522104510935,
+        "time_ms_median": 592.424064,
+        "typo_left_to_fs": 3386,
+        "typo_review": "strict",
+        "typo_reviews": 1705,
+        "typo_reviews_true": 288
+      },
+      "v2_false_positive_sample": [
+        "AL 3609 A | AL-3601-A",
+        "AL 3609 A | AL-360l-A",
+        "AL 3609 A | al-3601-a",
+        "AL 5188 | AL-5488",
+        "AL 5188 | AL​-5488",
+        "AL 5188 | al-5488",
+        "AL 5795 B | al-5790-b",
+        "AL 9442 B | AL-9441-B",
+        "AL 9442 B | AL-944I-B",
+        "AL 9442 B | al-9441-b",
+        "AL-1120-D | AL-1125-D",
+        "AL-1120-D | AL1125D"
+      ],
+      "v2_missed_same_script_sample": [
+        "AL25-032 | AL25-30Z",
+        "AL25-032 | AL25-3O2",
+        "BSH45-764 | BSH4S-674",
+        "CAM76-044 | CAM76​-049",
+        "CVR-0972-B | CVR-9077-B",
+        "CVR-4161 | CVR-466l",
+        "CVR37-791 | CVR37-97l",
+        "CVR41-095 | CVR41-O59",
+        "CVR69-6S1 | CVR96-651",
+        "GER-1793-D | GER-I743-D",
+        "GER-4326-D | GER-48Z6-D",
+        "HSG-2603-B | HSG-2608-B"
+      ]
+    },
+    {
+      "all_pairs": 1191196,
+      "dataset": "ja_parts_sparse_seed20261105_1000",
+      "entities": 1000,
+      "keys": 1544,
+      "kind": "part",
+      "per_variant_recall": {
+        "dash_variant": {
+          "pairs": 66,
+          "v1": 66,
+          "v2": 66
+        },
+        "fullwidth": {
+          "pairs": 47,
+          "v1": 47,
+          "v2": 47
+        },
+        "keying_error": {
+          "pairs": 12,
+          "v1": 10,
+          "v2": 12
+        },
+        "keying_transposition": {
+          "pairs": 5,
+          "v1": 0,
+          "v2": 5
+        },
+        "lowercase": {
+          "pairs": 58,
+          "v1": 58,
+          "v2": 58
+        },
+        "ocr_confusion": {
+          "pairs": 134,
+          "v1": 128,
+          "v2": 134
+        },
+        "revision_suffix": {
+          "pairs": 145,
+          "v1": 126,
+          "v2": 145
+        },
+        "separator_removed": {
+          "pairs": 66,
+          "v1": 66,
+          "v2": 66
+        },
+        "space_separator": {
+          "pairs": 61,
+          "v1": 59,
+          "v2": 61
+        },
+        "zero_width": {
+          "pairs": 74,
+          "v1": 74,
+          "v2": 74
+        }
+      },
+      "typo_modes": {
+        "broad": {
+          "context_floor": 0.6,
+          "listed_for_decision": 540,
+          "mode": "broad",
+          "review_load": 379,
+          "review_true": 268,
+          "score": {
+            "f1": 0.9232895646164478,
+            "precision": 0.8575096277278562,
+            "predicted": 779,
+            "recall": 1.0,
+            "tp": 668,
+            "true_pairs": 668
+          },
+          "time_ms": 89.44675600000001,
+          "typo_in_review": 19,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 19,
+          "typo_reviews": 130,
+          "typo_reviews_true": 19,
+          "typo_surfaced": 19
+        },
+        "off": {
+          "context_floor": 0.6,
+          "listed_for_decision": 410,
+          "mode": "off",
+          "review_load": 224,
+          "review_true": 224,
+          "score": {
+            "f1": 0.985573272589218,
+            "precision": 1.0,
+            "predicted": 649,
+            "recall": 0.9715568862275449,
+            "tp": 649,
+            "true_pairs": 668
+          },
+          "time_ms": 77.45749,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 19,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict": {
+          "context_floor": 0.6,
+          "listed_for_decision": 455,
+          "mode": "strict",
+          "review_load": 279,
+          "review_true": 253,
+          "score": {
+            "f1": 0.9809104258443465,
+            "precision": 0.962536023054755,
+            "predicted": 694,
+            "recall": 1.0,
+            "tp": 668,
+            "true_pairs": 668
+          },
+          "time_ms": 89.930712,
+          "typo_in_review": 19,
+          "typo_left_to_fs": 85,
+          "typo_pairs": 19,
+          "typo_reviews": 45,
+          "typo_reviews_true": 19,
+          "typo_surfaced": 19
+        },
+        "strict_floor_0.4": {
+          "context_floor": 0.4,
+          "listed_for_decision": 496,
+          "mode": "strict",
+          "review_load": 331,
+          "review_true": 264,
+          "score": {
+            "f1": 0.9522451888809694,
+            "precision": 0.908843537414966,
+            "predicted": 735,
+            "recall": 1.0,
+            "tp": 668,
+            "true_pairs": 668
+          },
+          "time_ms": 96.114564,
+          "typo_in_review": 19,
+          "typo_left_to_fs": 44,
+          "typo_pairs": 19,
+          "typo_reviews": 86,
+          "typo_reviews_true": 19,
+          "typo_surfaced": 19
+        },
+        "strict_floor_0.5": {
+          "context_floor": 0.5,
+          "listed_for_decision": 491,
+          "mode": "strict",
+          "review_load": 323,
+          "review_true": 261,
+          "score": {
+            "f1": 0.9556509298998569,
+            "precision": 0.915068493150685,
+            "predicted": 730,
+            "recall": 1.0,
+            "tp": 668,
+            "true_pairs": 668
+          },
+          "time_ms": 95.981042,
+          "typo_in_review": 19,
+          "typo_left_to_fs": 49,
+          "typo_pairs": 19,
+          "typo_reviews": 81,
+          "typo_reviews_true": 19,
+          "typo_surfaced": 19
+        },
+        "strict_floor_0.8": {
+          "context_floor": 0.8,
+          "listed_for_decision": 441,
+          "mode": "strict",
+          "review_load": 261,
+          "review_true": 248,
+          "score": {
+            "f1": 0.989614243323442,
+            "precision": 0.9808823529411764,
+            "predicted": 680,
+            "recall": 0.9985029940119761,
+            "tp": 667,
+            "true_pairs": 668
+          },
+          "time_ms": 94.597994,
+          "typo_in_review": 18,
+          "typo_left_to_fs": 99,
+          "typo_pairs": 19,
+          "typo_reviews": 31,
+          "typo_reviews_true": 18,
+          "typo_surfaced": 18
+        }
+      },
+      "v1": {
+        "pairs_compared": 761,
+        "review": {
+          "listed_for_decision": 622,
+          "review_load": 383,
+          "review_true": 311,
+          "typo_in_review": 7,
+          "typo_pairs": 19,
+          "typo_surfaced": 10
+        },
+        "score": {
+          "f1": 0.9089605734767026,
+          "precision": 0.8720770288858322,
+          "predicted": 727,
+          "recall": 0.9491017964071856,
+          "tp": 634,
+          "true_pairs": 668
+        },
+        "score_same_script": {
+          "f1": 0.9089605734767026,
+          "precision": 0.8720770288858322,
+          "predicted": 727,
+          "recall": 0.9491017964071856,
+          "tp": 634,
+          "true_pairs": 668
+        },
+        "time_ms_median": 15.444462000000001
+      },
+      "v2": {
+        "em": {
+          "converged": true,
+          "distinct_patterns": 21,
+          "fallback_reason": null,
+          "iterations": 5,
+          "log_likelihood": -32104.65819277562,
+          "monotone": true,
+          "training_pairs": 24884,
+          "used": "estimated"
+        },
+        "outcomes": {
+          "match": 415,
+          "requires_human_review": 279
+        },
+        "pairs_compared": 18713,
+        "params": {
+          "m": [
+            [
+              0.36825885808200837,
+              0.19260400527301694,
+              0.22804314224325203,
+              0.21109398977922655,
+              1.5408320421841354e-9,
+              1.5408320421841354e-9,
+              1.5408320421841354e-9
+            ],
+            [
+              0.999999998459168,
+              1.540832046932462e-9
+            ],
+            [
+              0.9722650231124808,
+              0.027734976887519254
+            ],
+            [
+              0.7704160246533128,
+              0.2218798151001541,
+              0.00770416024653313
+            ]
+          ],
+          "p": 0.026081015913840225,
+          "u": [
+            [
+              4.126263667567358e-11,
+              4.126263667567358e-11,
+              4.126263667567358e-11,
+              4.126263667567358e-11,
+              0.005075304311107849,
+              0.001650505467026943,
+              0.9932741900568146
+            ],
+            [
+              4.1262636680781404e-11,
+              0.9999999999587373
+            ],
+            [
+              0.5910872704765835,
+              0.40891272952341656
+            ],
+            [
+              0.8595832473695069,
+              0.13604291314214978,
+              0.004373839488343305
+            ]
+          ]
+        },
+        "score": {
+          "f1": 0.9809104258443465,
+          "precision": 0.962536023054755,
+          "predicted": 694,
+          "recall": 1.0,
+          "tp": 668,
+          "true_pairs": 668
+        },
+        "score_same_script": {
+          "f1": 0.9809104258443465,
+          "precision": 0.962536023054755,
+          "predicted": 694,
+          "recall": 1.0,
+          "tp": 668,
+          "true_pairs": 668
+        },
+        "t_match": 62.8201105507657,
+        "t_possible": 62.8201105507657,
+        "time_ms_median": 100.34419899999999,
+        "typo_left_to_fs": 85,
+        "typo_review": "strict",
+        "typo_reviews": 45,
+        "typo_reviews_true": 19
+      },
+      "v2_false_positive_sample": [
+        "BRK-557604 | BRK-557606 REV C",
+        "BRK-557604-R2 | BRK-557606",
+        "BSH-987890 | BSH-987892",
+        "BSH-987892 | bsh-987890",
+        "FLG 667537 | FLG-667532",
+        "FLG-768182 | FLG-768184",
+        "FLG-768182 | FLG768184",
+        "FLG-768184 | FLGー768182",
+        "FLG768184 | FLGー768182",
+        "FLGー768182 | ＦＬＧ－７６８１８４",
+        "HSG-707670 | HSG-707678",
+        "HSG-707670 | HSG-707678 REV C"
+      ],
+      "v2_missed_same_script_sample": []
+    },
+    {
+      "all_pairs": 30112680,
+      "dataset": "ja_parts_sparse_seed20261106_5000",
+      "entities": 5000,
+      "keys": 7761,
+      "kind": "part",
+      "per_variant_recall": {
+        "dash_variant": {
+          "pairs": 293,
+          "v1": 293,
+          "v2": 293
+        },
+        "fullwidth": {
+          "pairs": 238,
+          "v1": 238,
+          "v2": 238
+        },
+        "keying_error": {
+          "pairs": 65,
+          "v1": 60,
+          "v2": 59
+        },
+        "keying_transposition": {
+          "pairs": 22,
+          "v1": 0,
+          "v2": 21
+        },
+        "lowercase": {
+          "pairs": 290,
+          "v1": 290,
+          "v2": 290
+        },
+        "ocr_confusion": {
+          "pairs": 648,
+          "v1": 624,
+          "v2": 648
+        },
+        "revision_suffix": {
+          "pairs": 724,
+          "v1": 641,
+          "v2": 724
+        },
+        "separator_removed": {
+          "pairs": 333,
+          "v1": 333,
+          "v2": 333
+        },
+        "space_separator": {
+          "pairs": 444,
+          "v1": 443,
+          "v2": 443
+        },
+        "zero_width": {
+          "pairs": 333,
+          "v1": 333,
+          "v2": 333
+        }
+      },
+      "typo_modes": {
+        "broad": {
+          "context_floor": 0.6,
+          "listed_for_decision": 2819,
+          "mode": "broad",
+          "review_load": 2051,
+          "review_true": 1479,
+          "score": {
+            "f1": 0.9214645433510276,
+            "precision": 0.8554460449835735,
+            "predicted": 3957,
+            "recall": 0.9985250737463127,
+            "tp": 3385,
+            "true_pairs": 3390
+          },
+          "time_ms": 442.53860099999997,
+          "typo_in_review": 89,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 94,
+          "typo_reviews": 661,
+          "typo_reviews_true": 89,
+          "typo_surfaced": 89
+        },
+        "off": {
+          "context_floor": 0.6,
+          "listed_for_decision": 2158,
+          "mode": "off",
+          "review_load": 1266,
+          "review_true": 1266,
+          "score": {
+            "f1": 0.9859407717618905,
+            "precision": 1.0,
+            "predicted": 3296,
+            "recall": 0.9722713864306785,
+            "tp": 3296,
+            "true_pairs": 3390
+          },
+          "time_ms": 372.42962600000004,
+          "typo_in_review": 0,
+          "typo_left_to_fs": 0,
+          "typo_pairs": 94,
+          "typo_reviews": 0,
+          "typo_reviews_true": 0,
+          "typo_surfaced": 0
+        },
+        "strict": {
+          "context_floor": 0.6,
+          "listed_for_decision": 2411,
+          "mode": "strict",
+          "review_load": 1573,
+          "review_true": 1406,
+          "score": {
+            "f1": 0.9747802276985156,
+            "precision": 0.9529444914060299,
+            "predicted": 3549,
+            "recall": 0.9976401179941002,
+            "tp": 3382,
+            "true_pairs": 3390
+          },
+          "time_ms": 502.71211500000004,
+          "typo_in_review": 86,
+          "typo_left_to_fs": 408,
+          "typo_pairs": 94,
+          "typo_reviews": 253,
+          "typo_reviews_true": 86,
+          "typo_surfaced": 86
+        },
+        "strict_floor_0.4": {
+          "context_floor": 0.4,
+          "listed_for_decision": 2573,
+          "mode": "strict",
+          "review_load": 1761,
+          "review_true": 1434,
+          "score": {
+            "f1": 0.9531051964512041,
+            "precision": 0.9118835893290218,
+            "predicted": 3711,
+            "recall": 0.9982300884955753,
+            "tp": 3384,
+            "true_pairs": 3390
+          },
+          "time_ms": 596.061792,
+          "typo_in_review": 88,
+          "typo_left_to_fs": 246,
+          "typo_pairs": 94,
+          "typo_reviews": 415,
+          "typo_reviews_true": 88,
+          "typo_surfaced": 88
+        },
+        "strict_floor_0.5": {
+          "context_floor": 0.5,
+          "listed_for_decision": 2551,
+          "mode": "strict",
+          "review_load": 1736,
+          "review_true": 1431,
+          "score": {
+            "f1": 0.9560672411357536,
+            "precision": 0.9173217674166441,
+            "predicted": 3689,
+            "recall": 0.9982300884955753,
+            "tp": 3384,
+            "true_pairs": 3390
+          },
+          "time_ms": 548.033906,
+          "typo_in_review": 88,
+          "typo_left_to_fs": 268,
+          "typo_pairs": 94,
+          "typo_reviews": 393,
+          "typo_reviews_true": 88,
+          "typo_surfaced": 88
+        },
+        "strict_floor_0.8": {
+          "context_floor": 0.8,
+          "listed_for_decision": 2310,
+          "mode": "strict",
+          "review_load": 1449,
+          "review_true": 1382,
+          "score": {
+            "f1": 0.9888856390757532,
+            "precision": 0.980568445475638,
+            "predicted": 3448,
+            "recall": 0.9973451327433628,
+            "tp": 3381,
+            "true_pairs": 3390
+          },
+          "time_ms": 724.883542,
+          "typo_in_review": 85,
+          "typo_left_to_fs": 509,
+          "typo_pairs": 94,
+          "typo_reviews": 152,
+          "typo_reviews_true": 85,
+          "typo_surfaced": 85
+        }
+      },
+      "v1": {
+        "pairs_compared": 4242,
+        "review": {
+          "listed_for_decision": 3222,
+          "review_load": 2069,
+          "review_true": 1663,
+          "typo_in_review": 31,
+          "typo_pairs": 94,
+          "typo_surfaced": 61
+        },
+        "score": {
+          "f1": 0.9117647058823529,
+          "precision": 0.868,
+          "predicted": 3750,
+          "recall": 0.9601769911504425,
+          "tp": 3255,
+          "true_pairs": 3390
+        },
+        "score_same_script": {
+          "f1": 0.9117647058823529,
+          "precision": 0.868,
+          "predicted": 3750,
+          "recall": 0.9601769911504425,
+          "tp": 3255,
+          "true_pairs": 3390
+        },
+        "time_ms_median": 81.101928
+      },
+      "v2": {
+        "em": {
+          "converged": true,
+          "distinct_patterns": 24,
+          "fallback_reason": null,
+          "iterations": 8,
+          "log_likelihood": -163880.03888461774,
+          "monotone": true,
+          "training_pairs": 129917,
+          "used": "estimated"
+        },
+        "outcomes": {
+          "match": 1976,
+          "requires_human_review": 1573
+        },
+        "pairs_compared": 98876,
+        "params": {
+          "m": [
+            [
+              0.3452453051483067,
+              0.21744397289164893,
+              0.2280436094531966,
+              0.20926711040129947,
+              3.028467589020326e-10,
+              3.028467589020326e-10,
+              1.4998548777937525e-9
+            ],
+            [
+              0.9999999996971533,
+              3.0284675899374873e-10
+            ],
+            [
+              0.9648697744462565,
+              0.03513022555374339
+            ],
+            [
+              0.7740763177222499,
+              0.21714112626427168,
+              0.008782556013478326
+            ]
+          ],
+          "p": 0.025416227321692488,
+          "u": [
+            [
+              7.897958377818765e-12,
+              7.897958377818765e-12,
+              7.897958377818765e-12,
+              7.897958377818765e-12,
+              0.005015203569914916,
+              0.005599652489873505,
+              0.9893851439086198
+            ],
+            [
+              0.000047387711155168586,
+              0.9999526122888448
+            ],
+            [
+              0.6218536508555838,
+              0.37814634914441625
+            ],
+            [
+              0.8771314615123919,
+              0.11935394700936779,
+              0.003514591478240382
+            ]
+          ]
+        },
+        "score": {
+          "f1": 0.9747802276985156,
+          "precision": 0.9529444914060299,
+          "predicted": 3549,
+          "recall": 0.9976401179941002,
+          "tp": 3382,
+          "true_pairs": 3390
+        },
+        "score_same_script": {
+          "f1": 0.9747802276985156,
+          "precision": 0.9529444914060299,
+          "predicted": 3549,
+          "recall": 0.9976401179941002,
+          "tp": 3382,
+          "true_pairs": 3390
+        },
+        "t_match": 45.4370232743743,
+        "t_possible": 45.4370232743743,
+        "time_ms_median": 517.040511,
+        "typo_left_to_fs": 408,
+        "typo_review": "strict",
+        "typo_reviews": 253,
+        "typo_reviews_true": 86
+      },
+      "v2_false_positive_sample": [
+        "BRK-163656 | BRK-163659",
+        "BRK-163659 | ＢＲＫ－１６３６５６",
+        "BRK-510991 | BRK-510998",
+        "BRK-510998 | BRK–510991",
+        "BRK-622736 | BRK-622737",
+        "BRK-622736 | BRK-622737 REV C",
+        "BRK-622736 | brk-622737",
+        "BRK-622736-R2 | BRK-622737",
+        "BRK-622736-R2 | brk-622737",
+        "BRK-824307 | BRK-824309",
+        "BRK-824307 | brk-824309",
+        "BRK638-091 | BRK638-097"
+      ],
+      "v2_missed_same_script_sample": [
+        "BRK872 097 | BRK872-907",
+        "BSH-246815 | BSH-Z46185",
+        "BSH564-736 | BSH569-736",
+        "CVR-206076 | CVR-7O6076",
+        "PIN-792110 | PIN-79Z115",
+        "PIN-873344 | PIN-873349-R2",
+        "PIN441-776 | PIN49l-776",
+        "SHF-096883 | SHF-5968B3"
+      ]
+    }
+  ],
+  "runs": 5,
+  "seed": 20261105,
+  "tool": "kizuna-er-compare",
+  "worktree_dirty": true
+}
