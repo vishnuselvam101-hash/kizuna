@@ -204,11 +204,13 @@ pub fn sandbox_argv(cfg: &Config, tail: Vec<String>, seccomp: bool) -> Vec<Strin
     }
     a.extend(["--ro-bind".into(), src.clone(), src]);
     if seccomp {
+        // bwrap installs the filters in this order. The allowlist goes last: it refuses prctl(PR_SET_SECCOMP), so
+        // nothing can be installed after it.
         a.extend([
             "--add-seccomp-fd".into(),
-            SECCOMP_FD.to_string(),
-            "--add-seccomp-fd".into(),
             SECCOMP_FD2.to_string(),
+            "--add-seccomp-fd".into(),
+            SECCOMP_FD.to_string(),
         ]);
     }
     a.push("--".into());
@@ -446,6 +448,7 @@ pub async fn run_sandboxed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{BTreeMap, BTreeSet, HashMap};
 
     #[test]
     fn import_settings_become_whitelisted_worker_options() {
@@ -530,10 +533,18 @@ def raw(nr, *a):
     rc = libc.syscall(ctypes.c_long(nr), *[ctypes.c_long(x) for x in a])
     return "allowed" if rc >= 0 else errno.errorcode.get(ctypes.get_errno(), "?")
 # Only with the filter on: every denied syscall (numbers from the Rust policy) must be refused before the kernel runs it.
-if len(sys.argv) > 1:
-    r["denied"] = {name: raw(nr) for name, nr in json.loads(sys.argv[1])}
+table = json.loads(sys.argv[1])
+if table:
+    r["denied"] = {name: raw(nr) for name, nr in table}
     r["clone_newuser"] = raw(int(sys.argv[2]), 0x10000000 | 17)
-    r["clone3"] = raw(int(sys.argv[3]), 0, 0)
+r["clone3"] = raw(int(sys.argv[3]), 0, 0)
+# Allowlist: a harmless syscall outside it (getcpu) and an ioctl request outside IOCTLS (TIOCGWINSZ) are refused;
+# an allowed request (FIONREAD) and a plain thread start still work.
+r["getcpu"] = raw(int(sys.argv[4]), 0, 0, 0)
+r["ioctl_tiocgwinsz"] = raw(int(sys.argv[5]), 0, 0x5413, ctypes.addressof(ctypes.create_string_buffer(8)))
+r["ioctl_fionread"] = raw(int(sys.argv[5]), 0, 0x541B, ctypes.addressof(ctypes.create_string_buffer(8)))
+import threading
+t = threading.Thread(target=lambda: r.__setitem__("thread", "ran")); t.start(); t.join()
 r["seccomp_mode"] = [l.split()[1] for l in open("/proc/self/status") if l.startswith("Seccomp:")][0]
 r["oom_score_adj"] = open("/proc/self/oom_score_adj").read().strip()
 try:
@@ -554,12 +565,12 @@ print(json.dumps(r))
         cfg.extraction_python = "/usr/bin/python3".into();
         cfg.extraction_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/extraction/src").into();
         let mut tail: Vec<String> = vec!["/usr/bin/python3".into(), "-I".into(), "-c".into(), PROBE.into()];
-        if seccomp {
-            let table: Vec<(&str, i64)> = crate::seccomp::denied();
-            tail.push(serde_json::to_string(&table).unwrap());
-            tail.push(libc::SYS_clone.to_string());
-            tail.push(libc::SYS_clone3.to_string());
-        }
+        let table: Vec<(&str, i64)> = if seccomp { crate::seccomp::denied() } else { Vec::new() };
+        tail.push(serde_json::to_string(&table).unwrap());
+        tail.push(libc::SYS_clone.to_string());
+        tail.push(libc::SYS_clone3.to_string());
+        tail.push(libc::SYS_getcpu.to_string());
+        tail.push(libc::SYS_ioctl.to_string());
         let argv = sandbox_argv(&cfg, tail, seccomp);
         let (status, out) = run_sandboxed(&argv, Vec::new(), Duration::from_secs(20)).await.unwrap();
         assert!(
@@ -592,9 +603,186 @@ print(json.dumps(r))
         }
         assert_eq!(on["clone_newuser"], "EPERM", "{on}");
         assert_eq!(on["clone3"], "ENOSYS", "glibc falls back to clone: {on}");
+        // Allowlist (default EPERM) and the ioctl argument filter; threads still start through clone.
+        assert_eq!(on["getcpu"], "EPERM", "{on}");
+        assert_eq!(on["ioctl_tiocgwinsz"], "EPERM", "{on}");
+        assert_eq!(on["ioctl_fionread"], "allowed", "{on}");
+        assert_eq!(on["thread"], "ran", "{on}");
         let off = probe(false).await;
         assert_eq!(off["socket"], "allowed", "control: {off}");
         assert_eq!(off["ptrace"], "allowed", "control: {off}");
         assert_eq!(off["seccomp_mode"], "0", "control: {off}");
+        assert_eq!(off["getcpu"], "allowed", "control: {off}");
+        assert_ne!(off["ioctl_tiocgwinsz"], "EPERM", "control (ENOTTY on a pipe): {off}");
+        assert_ne!(
+            off["clone3"], "ENOSYS",
+            "control: clone3 reaches the kernel without the filter: {off}"
+        );
+    }
+
+    /// Syscall profile of one strace -f log: every syscall made by the process that execs `anchor` (from that execve
+    /// on, i.e. after bubblewrap installed the filter) and by all processes it forks afterwards. Returns syscall
+    /// name → count and the ioctl request names seen.
+    pub(crate) fn strace_profile(log: &str, anchor: &str) -> (BTreeMap<String, u64>, BTreeSet<String>) {
+        let mut anchors: HashMap<u32, usize> = HashMap::new();
+        let mut children: Vec<(u32, usize, u32)> = Vec::new(); // (parent, line, child)
+        let mut parsed: Vec<(u32, String, &str)> = Vec::new();
+        for (i, line) in log.lines().enumerate() {
+            let Some((pid, rest)) = line.split_once(' ') else {
+                continue;
+            };
+            let Ok(pid) = pid.parse::<u32>() else { continue };
+            let rest = rest.trim_start();
+            let name = if let Some(r) = rest.strip_prefix("<... ") {
+                r.split(' ').next().unwrap_or("")
+            } else {
+                rest.split('(').next().unwrap_or("")
+            };
+            if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                parsed.push((pid, String::new(), rest));
+                continue;
+            }
+            if name == "execve" && rest.starts_with(&format!("execve(\"{anchor}\"")) {
+                anchors.entry(pid).or_insert(i);
+            }
+            if matches!(name, "clone" | "clone3" | "fork" | "vfork")
+                && let Some(ret) = rest.rsplit(" = ").next()
+                && let Ok(child) = ret.trim().parse::<u32>()
+            {
+                children.push((pid, i, child));
+            }
+            // An "<unfinished ...>" line and its "<... resumed>" line are one call: count the first only.
+            let resumed = rest.starts_with("<... ");
+            parsed.push((pid, if resumed { String::new() } else { name.to_string() }, rest));
+        }
+        // Tracked processes and the line from which each is tracked (children from their first line).
+        let mut from: HashMap<u32, usize> = anchors.clone();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for &(parent, at, child) in &children {
+                if from.get(&parent).is_some_and(|&f| at >= f) && !from.contains_key(&child) {
+                    from.insert(child, 0);
+                    changed = true;
+                }
+            }
+        }
+        let mut counts = BTreeMap::new();
+        let mut ioctls = BTreeSet::new();
+        for (i, (pid, name, rest)) in parsed.iter().enumerate() {
+            if name.is_empty() || from.get(pid).is_none_or(|&f| i < f) {
+                continue;
+            }
+            *counts.entry(name.clone()).or_insert(0) += 1;
+            if name == "ioctl"
+                && let Some(req) = rest.split(", ").nth(1)
+            {
+                ioctls.insert(req.split([' ', ')']).next().unwrap_or(req).to_string());
+            }
+        }
+        (counts, ioctls)
+    }
+
+    #[test]
+    fn strace_profile_counts_only_post_filter_calls() {
+        let log = "10 mount(\"none\", \"/\") = 0\n10 clone(child_stack=NULL, flags=SIGCHLD) = 11\n\
+                   11 pivot_root(\".\", \".\") = 0\n11 execve(\"/usr/bin/prlimit\", [\"prlimit\"]) = 0\n\
+                   11 openat(AT_FDCWD, \"/x\", O_RDONLY) = 3\n11 ioctl(3, TCGETS, 0x7ff) = -1 ENOTTY\n\
+                   11 clone3({flags=CLONE_VM, exit_signal=SIGCHLD}, 88 <unfinished ...>\n\
+                   12 read(0, \"\", 1) = 0\n11 <... clone3 resumed>) = 12\n12 +++ exited with 0 +++\n\
+                   10 wait4(-1, NULL, 0, NULL) = 11\n";
+        let (c, io) = strace_profile(log, "/usr/bin/prlimit");
+        let names: Vec<&str> = c.keys().map(String::as_str).collect();
+        assert_eq!(names, ["clone3", "execve", "ioctl", "openat", "read"]);
+        assert_eq!(io.into_iter().collect::<Vec<_>>(), ["TCGETS"]);
+    }
+
+    /// Profiling run behind `scripts/seccomp-profile.sh` (ADR 0016): replays every request in
+    /// `KIZUNA_SECCOMP_CORPUS` through the real worker in the real sandbox WITHOUT the filter under `strace -f`, writes
+    /// the union of post-exec syscalls to `KIZUNA_SECCOMP_PROFILE_OUT` and fails if any is missing from the allowlist;
+    /// then replays it WITH the filter and fails unless the worker gives the identical answer.
+    #[tokio::test]
+    #[ignore = "profiling run: scripts/seccomp-profile.sh"]
+    async fn seccomp_profile_corpus() {
+        let corpus = std::env::var("KIZUNA_SECCOMP_CORPUS").expect("KIZUNA_SECCOMP_CORPUS");
+        let out_path = std::env::var("KIZUNA_SECCOMP_PROFILE_OUT").expect("KIZUNA_SECCOMP_PROFILE_OUT");
+        let mut cfg = crate::config::Config::from_lookup(|k| match k {
+            "KIZUNA_DATABASE_URL" => Some("postgres://x".into()),
+            "KIZUNA_DATA_KEY" => Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into()),
+            "KIZUNA_DEV" => Some("1".into()),
+            _ => None,
+        })
+        .unwrap();
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/extraction");
+        cfg.extraction_python = std::env::var("KIZUNA_EXTRACTION_PYTHON").unwrap_or(format!("{root}/.venv/bin/python"));
+        cfg.extraction_dir = format!("{root}/src").into();
+        let worker = command_argv(&cfg);
+        let tail_at = worker.iter().position(|w| w == &cfg.extraction_python).unwrap();
+        let log = std::env::temp_dir().join(format!("kizuna-seccomp-profile-{}.log", std::process::id()));
+        let mut total: BTreeMap<String, u64> = BTreeMap::new();
+        let mut ioctls = BTreeSet::new();
+        let mut files: Vec<_> = std::fs::read_dir(&corpus).unwrap().map(|e| e.unwrap().path()).collect();
+        files.sort();
+        let mut failed = Vec::new();
+        let mut differs = Vec::new();
+        for f in &files {
+            let mut argv: Vec<String> = ["/usr/bin/strace", "-f", "-qq", "-s", "48", "-o"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            argv.push(log.to_string_lossy().into_owned());
+            argv.extend(sandbox_argv(&cfg, worker[tail_at..].to_vec(), false));
+            let input = std::fs::read(f).unwrap();
+            let unfiltered = match run_sandboxed(&argv, input.clone(), Duration::from_secs(300)).await {
+                Ok((st, out)) if st.success() => serde_json::from_slice::<Value>(&out).ok(),
+                _ => None,
+            };
+            // The same request with the filter on must give the same answer.
+            let filtered = match run_sandboxed(&worker, input, Duration::from_secs(300)).await {
+                Ok((st, out)) if st.success() => serde_json::from_slice::<Value>(&out).ok(),
+                _ => None,
+            };
+            match (&unfiltered, &filtered) {
+                (Some(a), Some(b)) if a == b => {}
+                (Some(_), _) => differs.push(f.display().to_string()),
+                _ => failed.push(f.display().to_string()),
+            }
+            let (c, io) = strace_profile(&std::fs::read_to_string(&log).unwrap(), "/usr/bin/prlimit");
+            for (k, v) in c {
+                *total.entry(k).or_insert(0) += v;
+            }
+            ioctls.extend(io);
+        }
+        let _ = std::fs::remove_file(&log);
+        let allowed: BTreeSet<String> = crate::seccomp::allowed_names().into_iter().collect();
+        // Denied syscalls the worker attempts anyway (glibc's nscd probe: socket/connect) already get EPERM today.
+        let denied: BTreeSet<String> = crate::seccomp::denied()
+            .iter()
+            .map(|(n, _)| n.trim_start_matches("SYS_").to_string())
+            .collect();
+        let missing: Vec<&String> = total
+            .keys()
+            .filter(|k| !allowed.contains(*k) && !denied.contains(*k))
+            .collect();
+        let refused: Vec<&String> = total.keys().filter(|k| denied.contains(*k)).collect();
+        let unused: Vec<&String> = allowed.iter().filter(|k| !total.contains_key(*k)).collect();
+        let report = json!({
+            "arch": std::env::consts::ARCH,
+            "requests": files.len(),
+            "failed": failed,
+            "filtered_output_differs": differs,
+            "syscalls": total,
+            "ioctl_requests": ioctls,
+            "missing_from_allowlist": missing,
+            "denied_but_attempted": refused,
+            "allowlisted_but_unseen": unused,
+        });
+        std::fs::write(&out_path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
+        assert!(failed.is_empty(), "worker failures: {failed:?}");
+        assert!(differs.is_empty(), "different answer with the filter on: {differs:?}");
+        assert!(
+            missing.is_empty(),
+            "observed syscalls missing from the allowlist: {missing:?}"
+        );
     }
 }

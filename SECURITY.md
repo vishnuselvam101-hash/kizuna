@@ -11,7 +11,7 @@ security_events; per-IP/per-account rate limits and lockout; secure headers, bod
 config from env, secrets redacted in Debug, gitleaks in the gate. Mapping to tests: `docs/security/asvs-mapping.md`.
 
 ## Known gaps
-Seccomp filter for the extraction worker is a deny list plus clone namespace-flag filter and clone3→ENOSYS (ADR 0016, deep review KZ-S1); ClamAV only when configured (ADR 0017, fail-closed quarantine); in-process rate limiter; WebAuthn
+Seccomp filter for the extraction worker is a strace-derived allowlist (default EPERM; `ioctl` and `clone` argument-filtered, clone3→ENOSYS; ADR 0016 amendment 2026-11-06) — it must be re-profiled with `scripts/seccomp-profile.sh` when Python, pypdf or tesseract change; ClamAV only when configured (ADR 0017, fail-closed quarantine); in-process rate limiter; WebAuthn
 optional for admins (founder decision); TLS must be terminated by a reverse proxy; `mfa_required` confirms a correct
 password; signed checkpoints only help when exported off-host. M2–M6 controls: docs/security/asvs-mapping.md.
 
