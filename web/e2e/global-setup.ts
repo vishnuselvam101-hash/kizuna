@@ -4,6 +4,7 @@
 //   スキャン図面_JA-BRK-1001.pdf  image-only PDF (a JPEG of a title block): needs OCR
 //   補足仕様_JA-BRK-1001.pdf    revision C spec (used to supersede evidence)
 //   検査成績書_改竄.pdf           inspection certificate with an embedded /JS action → must be quarantined
+//   ミルシート_JA-BRK-1001_L2402.pdf  later mill sheet whose chemistry adds up to more than 100 % (integrity signal)
 import { chromium } from "@playwright/test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -46,7 +47,7 @@ function jpegPdf(jpeg: Buffer, w: number, h: number): Buffer {
 export default async function globalSetup() {
   const dir = join(process.env.E2E_DATA ?? "e2e/results/data", "ja");
   mkdirSync(dir, { recursive: true });
-  if (existsSync(join(dir, "ミルシート_JA-BRK-1001.pdf"))) return;
+  if (existsSync(join(dir, "ミルシート_JA-BRK-1001_L2402.pdf"))) return;
   const browser = await chromium.launch();
   const p = await browser.newPage();
   const pdf = async (name: string, html: string) => {
@@ -87,7 +88,21 @@ export default async function globalSetup() {
       ["承認", "Released"],
     ]),
   );
-  // Scanned drawing: render a title block, photograph it as JPEG, wrap it in an image-only PDF.
+  await pdf(
+    "ミルシート_JA-BRK-1001_L2402.pdf",
+    page("ミルシート（鋼材検査証明書）", [
+      ["品番", "JA-BRK-1001"],
+      ["改訂", "B"],
+      ["ロット", "L-2402"],
+      ["材質", "SUS304"],
+      ["Cr (%)", "18.20"],
+      ["Ni (%)", "80.50"],
+      ["Mn (%)", "1.50"],
+      ["Si (%)", "0.60"],
+      ["仕入先", "北陸金属工業"],
+    ]),
+  );
+    // Scanned drawing: render a title block, photograph it as JPEG, wrap it in an image-only PDF.
   await p.setViewportSize({ width: 1200, height: 700 });
   await p.setContent(`<!doctype html><html lang="ja"><meta charset="utf-8"><style>body{${FONT} margin:0; background:#fff}
   .tb{margin:60px; border:3px solid #000; padding:30px; font-size:40px; line-height:1.6}</style>

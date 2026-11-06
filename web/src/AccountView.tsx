@@ -110,6 +110,7 @@ function TotpSection({ enabled, reload }: { enabled: boolean; reload: () => void
   if (enabled)
     return (
       <Panel title={t("account.totp")} id="acc-totp">
+        <Notice msg={msg} />
         <p>
           <Badge group="mfa" value="enabled" tone="ok" /> {t("account.totpOn")}
         </p>
@@ -262,7 +263,7 @@ function KeysSection({ st, reload, onRelogin }: { st: MfaStatus; reload: () => v
         {st.credentials.length === 0 ? (
           <Empty text={t("account.noKeys")} />
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0}>
             <table>
               <caption className="sr-only">{t("account.keys")}</caption>
               <thead>

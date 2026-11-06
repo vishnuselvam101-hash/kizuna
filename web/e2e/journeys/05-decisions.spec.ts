@@ -11,7 +11,13 @@ async function evidenceRow(page: Page, c: Ctx, predicate: string, doc: string) {
   await page.getByLabel(c.t("records.filter")).fill("JA-BRK-1001");
   await page.getByRole("button", { name: /JA-BRK-1001/ }).click();
   const ev = page.getByRole("region", { name: c.t("records.evidenceFor", { key: "JA-BRK-1001" }), exact: true });
-  const r = ev.locator(`tr[data-predicate="${predicate}"]`).filter({ hasText: doc }).first();
+  // Rows of one field are recognised by their review button, which names the field and value.
+  const pre = c.t("claim.reviewFor", { predicate, value: "§" }).split("§")[0];
+  const r = ev
+    .getByRole("row")
+    .filter({ hasText: doc })
+    .filter({ has: page.locator(`button[aria-label^="${pre}"]`) })
+    .first();
   await expect(r).toBeVisible();
   return r;
 }
@@ -44,7 +50,9 @@ test("reviewer records a decision citing claim IDs copied from the evidence tabl
   const ids: string[] = [];
   for (const p of ["mfg.material", "mfg.dimension.length"]) {
     const r = await evidenceRow(page, c, p, "仕様書_JA-BRK-1001.xlsx");
-    ids.push((await r.getByTestId("claim-id").innerText()).trim());
+    const id = (await r.locator(".claim-id code").getAttribute("title"))!;
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    ids.push(id);
   }
   await go(page, c, "decisions", "decisions");
   await page.locator("summary", { hasText: c.t("decisions.record") }).click();
@@ -52,7 +60,16 @@ test("reviewer records a decision citing claim IDs copied from the evidence tabl
   await page.getByRole("textbox", { name: c.t("compare.part"), exact: true }).fill("JA-BRK-1001");
   await page.getByLabel(c.t("decisions.kind")).selectOption("first_article_approval");
   await page.getByLabel(c.t("decisions.rationale")).fill("初品検査合格、材質SUS304・全長120mmを仕様書で確認。");
-  await page.getByLabel(c.t("decisions.evidenceIds")).fill(ids.join(", "));
+  // Evidence is picked from the record's claims; the copied claim ID finds each one.
+  const picker = page.getByRole("group", { name: c.t("decisions.evidenceIds"), exact: true });
+  for (const id of ids) {
+    await picker.getByLabel(c.t("picker.search")).fill(id);
+    const items = picker.getByRole("listitem");
+    await expect(items).toHaveCount(1);
+    await expect(items.locator("code")).toHaveAttribute("title", id);
+    await items.getByRole("checkbox").check();
+  }
+  await expect(picker).toContainText(c.t("picker.selected", { n: ids.length }));
   await page.getByRole("button", { name: c.t("decisions.recordBtn"), exact: true }).click();
   await expect(status(page)).toHaveText(c.t("decisions.recorded"));
   await expect(row(page, TITLE)).toContainText(c.tv("decision.status", "valid"));

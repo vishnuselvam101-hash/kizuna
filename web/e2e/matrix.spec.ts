@@ -1,4 +1,4 @@
-// Every page state × {EN, JA} × {1440, 390} × {dark, light}: axe (WCAG 2.2 AA rules), no horizontal page
+// Every page state (supplier portal sign-in included) × {EN, JA} × {1440, 390} × {dark, light}: axe (WCAG 2.2 AA rules), no horizontal page
 // scroll, full-page screenshot. One MFA-verified admin session; language, theme and viewport are switched the
 // way a user does (Prefs toggles, window size), so nothing is re-logged.
 import { expect, test, type Page } from "@playwright/test";
@@ -56,7 +56,47 @@ const STATES: State[] = [
       await p.locator("summary", { hasText: c.t("decisions.record") }).click();
     },
   },
+  {
+    name: "match",
+    open: async (p, c) => {
+      await go(p, c, "conflicts", "match");
+      await p.getByRole("region", { name: c.t("match.lines"), exact: true }).getByRole("row").filter({ hasText: "PO-J-7002" }).first().click();
+      await expect(p.locator("#match-h")).toBeVisible();
+    },
+  },
+  {
+    name: "integrity",
+    open: async (p, c) => {
+      await go(p, c, "conflicts", "integrity");
+      await p.getByLabel(c.t("findings.status")).selectOption("follow_up");
+      await p.getByRole("region", { name: c.t("integrity.list"), exact: true }).getByRole("row").nth(1).click();
+      await expect(p.getByRole("heading", { level: 3, name: c.t("integrity.evidence") })).toBeVisible();
+    },
+  },
+  {
+    name: "drift",
+    open: async (p, c) => {
+      await go(p, c, "conflicts", "drift");
+      await p.getByRole("row").nth(1).click();
+    },
+  },
+  {
+    name: "capa",
+    open: async (p, c) => {
+      await go(p, c, "conflicts", "capa");
+      await p.getByRole("button", { name: /^CA-/ }).first().click();
+      await expect(p.getByRole("tablist", { name: c.t("capa.steps") })).toBeVisible();
+    },
+  },
   { name: "affected", open: (p, c) => go(p, c, "decisions", "affected") },
+  {
+    name: "rerequests",
+    open: async (p, c) => {
+      await go(p, c, "decisions", "rerequests");
+      await p.getByRole("region", { name: c.t("rr.drafts"), exact: true }).getByRole("row").nth(1).click();
+      await expect(p.locator("#rr-h")).toBeVisible();
+    },
+  },
   { name: "reports", open: (p, c) => go(p, c, "reports") },
   { name: "users", open: (p, c) => go(p, c, "admin", "users") },
   { name: "integrations", open: (p, c) => go(p, c, "admin", "integrations") },
@@ -71,7 +111,7 @@ const STATES: State[] = [
   {
     name: "account",
     open: async (p, c) => {
-      await p.getByRole("button", { name: c.t("nav.account") }).click();
+      await p.locator("header button.who").click();
       await expect(p.getByRole("heading", { level: 1 })).toHaveText(c.t("nav.account"));
     },
   },
@@ -86,7 +126,7 @@ const STATES: State[] = [
 ];
 
 test("every page state in EN/JA at 1440/390 in dark/light passes axe without horizontal scroll", async ({ page }, info) => {
-  test.setTimeout(900_000);
+  test.setTimeout(1_800_000);
   const base = ctx(info);
   const failures: string[] = [];
   // Login page in every combination first (signed out).
@@ -102,6 +142,15 @@ test("every page state in EN/JA at 1440/390 in dark/light passes axe without hor
         await axe(page, label).catch((e) => failures.push(String(e.message).split("\n").slice(0, 6).join(" ")));
         await noHorizontalScroll(page, label).catch((e) => failures.push(String(e.message).split("\n")[0]));
         await shot(page, info, `login-${lang}-${vp.name}-${theme}`);
+        // The supplier portal's sign-in page (a separate app on /portal).
+        await page.goto("/portal");
+        if ((await page.locator("html").getAttribute("lang")) !== lang) await page.getByRole("button", { name: translate(lang === "en" ? "ja" : "en", "prefs.language") }).click();
+        await applyTheme(page, c);
+        await expect(page.getByRole("heading", { level: 1 })).toHaveText(translate(lang, "portal.signIn"));
+        const plabel = `portal sign-in ${lang} ${vp.name} ${theme}`;
+        await axe(page, plabel).catch((e) => failures.push(String(e.message).split("\n").slice(0, 6).join(" ")));
+        await noHorizontalScroll(page, plabel).catch((e) => failures.push(String(e.message).split("\n")[0]));
+        await shot(page, info, `portal-${lang}-${vp.name}-${theme}`);
       }
   await page.setViewportSize(VIEWPORTS[0]);
   await login(page, base, "admin");

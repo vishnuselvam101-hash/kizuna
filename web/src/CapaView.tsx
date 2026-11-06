@@ -108,13 +108,16 @@ const keyOf = (c: Citation) => c.claim ?? c.artifact ?? "";
 function useGuard() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState<unknown>(null);
-  const guard = async (fn: () => Promise<void>) => {
+  /** Runs `fn`, showing its error; resolves to whether it succeeded. */
+  const guard = async (fn: () => Promise<void>): Promise<boolean> => {
     setErr(null);
     setMsg("");
     try {
       await fn();
+      return true;
     } catch (x) {
       setErr(x);
+      return false;
     }
   };
   return { msg, setMsg, err, guard };
@@ -285,7 +288,7 @@ function StepEditor({ d, step, draft, setDraft, editable }: { d: CapaDetail; ste
       <>
         {statement}
         <h4>{t("capa.isIsNot")}</h4>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={t("capa.isIsNot")}>
           <table>
             <caption className="sr-only">{t("capa.isIsNot")}</caption>
             <thead>
@@ -391,7 +394,7 @@ function clean(c: Content): Content {
   return out;
 }
 
-function Actions({ d, editable, onAdd, onDone }: { d: CapaDetail; editable: { add: boolean; done: boolean }; onAdd: (b: unknown) => void; onDone: (id: string, ev: Citation[], comment: string) => void }) {
+function Actions({ d, editable, onAdd, onDone }: { d: CapaDetail; editable: { add: boolean; done: boolean }; onAdd: (b: unknown) => void; onDone: (id: string, ev: Citation[], comment: string) => Promise<boolean> }) {
   const { t, tv } = useI18n();
   const causes = d.steps[3].content.items ?? [];
   const [desc, setDesc] = useState("");
@@ -405,7 +408,7 @@ function Actions({ d, editable, onAdd, onDone }: { d: CapaDetail; editable: { ad
     <section aria-labelledby="acts-h">
       <h4 id="acts-h">{t("capa.actions")}</h4>
       {d.actions.length > 0 && (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table>
             <caption className="sr-only">{t("capa.actions")}</caption>
             <thead>
@@ -447,7 +450,14 @@ function Actions({ d, editable, onAdd, onDone }: { d: CapaDetail; editable: { ad
             {t("capa.doneComment")}
             <input value={comment} onChange={(e) => setComment(e.target.value)} />
           </label>
-          <button type="button" className="primary" onClick={() => (onDone(doing, ev, comment), setDoing(null))}>
+          <button
+            type="button"
+            className="primary"
+            onClick={async () => {
+              // The form stays open (with its citations and comment) when the server refuses the record.
+              if (await onDone(doing, ev, comment)) setDoing(null);
+            }}
+          >
             {t("capa.markDone")}
           </button>
         </div>
@@ -680,7 +690,7 @@ export function CaseView({ d, onChange }: { d: CapaDetail; onChange: (d: CapaDet
               onClick={() => setSel(s.discipline)}
               onKeyDown={onKey}
             >
-              {tv("capa.d", String(s.discipline))} <Badge group="capa" value={s.status === "done" ? t("capa.stepDone") : t("capa.stepOpen")} tone={s.status === "done" ? "ok" : "neutral"} />
+              {tv("capa.d", String(s.discipline))} <Badge group="capa.stepStatus" value={s.status} tone={s.status === "done" ? "ok" : "neutral"} />
             </button>
           ))}
         </div>

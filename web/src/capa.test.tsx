@@ -89,6 +89,9 @@ test("opens on the first open step, shows what is missing, and the step tabs wor
   const tabs = await openCase();
   const d6 = within(tabs).getByRole("tab", { name: /D6 Effectiveness/ });
   expect(d6.getAttribute("aria-selected")).toBe("true");
+  // Step status badges read "open" / "done", not the "Open a case" button text (capa.open).
+  expect(d6.textContent).toBe("D6 Effectiveness open");
+  expect(within(tabs).getByRole("tab", { name: /D1 Team/ }).textContent).toBe("D1 Team done");
   expect(screen.getByText("Not enough new measurements yet for the SPC re-check.")).toBeTruthy();
   fireEvent.keyDown(d6, { key: "ArrowLeft" });
   const d5 = within(tabs).getByRole("tab", { name: /D5 Corrective actions/ });
@@ -145,4 +148,20 @@ test("viewers see the case but get no editing controls", async () => {
   expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
   expect(screen.queryByRole("form", { name: "Open a case" })).toBeNull();
   expect(screen.getByText("Action overdue since 2026-11-04: Replace wheel (CA-1A2B3C4D)")).toBeTruthy();
+});
+
+test("recording an action's implementation keeps the form open when the server refuses it", async () => {
+  const { api: a } = api();
+  a.request = ((orig) =>
+    async (method: string, path: string, body?: unknown) =>
+      path === "/capa/actions/x1/done" ? Promise.reject(Object.assign(new Error("evidence_required"), { code: "evidence_required", status: 422 })) : orig(method, path, body))(a.request.bind(a)) as typeof a.request;
+  renderWithSession(<CapaView />, { api: a });
+  const tabs = await openCase();
+  fireEvent.click(within(tabs).getByRole("tab", { name: /D5 Corrective actions/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Record implementation" }));
+  fireEvent.change(screen.getByLabelText("Implementation note"), { target: { value: "New wheel fitted" } });
+  const buttons = screen.getAllByRole("button", { name: "Record implementation" });
+  fireEvent.click(buttons[buttons.length - 1]);
+  await screen.findByRole("alert");
+  expect((screen.getByLabelText("Implementation note") as HTMLInputElement).value).toBe("New wheel fitted");
 });

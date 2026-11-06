@@ -331,7 +331,7 @@ export function SimView({ r, why }: { r: SimResult; why: (v: Record<string, unkn
         <p className="muted">{t("whatif.noDecisions")}</p>
       ) : (
         <>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label={t("whatif.decisions")}>
             <table>
               <thead>
                 <tr>

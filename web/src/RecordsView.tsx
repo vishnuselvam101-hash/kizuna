@@ -301,7 +301,7 @@ function DuplicateCandidates({ type }: { type: RecordType }) {
       <Notice error={err ?? cands.error} />
       {cands.data && list.length === 0 && <Empty text={t("records.noDuplicates")} />}
       {list.length > 0 && (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={t("records.duplicatesTable")}>
           <table>
             <thead>
               <tr>

@@ -150,7 +150,7 @@ export function MatchDetailView({ d, canAccept, onAccept }: { d: MatchDetail; ca
         <dt>{t("match.rule")}</dt>
         <dd className="mono">{m.rule_version}</dd>
       </dl>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0} role="region" aria-label={t("match.matrix")}>
         <table className="match-matrix">
           <caption className="sr-only">{t("match.matrix")}</caption>
           <thead>

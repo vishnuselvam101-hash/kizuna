@@ -53,17 +53,28 @@ test("quarantine release: the uploading admin is refused (four-eyes); a second a
   await go(page, c, "evidence", "documents");
   await upload(page, c, join(DATA, "files", file), "drawing");
   await expect(status(page)).toContainText(c.tv("artifact.status", "quarantined"));
-  await page.getByRole("button", { name: c.t("docs.releaseFor", { name: "drawing_launch.pdf" }), exact: true }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: c.t("common.confirm"), exact: true }).click();
-  await expect(alert(page)).toHaveText(c.t("err.no_self_review"));
+  // The uploader sees why they may not release it; the release form is not offered (the server refuses it too).
+  await page.getByRole("button", { name: c.t("quarantine.reviewFor", { name: "drawing_launch.pdf" }), exact: true }).click();
+  const own = page.getByRole("region", { name: c.t("quarantine.title", { name: "drawing_launch.pdf" }), exact: true });
+  await expect(own.getByRole("note")).toHaveText(c.t("quarantine.ownUpload"));
+  await expect(own).toContainText(c.t("quarantine.you"));
+  await expect(own.getByRole("button", { name: c.t("quarantine.release"), exact: true })).toHaveCount(0);
   await logout(page, c);
 
   await login(page, c, "admin2");
   await go(page, c, "evidence", "documents");
-  await page.getByRole("button", { name: c.t("docs.releaseFor", { name: "drawing_launch.pdf" }), exact: true }).click();
-  await expect(page.getByRole("alertdialog")).toContainText("drawing_launch.pdf");
+  await page.getByRole("button", { name: c.t("quarantine.reviewFor", { name: "drawing_launch.pdf" }), exact: true }).click();
+  const rel = page.getByRole("region", { name: c.t("quarantine.title", { name: "drawing_launch.pdf" }), exact: true });
+  await expect(rel).toContainText("drawing_launch.pdf");
+  await expect(rel).toContainText("pdf_");
+  const go_ = rel.getByRole("button", { name: c.t("quarantine.release"), exact: true });
+  // A written reason and the explicit check are required before release.
+  await expect(go_).toBeDisabled();
+  await rel.getByLabel(c.t("quarantine.reason")).fill("発行元に原本を確認。Launchアクションは図面ビューアの既定動作で無害。");
+  await expect(go_).toBeDisabled();
+  await rel.getByRole("checkbox", { name: c.t("quarantine.confirmCheck") }).check();
   await axe(page, "release confirmation");
-  await page.getByRole("alertdialog").getByRole("button", { name: c.t("common.confirm"), exact: true }).click();
-  await expect(status(page)).toHaveText(c.t("docs.released", { status: c.tv("artifact.status", "accepted") }));
+  await go_.click();
+  await expect(status(page)).toHaveText(c.t("quarantine.released", { name: "drawing_launch.pdf" }));
   await expect(row(page, "drawing_launch.pdf")).toContainText(c.tv("artifact.status", "accepted"));
 });
