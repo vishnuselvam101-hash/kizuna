@@ -206,6 +206,9 @@ async fn extract_common(st: AppState, p: Principal, id: Uuid, re: Option<String>
     if !intact {
         return Err(ApiError::Conflict("integrity_check_failed"));
     }
+    if artifacts::REGLIST_KINDS.contains(&art.kind.as_str()) {
+        return Err(ApiError::Conflict("reglist_use_import"));
+    }
     // A document that keeps failing is not retried endlessly (final review M2).
     {
         let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;

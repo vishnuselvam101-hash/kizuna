@@ -29,6 +29,7 @@ pub mod matching;
 pub mod ops;
 pub mod portal;
 pub mod ratelimit;
+pub mod reglist;
 pub mod review_batches;
 pub mod seccomp;
 pub mod security_events;

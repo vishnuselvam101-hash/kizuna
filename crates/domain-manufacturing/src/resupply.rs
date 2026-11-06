@@ -8,12 +8,17 @@ pub const RESUPPLY_VERSION: &str = "mfg-resupply@1";
 
 /// Supplier-side evidence: certificates and inspection reports the supplier issues.
 pub fn supplier_side(source_kind: &str) -> bool {
-    source_kind == "inspection_report"
+    matches!(source_kind, "inspection_report" | "compliance_declaration")
 }
 
 /// Does a change of `changed` make a supplier claim with predicate `candidate` stale?
 /// Only the supplier statements that answer the changed requirement are stale; everything else stays valid.
 pub fn needs_resupply(changed: &str, candidate: &str) -> bool {
+    // A new version of a regulated-substance list makes the declarations answering that list stale (the caller has
+    // already applied the materiality rule `mfg-reglist@1`, so only declarations that could be affected get here).
+    if changed.starts_with("reg.list.") {
+        return candidate == "reg.declaration";
+    }
     if !candidate.starts_with("qa.") {
         return false;
     }
@@ -125,7 +130,16 @@ pub fn label(pred: &str, lang: Lang) -> String {
             format!("specified {bound} {}", dim_label(p, lang))
         };
     }
+    if let Some(code) = pred.strip_prefix("reg.list.") {
+        let code = clean(code);
+        return if ja {
+            format!("規制物質リスト（{code}）")
+        } else {
+            format!("regulated-substance list ({code})")
+        };
+    }
     let (j, e) = match pred {
+        "reg.declaration" => ("含有化学物質の適合宣言", "substance compliance declaration"),
         "qa.material" | "mfg.material" | "po.material" => ("材質", "material grade"),
         "qa.certificate_type" | "mfg.certificate_type" | "po.certificate_type" => {
             ("検査証明書の種類（EN 10204）", "inspection document type (EN 10204)")
@@ -372,6 +386,13 @@ mod tests {
             !needs_resupply("mfg.material", "mfg.material"),
             "only supplier statements"
         );
+        assert!(needs_resupply("reg.list.svhc", "reg.declaration"));
+        assert!(!needs_resupply("reg.list.svhc", "qa.material"));
+        assert!(!needs_resupply("mfg.material", "reg.declaration"));
+        assert!(supplier_side("compliance_declaration"));
+        assert!(!supplier_side("regulation_list"));
+        assert_eq!(label("reg.list.svhc", Lang::Ja), "規制物質リスト（svhc）");
+        assert_eq!(label("reg.declaration", Lang::En), "substance compliance declaration");
     }
 
     fn doc() -> RequestDoc {

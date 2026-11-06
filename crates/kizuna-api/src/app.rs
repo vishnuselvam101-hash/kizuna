@@ -138,6 +138,18 @@ pub fn router(st: AppState) -> Router {
         .route("/simulations", post(crate::simulations::run))
         .route("/label-synonyms", get(crate::label_synonyms::list))
         .route("/label-synonyms/{id}/revoke", post(crate::label_synonyms::revoke))
+        .route(
+            "/reg-lists",
+            get(crate::reglist::list).post(crate::reglist::create_list),
+        )
+        .route("/reg-lists/declarations", post(crate::reglist::import_declarations))
+        .route("/reg-lists/compositions", post(crate::reglist::import_compositions))
+        .route("/reg-lists/{id}/versions", post(crate::reglist::import_version))
+        .route("/reg-lists/{id}/versions/{version}", get(crate::reglist::get_version))
+        .route(
+            "/material-profiles",
+            get(crate::reglist::list_profiles).put(crate::reglist::put_profile),
+        )
         .route("/review-batches", get(crate::review_batches::list))
         .route("/review-batches/{id}", get(crate::review_batches::get))
         .route("/match/lines", get(crate::matching::list))

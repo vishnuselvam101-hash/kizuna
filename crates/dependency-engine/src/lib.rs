@@ -231,6 +231,23 @@ pub fn upstream_withdrawn_bounded(
     Ok(run.into_impacts())
 }
 
+/// Propagates caller-built direct impacts (e.g. a regulation-list change seen by a declaration claim) through
+/// decision→decision edges, bounded like [`assess_bounded`]. Seeds for decisions absent from `deps` are ignored.
+pub fn propagate_seeds(deps: &[Dep], seeds: Vec<Impact>, max_affected: usize) -> Result<Vec<Impact>, NeedsReviewBatch> {
+    let by_id: HashMap<&str, &str> = deps
+        .iter()
+        .map(|d| (d.decision.as_str(), d.decision.as_str()))
+        .collect();
+    let mut run = Run::new(deps, max_affected);
+    for s in seeds {
+        if let Some(id) = by_id.get(s.decision.as_str()) {
+            run.seed(id, s)?;
+        }
+    }
+    run.propagate()?;
+    Ok(run.into_impacts())
+}
+
 /// FxHash-style hasher for the interning tables. Keys are server-generated decision ids (UUIDs), not attacker-chosen
 /// strings, so the DoS resistance of SipHash buys nothing here while it is the largest single cost of indexing.
 #[derive(Default, Clone, Copy)]
