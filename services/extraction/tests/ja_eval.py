@@ -38,6 +38,8 @@ PROVENANCE = (
     "p_correct_bps",
     "review",
 )
+# Inputs of the gate-v2 consistency score (tests/ja_gate2.py): the mapped value and where it came from.
+RICH = ("predicate", "subject_type", "value_text", "value_num", "value_unit", "plus", "minus", "loc")
 
 from kizuna_extraction.worker import handle  # noqa: E402
 
@@ -188,6 +190,12 @@ def _conf(c: dict) -> dict:
     """Provenance a review gate can use: OCR confidence, how the label was mapped, calibrated correctness."""
     loc = c.get("source_location") or {}
     return {
+        "predicate": c.get("predicate"),
+        "subject_type": c.get("subject_type"),
+        "value_text": c.get("value_text"),
+        "value_num": c.get("value_num"),
+        "value_unit": c.get("value_unit"),
+        "loc": loc,
         "ocr_conf_bps": loc.get("ocr_conf_bps"),
         "subject_conf_bps": loc.get("subject_conf_bps"),
         "layout": loc.get("layout"),
@@ -245,6 +253,7 @@ def evaluate(docs: list[Doc], rust_bin: str | None = None) -> dict:
     rows: dict[str, list] = defaultdict(list)
     rust_in = []
     claim_rows: list[dict] = []
+    doc_meta: dict[str, dict] = {}
     t0 = time.monotonic()
     failures = []
     for d in docs:
@@ -262,8 +271,18 @@ def evaluate(docs: list[Doc], rust_bin: str | None = None) -> dict:
     if rust_bin:
         inp = "\n".join(json.dumps(x, ensure_ascii=False) for x in rust_in).encode()
         out = subprocess.run([rust_bin], input=inp, capture_output=True, check=True, timeout=600).stdout  # noqa: S603
-        for d, line in zip(docs, out.decode().splitlines(), strict=True):
-            claims = subject_checked(d, rust_fields(json.loads(line)))
+        for d, rin, line in zip(docs, rust_in, out.decode().splitlines(), strict=True):
+            mapped = json.loads(line)
+            claims = subject_checked(d, rust_fields(mapped))
+            doc_meta[d.name] = {
+                "split": d.split,
+                "kind": d.kind,
+                "records": [
+                    {"label": r["label"], "value": r["value"], "location": r.get("location")}
+                    for r in rin["records"]
+                ],
+                "unmapped_labels": mapped.get("unmapped_labels", []),
+            }
             truth = [t for t in d.truth if t["field"] not in RUST_SKIP]
             for level in ("strict", "detect"):
                 used: list[bool] = []
@@ -272,12 +291,14 @@ def evaluate(docs: list[Doc], rust_bin: str | None = None) -> dict:
                 if level == "strict":
                     claim_rows += [
                         {"split": d.split, "doc": d.name, "field": c["field"], "ok": u}
-                        | {k: c.get(k) for k in PROVENANCE}
+                        | {k: c.get(k) for k in PROVENANCE + RICH}
+                        | {"subject": c.get("subject")}
                         for c, u in zip(claims, used, strict=True)
                     ]
                 rows[f"rust/{level}/all"].append((d.split, tp, fp, fn))
     res["failures"] = failures
     res["claims"] = claim_rows
+    res["doc_meta"] = doc_meta
     res["docs"] = {s: sum(1 for d in docs if d.split == s) for s in sorted({d.split for d in docs})}
     res["results"] = {k: summarise(v) for k, v in sorted(rows.items())}
     return res
