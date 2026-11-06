@@ -14,10 +14,12 @@
 //! - A small p-value is a reason for a human to look, never proof of fraud.
 
 pub mod capability;
+pub mod conformal;
 pub mod decimal;
 pub mod describe;
 pub mod error;
 pub mod integrity;
+pub mod multitest;
 pub mod spc;
 pub mod special;
 pub mod synth;

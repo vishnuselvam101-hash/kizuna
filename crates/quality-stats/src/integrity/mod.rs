@@ -16,4 +16,7 @@ pub use benford::benford_first_digit;
 pub use digits::{rounding_heaping, terminal_digit_preference};
 pub use limit::{LimitSide, exact_at_limit};
 pub use minhash::{MinHasher, NearDuplicate, Signature, find_near_duplicates, table_tokens};
-pub use variance::variance_too_low;
+pub use variance::{
+    ShrinkPosterior, VarianceGroup, shrink_posterior, variance_too_low, variance_too_low_estimated_sigma,
+    variance_too_low_pooled,
+};
