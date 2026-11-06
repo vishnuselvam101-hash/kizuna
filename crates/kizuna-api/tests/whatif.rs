@@ -971,6 +971,13 @@ async fn hundred_thousand_edges_are_simulated_within_bounds() {
     .await
     .unwrap();
     tx.commit().await.unwrap();
+    // A raw bulk load queried immediately has no planner statistics unless autovacuum happened to analyze it first;
+    // without them the dependency join sometimes plans as a nested loop and runs past the 55 s statement timeout
+    // (seen as 503 database_timeout, ~2 s with statistics). Real tables grow through the API and are analyzed.
+    sqlx::query("ANALYZE decisions, decision_dependencies")
+        .execute(&s.c.owner)
+        .await
+        .unwrap();
     let edges: i64 = {
         let mut tx = db::tenant_tx(&s.c.owner, s.t).await.unwrap();
         sqlx::query_scalar("SELECT count(*) FROM decision_dependencies")
