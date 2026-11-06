@@ -138,6 +138,7 @@ pub async fn export(
     State(st): State<AppState>,
     p: Principal,
     Path(id): Path<Uuid>,
+    rl: crate::lang::ReqLang,
     ApiJson(req): ApiJson<ExportReq>,
 ) -> ApiResult<Response> {
     p.require(&st, Permission::DecisionRead).await?;
@@ -302,7 +303,7 @@ pub async fn export(
             bytes,
         ));
     }
-    let report = crate::decisions::report_body(&st, &p, id).await?;
+    let report = crate::decisions::report_body(&st, &p, id, rl.0.unwrap_or(kizuna_messages::Lang::En)).await?;
     let hash_only: Vec<Uuid> = pack_artifacts
         .iter()
         .filter(|(a, b)| b.is_none() && a.excluded_reason.as_deref() == Some("requested"))

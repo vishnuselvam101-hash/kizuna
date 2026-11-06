@@ -548,7 +548,7 @@ async fn extract_locked(
                 // A reviewed claim replaced by an unreviewed suggestion is no longer evidence.
                 Some(dependency_engine::Change::Withdrawn {
                     old_claim: o.id.to_string(),
-                    reason: "superseded by an unreviewed AI suggestion on re-extraction".into(),
+                    reason: kizuna_messages::Msg::new("withdraw.superseded_by_ai"),
                 })
             } else {
                 None
@@ -585,7 +585,7 @@ async fn extract_locked(
                 p.user_id,
                 dependency_engine::Change::Withdrawn {
                     old_claim: o.id.to_string(),
-                    reason: "not found on re-extraction".into(),
+                    reason: kizuna_messages::Msg::new("withdraw.not_found_on_reextraction"),
                 },
             )
             .await?;
@@ -1198,6 +1198,7 @@ pub async fn get_conflict(State(st): State<AppState>, p: Principal, Path(id): Pa
         "requires_human_review": needs_review,
         "potentially_affected_decisions": affected,
         "limitations": format!("Deterministic rule {}; extracted values may contain extraction errors (lowest source confidence {} bps); a matching hash proves only that a document is unchanged since capture.", RULE_VERSION, min_conf),
+        "limitations_msg": kizuna_messages::Msg::new("limitations.finding").with("rule", RULE_VERSION).with("confidence", min_conf),
     })))
 }
 
@@ -1312,7 +1313,7 @@ pub async fn review_conflict(
                 p.user_id,
                 dependency_engine::Change::Withdrawn {
                     old_claim: f.to_string(),
-                    reason: format!("rejected when finding {id} was confirmed"),
+                    reason: kizuna_messages::Msg::new("withdraw.rejected_by_finding").with("finding", id.to_string()),
                 },
             )
             .await?;
@@ -1416,7 +1417,7 @@ pub async fn review_claim(
             p.user_id,
             dependency_engine::Change::Withdrawn {
                 old_claim: id.to_string(),
-                reason: "AI-origin claim no longer accepted".into(),
+                reason: kizuna_messages::Msg::new("withdraw.ai_no_longer_accepted"),
             },
         )
         .await?;
@@ -1428,7 +1429,7 @@ pub async fn review_claim(
             p.user_id,
             dependency_engine::Change::Withdrawn {
                 old_claim: id.to_string(),
-                reason: "rejected in review".into(),
+                reason: kizuna_messages::Msg::new("withdraw.rejected_in_review"),
             },
         )
         .await?;

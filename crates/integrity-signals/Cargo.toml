@@ -14,6 +14,7 @@ sha2.workspace = true
 hex.workspace = true
 rust_decimal.workspace = true
 quality-stats = { path = "../quality-stats" }
+kizuna-messages = { path = "../kizuna-messages" }
 
 [dev-dependencies]
 proptest.workspace = true

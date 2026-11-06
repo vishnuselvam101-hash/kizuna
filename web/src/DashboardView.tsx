@@ -59,7 +59,7 @@ const sum = (m: Record<string, number> | undefined) => Object.values(m ?? {}).re
 
 export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void }) {
   const { api, me, can } = useSession();
-  const { t, fmtNum } = useI18n();
+  const { tm, t, fmtNum } = useI18n();
   const { data, error, loading } = useLoad<Summary>(async () => {
     // Counts come from the server summary; the lists below only feed the graph and attention panels.
     const [counts, claims, artifacts, open, decisions, chain] = await Promise.all([
@@ -139,7 +139,7 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void })
                   {s.open.slice(0, 6).map((c) => (
                     <li key={c.id}>
                       <Badge group="conflict.kind" value={c.kind} tone="crit" /> <b className="mono">{c.subject_key}</b>
-                      <span className="muted att-why">{c.explanation.why}</span>
+                      <span className="muted att-why">{tm(c.explanation.msg, c.explanation.why)}</span>
                     </li>
                   ))}
                 </ul>

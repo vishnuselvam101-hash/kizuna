@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use conflict_engine::{Fact, cmp_revision};
 use entity_resolution::safe_normalize;
+use kizuna_messages::Msg;
 use rust_decimal::Decimal;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -240,7 +241,7 @@ impl Ctx {
         dw: &[&Fact],
         cert: &[&Fact],
         doc: Option<&str>,
-        why: String,
+        why: Msg,
         detail: Value,
     ) {
         self.findings.push(MatchFinding {
@@ -251,7 +252,7 @@ impl Ctx {
             drawing_claims: ids(dw),
             certificate_claims: ids(cert),
             certificate_doc: doc.map(str::to_string),
-            explanation: json!({ "rule": MATCH_RULE_VERSION, "why": why, "detail": detail }),
+            explanation: json!({ "rule": MATCH_RULE_VERSION, "why": why.en(), "msg": why, "detail": detail }),
         });
     }
     fn row(&mut self, check: &str, status: &'static str, po: Cell, drawing: Cell, certificate: Cell) {
@@ -345,7 +346,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
             &[],
             &[],
             None,
-            format!("no drawing or specification evidence for part {}", line.part),
+            Msg::new("match.no_design_evidence").with("part", line.part.as_str()),
             json!({ "part": line.part }),
         );
         None
@@ -362,7 +363,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                         &rev_claims(l),
                         &[],
                         None,
-                        format!("ordered revision {r} is older than drawing revision {l}"),
+                        Msg::new("match.revision_older")
+                            .with("ordered", r.as_str())
+                            .with("latest", l.as_str()),
                         json!({ "ordered": r, "latest": l }),
                     );
                 }
@@ -376,7 +379,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                     &rev_claims(latest.as_deref().unwrap_or("")),
                     &[],
                     None,
-                    format!("ordered revision {r} does not exist in drawing evidence"),
+                    Msg::new("match.revision_unknown").with("ordered", r.as_str()),
                     json!({ "ordered": r, "known": revs }),
                 );
                 None
@@ -389,7 +392,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                     &rev_claims(latest.as_deref().unwrap_or("")),
                     &[],
                     None,
-                    "purchase order line states no drawing revision; evaluated against the latest revision".into(),
+                    Msg::new("match.po_revision_missing"),
                     json!({ "latest": latest }),
                 );
                 latest.clone()
@@ -455,10 +458,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
             &[],
             &[],
             None,
-            format!(
-                "no certificate or inspection report is linked to {} line {}",
-                line.purchase_order, line.line
-            ),
+            Msg::new("match.no_certificate")
+                .with("po", line.purchase_order.as_str())
+                .with("line", line.line.to_string()),
             json!({ "part": line.part }),
         );
     }
@@ -476,10 +478,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                     &rev_claims(w),
                     &ri,
                     Some(doc),
-                    format!(
-                        "certificate inspected revision {} but revision {w} was ordered",
-                        i.display_value()
-                    ),
+                    Msg::new("match.certificate_revision_mismatch")
+                        .with("inspected", i.display_value())
+                        .with("ordered", w.as_str()),
                     json!({ "inspected": i.text, "ordered": w }),
                 );
             }
@@ -491,7 +492,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                     &[],
                     fs,
                     Some(doc),
-                    "inspection report states measurements but no drawing revision".into(),
+                    Msg::new("match.certificate_revision_missing"),
                     json!({}),
                 );
             }
@@ -520,11 +521,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                     &dw_dn,
                     &[],
                     None,
-                    format!(
-                        "PO cites drawing {} but the drawing evidence is {}",
-                        a.display_value(),
-                        b.display_value()
-                    ),
+                    Msg::new("match.drawing_number_mismatch")
+                        .with("po", a.display_value())
+                        .with("drawing", b.display_value()),
                     json!({ "po": a.text, "drawing": b.text }),
                 );
                 "mismatch"
@@ -553,11 +552,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
             &appr,
             &[],
             None,
-            format!(
-                "drawing revision {} is not approved ({})",
-                resolved.as_deref().unwrap_or(""),
-                appr[0].display_value()
-            ),
+            Msg::new("match.drawing_not_approved")
+                .with("revision", resolved.as_deref().unwrap_or(""))
+                .with("status", appr[0].display_value()),
             json!({ "status": appr[0].text }),
         );
         "mismatch"
@@ -585,11 +582,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
             &dw_m,
             &[],
             None,
-            format!(
-                "PO orders {} but the drawing specifies {}",
-                a.display_value(),
-                b.display_value()
-            ),
+            Msg::new("match.po_drawing_material_mismatch")
+                .with("po", a.display_value())
+                .with("drawing", b.display_value()),
             json!({ "po": a.text, "drawing": b.text }),
         );
     }
@@ -607,10 +602,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                 &dw_m,
                 &[],
                 None,
-                format!(
-                    "no certificate states the material grade (required {})",
-                    r.display_value()
-                ),
+                Msg::new("match.certificate_material_missing").with("required", r.display_value()),
                 json!({}),
             );
         }
@@ -626,11 +618,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                             &dw_m,
                             &[m],
                             Some(doc),
-                            format!(
-                                "certificate states {} but {} is required",
-                                m.display_value(),
-                                r.display_value()
-                            ),
+                            Msg::new("match.certificate_material_mismatch")
+                                .with("certified", m.display_value())
+                                .with("required", r.display_value()),
                             json!({ "certificate": m.text, "required": r.text }),
                         );
                     }
@@ -662,10 +652,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                 &dw_t,
                 &[],
                 None,
-                format!(
-                    "{} certificate required; no certificate states its type",
-                    r.display_value()
-                ),
+                Msg::new("match.certificate_type_missing").with("required", r.display_value()),
                 json!({}),
             );
             "missing"
@@ -685,7 +672,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                                 &dw_t,
                                 &[t],
                                 Some(doc),
-                                format!("EN 10204 {got} supplied where {need} is required"),
+                                Msg::new("match.certificate_type_insufficient")
+                                    .with("supplied", got)
+                                    .with("required", need),
                                 json!({ "required": need, "supplied": got }),
                             );
                         }
@@ -699,7 +688,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                                 &dw_t,
                                 &[t],
                                 Some(doc),
-                                format!("certificate type '{got}' cannot be compared with required '{need}'"),
+                                Msg::new("match.certificate_type_unverifiable")
+                                    .with("supplied", got)
+                                    .with("required", need),
                                 json!({ "required": need, "supplied": got }),
                             );
                         }
@@ -769,7 +760,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                 &spec_facts,
                 &[],
                 None,
-                format!("toleranced dimension {d} ({spec}) has no measured value on any linked certificate"),
+                Msg::new("match.measurement_missing")
+                    .with("dimension", d)
+                    .with("spec", spec.as_str()),
                 json!({ "dimension": d }),
             );
             "missing"
@@ -787,14 +780,16 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                             &spec_facts,
                             &[x],
                             doc,
-                            format!("measured {} cannot be compared with {spec}", x.display_value()),
+                            Msg::new("match.measurement_unit_incompatible")
+                                .with("measured", x.display_value())
+                                .with("spec", spec.as_str()),
                             json!({ "units": [x.unit, n.unit] }),
                         );
                     }
                     Some(v) if v < lo || v > hi => {
                         st = "mismatch";
                         c.find("measurement_out_of_tolerance", &check, &[], &spec_facts, &[x], doc,
-                            format!("measured {} is outside {spec}", x.display_value()),
+                            Msg::new("match.measurement_out_of_tolerance").with("measured", x.display_value()).with("spec", spec.as_str()),
                             json!({ "measured": fmt_dec(v), "lower": fmt_dec(lo), "upper": fmt_dec(hi), "unit": nu, "lot": x.scope.get("lot") }));
                     }
                     Some(_) => {}
@@ -846,7 +841,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                 &limits,
                 &[],
                 None,
-                format!("{pr} ({spec}) is not stated on any linked certificate"),
+                Msg::new("match.property_missing")
+                    .with("property", pr)
+                    .with("spec", spec.as_str()),
                 json!({ "property": pr }),
             );
             "missing"
@@ -863,7 +860,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                         (Some(lim), Some(v)) if (is_min && v < lim) || (!is_min && v > lim) => {
                             st = "mismatch";
                             c.find("property_out_of_spec", &check, &[], &[l], &[x], doc,
-                                format!("certificate states {} {pr}; required {} {}", x.display_value(), if is_min { "≥" } else { "≤" }, l.display_value()),
+                                Msg::new("match.property_out_of_spec").with("certified", x.display_value()).with("property", pr).with("bound", if is_min { "≥" } else { "≤" }).with("limit", l.display_value()),
                                 json!({ "value": fmt_dec(v), "limit": fmt_dec(lim), "bound": if is_min { "min" } else { "max" } }));
                         }
                         (Some(_), None) => {
@@ -875,7 +872,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                                 &[l],
                                 &[x],
                                 doc,
-                                format!("{} cannot be compared with {}", x.display_value(), l.display_value()),
+                                Msg::new("match.property_unit_incompatible")
+                                    .with("certified", x.display_value())
+                                    .with("limit", l.display_value()),
                                 json!({ "units": [x.unit, l.unit] }),
                             );
                         }
@@ -914,7 +913,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
                 &[],
                 fs,
                 Some(doc),
-                "certificate identifies neither a lot nor a heat number".into(),
+                Msg::new("match.traceability_missing"),
                 json!({}),
             );
         }

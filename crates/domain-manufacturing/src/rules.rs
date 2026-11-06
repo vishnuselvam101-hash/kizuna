@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use conflict_engine::units::{QtyCmp, compare, parse_unit, to_base};
 use conflict_engine::{Ctx, Fact, Finding, Rule, cmp_revision};
 use entity_resolution::safe_normalize;
+use kizuna_messages::Msg;
 use rust_decimal::Decimal;
 use serde::Serialize;
 use serde_json::json;
@@ -20,6 +21,13 @@ fn finding(kind: &'static str, a: &Fact, b: Option<&Fact>, explanation: serde_js
         claim_b: b.map(|f| f.id.clone()),
         explanation,
     }
+}
+
+/// Explanation object: the rule's details plus `msg` (code + params) and `why`, its English fallback.
+fn expl(mut v: serde_json::Value, m: Msg) -> serde_json::Value {
+    v["why"] = m.en().into();
+    v["msg"] = m.to_value();
+    v
 }
 
 fn spec_like(f: &Fact) -> bool {
@@ -63,12 +71,40 @@ impl Rule for SpecValueRule {
                     match (a.num, b.num) {
                         (Some(x), Some(y)) => match compare(x, a.unit.as_deref(), y, b.unit.as_deref()) {
                             QtyCmp::Equal => {}
-                            QtyCmp::Different { .. } => out.push(finding("value_mismatch", a, Some(b), json!({ "rule": "spec_value", "why": "same predicate and revision, different values", "detail": base }))),
-                            QtyCmp::Incompatible | QtyCmp::UnknownUnit => out.push(finding("unit_incompatible", a, Some(b), json!({ "rule": "spec_value", "why": "units cannot be compared", "units": [a.unit, b.unit], "detail": base }))),
+                            QtyCmp::Different { .. } => out.push(finding(
+                                "value_mismatch",
+                                a,
+                                Some(b),
+                                expl(
+                                    json!({ "rule": "spec_value", "detail": base }),
+                                    Msg::new("conflict.spec_value.different"),
+                                ),
+                            )),
+                            QtyCmp::Incompatible | QtyCmp::UnknownUnit => out.push(finding(
+                                "unit_incompatible",
+                                a,
+                                Some(b),
+                                expl(
+                                    json!({ "rule": "spec_value", "units": [a.unit, b.unit], "detail": base }),
+                                    Msg::new("conflict.spec_value.units_incomparable"),
+                                ),
+                            )),
                         },
                         _ if a.text_norm() != b.text_norm() => {
-                            let kind = if supplier_record { "conflicting_supplier_record" } else { "value_mismatch" };
-                            out.push(finding(kind, a, Some(b), json!({ "rule": "spec_value", "why": "sources state different values", "detail": base })));
+                            let kind = if supplier_record {
+                                "conflicting_supplier_record"
+                            } else {
+                                "value_mismatch"
+                            };
+                            out.push(finding(
+                                kind,
+                                a,
+                                Some(b),
+                                expl(
+                                    json!({ "rule": "spec_value", "detail": base }),
+                                    Msg::new("conflict.spec_value.sources_differ"),
+                                ),
+                            ));
                         }
                         _ => {}
                     }
@@ -117,15 +153,48 @@ impl Rule for RevisionRule {
             let known = spec_revs
                 .iter()
                 .any(|s| s.text.as_deref().is_some_and(|t| t.eq_ignore_ascii_case(r)));
-            let role = if f.predicate.starts_with("po.") {
-                "ordered"
+            let role = Msg::new(if f.predicate.starts_with("po.") {
+                "term.revision_role.ordered"
             } else {
-                "inspected"
-            };
+                "term.revision_role.inspected"
+            });
             match latest {
-                None => out.push(finding("revision_mismatch", f, None, json!({ "rule": "revision", "why": format!("{role} revision {r} has no specification or drawing evidence") }))),
-                Some(l) if !known => out.push(finding("revision_mismatch", f, Some(l), json!({ "rule": "revision", "why": format!("{role} revision {r} does not exist in specification evidence"), "latest_known": l.text }))),
-                Some(l) if cmp_revision(l.text.as_deref().unwrap_or(""), r) == Some(Ordering::Greater) => out.push(finding("revision_mismatch", f, Some(l), json!({ "rule": "revision", "why": format!("{role} revision {r} is older than revision {}", l.text.as_deref().unwrap_or("")), "latest_known": l.text }))),
+                None => out.push(finding(
+                    "revision_mismatch",
+                    f,
+                    None,
+                    expl(
+                        json!({ "rule": "revision" }),
+                        Msg::new("conflict.revision.no_evidence")
+                            .with_msg("role", role.clone())
+                            .with("revision", r),
+                    ),
+                )),
+                Some(l) if !known => out.push(finding(
+                    "revision_mismatch",
+                    f,
+                    Some(l),
+                    expl(
+                        json!({ "rule": "revision", "latest_known": l.text }),
+                        Msg::new("conflict.revision.unknown")
+                            .with_msg("role", role.clone())
+                            .with("revision", r),
+                    ),
+                )),
+                Some(l) if cmp_revision(l.text.as_deref().unwrap_or(""), r) == Some(Ordering::Greater) => {
+                    out.push(finding(
+                        "revision_mismatch",
+                        f,
+                        Some(l),
+                        expl(
+                            json!({ "rule": "revision", "latest_known": l.text }),
+                            Msg::new("conflict.revision.older")
+                                .with_msg("role", role.clone())
+                                .with("revision", r)
+                                .with("latest", l.text.as_deref().unwrap_or("")),
+                        ),
+                    ))
+                }
                 _ => {}
             }
         }
@@ -156,11 +225,24 @@ impl Rule for ApprovalRule {
                     "missing_approval",
                     f,
                     None,
-                    json!({ "rule": "approval", "why": format!("no approval evidence for ordered revision {r}") }),
+                    expl(
+                        json!({ "rule": "approval" }),
+                        Msg::new("conflict.approval.missing").with("revision", r),
+                    ),
                 ));
             } else if !approvals.iter().any(|a| a.text_norm().as_deref() == Some("approved")) {
                 let a = approvals[0];
-                out.push(finding("missing_approval", f, Some(a), json!({ "rule": "approval", "why": format!("revision {r} approval status is '{}'", a.display_value()) })));
+                out.push(finding(
+                    "missing_approval",
+                    f,
+                    Some(a),
+                    expl(
+                        json!({ "rule": "approval" }),
+                        Msg::new("conflict.approval.status")
+                            .with("revision", r)
+                            .with("status", a.display_value()),
+                    ),
+                ));
             }
         }
         out
@@ -179,7 +261,19 @@ impl Rule for ExpiryRule {
             .iter()
             .filter(|f| f.predicate == "mfg.certificate.expiry")
             .filter(|f| f.text.as_deref().is_some_and(|d| d.len() == 10 && d < c.today.as_str()))
-            .map(|f| finding("expired_evidence", f, None, json!({ "rule": "expiry", "why": "evidence expired", "expired_on": f.text, "reference_date": c.today })))
+            .map(|f| {
+                finding(
+                    "expired_evidence",
+                    f,
+                    None,
+                    expl(
+                        json!({ "rule": "expiry", "expired_on": f.text, "reference_date": c.today }),
+                        Msg::new("conflict.expiry.expired")
+                            .with("expired_on", f.text.clone())
+                            .with("reference_date", c.today.clone()),
+                    ),
+                )
+            })
             .collect()
     }
 }
@@ -253,16 +347,29 @@ impl Rule for ToleranceRule {
                 minus.num.and_then(|v| in_unit(v, minus.unit.as_deref(), nu)),
                 m.num.and_then(|v| in_unit(v, m.unit.as_deref(), nu)),
             ) else {
-                out.push(finding("unit_incompatible", m, Some(nom), json!({ "rule": "tolerance", "why": "measurement and specification units cannot be compared", "units": [m.unit, nom.unit] })));
+                out.push(finding(
+                    "unit_incompatible",
+                    m,
+                    Some(nom),
+                    expl(
+                        json!({ "rule": "tolerance", "units": [m.unit, nom.unit] }),
+                        Msg::new("conflict.tolerance.units_incomparable"),
+                    ),
+                ));
                 continue;
             };
             let (lo, hi) = (n - mi, n + p);
             if meas < lo || meas > hi {
-                out.push(finding("tolerance_violation", m, Some(nom), json!({
-                    "rule": "tolerance", "why": "measured value outside nominal ± tolerance",
+                let m_ = Msg::new("conflict.tolerance.outside")
+                    .with("measured", meas.normalize().to_string())
+                    .with("lower", lo.normalize().to_string())
+                    .with("upper", hi.normalize().to_string())
+                    .with("unit", nu.unwrap_or(""));
+                out.push(finding("tolerance_violation", m, Some(nom), expl(json!({
+                    "rule": "tolerance",
                     "measured": meas.normalize().to_string(), "nominal": n.normalize().to_string(),
                     "lower": lo.normalize().to_string(), "upper": hi.normalize().to_string(), "unit": nu, "revision": nom.revision,
-                })));
+                }), m_)));
             }
         }
         out
@@ -292,8 +399,19 @@ impl Rule for ApplicabilityRule {
                 .iter()
                 .any(|f| f.scope.get("supplier").map(|x| safe_normalize(x)) == Some(safe_normalize(s)))
             {
-                let covered: Vec<&String> = spec_suppliers.iter().filter_map(|f| f.scope.get("supplier")).collect();
-                out.push(finding("wrong_applicability", po, Some(spec_suppliers[0]), json!({ "rule": "applicability", "why": format!("order placed with {s}; specification evidence applies to {covered:?}") })));
+                let covered: std::collections::BTreeSet<&String> =
+                    spec_suppliers.iter().filter_map(|f| f.scope.get("supplier")).collect();
+                out.push(finding(
+                    "wrong_applicability",
+                    po,
+                    Some(spec_suppliers[0]),
+                    expl(
+                        json!({ "rule": "applicability" }),
+                        Msg::new("conflict.applicability.other_supplier")
+                            .with("supplier", s.as_str())
+                            .with("covered", covered.iter().map(|c| c.as_str()).collect::<Vec<_>>()),
+                    ),
+                ));
             }
         }
         out
@@ -326,7 +444,17 @@ impl Rule for RecordConsistencyRule {
                     _ => a.text_norm() != b.text_norm(),
                 };
                 if differs {
-                    out.push(finding("conflicting_inspection", a, Some(b), json!({ "rule": "record_consistency", "why": format!("inspection records for lot {lot} disagree on {pred}"), "a": a.display_value(), "b": b.display_value() })));
+                    out.push(finding(
+                        "conflicting_inspection",
+                        a,
+                        Some(b),
+                        expl(
+                            json!({ "rule": "record_consistency", "a": a.display_value(), "b": b.display_value() }),
+                            Msg::new("conflict.inspection.lot_disagrees")
+                                .with("lot", lot)
+                                .with("predicate", pred),
+                        ),
+                    ));
                 }
             }
         }
@@ -339,7 +467,15 @@ impl Rule for RecordConsistencyRule {
         for (po, fs) in by_po {
             for j in 1..fs.len() {
                 if fs[0].text_norm() != fs[j].text_norm() {
-                    out.push(finding("conflicting_supplier_record", fs[0], Some(fs[j]), json!({ "rule": "record_consistency", "why": format!("purchase order {po} names different suppliers") })));
+                    out.push(finding(
+                        "conflicting_supplier_record",
+                        fs[0],
+                        Some(fs[j]),
+                        expl(
+                            json!({ "rule": "record_consistency" }),
+                            Msg::new("conflict.po.supplier_differs").with("po", po),
+                        ),
+                    ));
                 }
             }
         }
@@ -374,8 +510,9 @@ impl Rule for CertifiedMaterialRule {
                     "value_mismatch",
                     s,
                     Some(q),
-                    json!({ "rule": "certified_material", "why": "certified material differs from the specification",
+                    expl(json!({ "rule": "certified_material",
                             "detail": { "specified": s.display_value(), "certified": q.display_value(), "revision": rev(q) } }),
+                         Msg::new("conflict.material.certified_differs").with("specified", s.display_value()).with("certified", q.display_value())),
                 ));
             }
         }

@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use kizuna_messages::Msg;
 use serde::{Deserialize, Serialize};
 
 pub const RULES_VERSION: &str = "sec-rules@1";
@@ -77,7 +78,9 @@ pub struct Detection {
     pub severity: &'static str,
     pub subject: String,
     pub event_ids: Vec<String>,
+    /// English rendering of `summary_msg` (kept for API clients).
     pub summary: String,
+    pub summary_msg: Msg,
     pub actions: Vec<ProposedAction>,
 }
 
@@ -340,10 +343,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
                 severity: "high",
                 subject: format!("user:{user}"),
                 event_ids: ids(&es),
-                summary: format!(
-                    "{} failed credential checks for one account within 15 minutes",
-                    es.len()
-                ),
+                summary: String::new(),
+                summary_msg: Msg::new("security.brute_force").with("failures", es.len()),
                 actions,
             });
         }
@@ -360,11 +361,10 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
                 severity: "high",
                 subject: format!("ip:{ip}"),
                 event_ids: ids(&es),
-                summary: format!(
-                    "{} failed logins for {} accounts from one address within 15 minutes",
-                    es.len(),
-                    users.len()
-                ),
+                summary: String::new(),
+                summary_msg: Msg::new("security.password_spray")
+                    .with("failures", es.len())
+                    .with("accounts", users.len()),
                 actions: vec![act(BlockIp, &ip, PreAuthorised), act(NotifyAdmins, &ip, PreAuthorised)],
             });
         }
@@ -377,7 +377,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
             severity: "critical",
             subject: format!("user:{user}"),
             event_ids: ids(&es),
-            summary: "a rotated refresh token was replayed (likely theft)".into(),
+            summary: String::new(),
+            summary_msg: Msg::new("security.refresh_token_reuse"),
             actions: vec![
                 act(RevokeUserSessions, &user, PreAuthorised),
                 act(LockAccount, &user, RequiresApproval),
@@ -394,7 +395,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
                 severity: "medium",
                 subject: format!("user:{user}"),
                 event_ids: ids(&es),
-                summary: format!("{} denied requests within 10 minutes", es.len()),
+                summary: String::new(),
+                summary_msg: Msg::new("security.denied_requests").with("count", es.len()),
                 actions: vec![
                     act(RevokeUserSessions, &user, PreAuthorised),
                     act(NotifyAdmins, &user, PreAuthorised),
@@ -422,10 +424,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
                 severity: "high",
                 subject: format!("user:{actor}"),
                 event_ids: ids(&es),
-                summary: format!(
-                    "{} privileged account changes within 10 minutes by one administrator",
-                    es.len()
-                ),
+                summary: String::new(),
+                summary_msg: Msg::new("security.privileged_changes").with("count", es.len()),
                 actions: vec![
                     act(NotifyAdmins, &actor, PreAuthorised),
                     act(RevokeUserSessions, &actor, RequiresApproval),
@@ -441,7 +441,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
                 severity: "critical",
                 subject: format!("artifact:{a}"),
                 event_ids: vec![e.id.clone()],
-                summary: "stored document bytes no longer match their recorded SHA-256".into(),
+                summary: String::new(),
+                summary_msg: Msg::new("security.integrity_failure"),
                 actions: vec![
                     act(QuarantineArtifact, a, PreAuthorised),
                     act(NotifyAdmins, a, PreAuthorised),
@@ -456,7 +457,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
             severity: "critical",
             subject: "audit_log".into(),
             event_ids: ids(&chain),
-            summary: "audit hash chain verification failed; preserve the database for forensics".into(),
+            summary: String::new(),
+            summary_msg: Msg::new("security.audit_chain_broken"),
             actions: vec![act(NotifyAdmins, "audit_log", PreAuthorised)],
         });
     }
@@ -474,7 +476,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
                 severity: "medium",
                 subject: format!("user:{user}"),
                 event_ids: ids(&es),
-                summary: format!("{} rejected or quarantined uploads within 30 minutes", es.len()),
+                summary: String::new(),
+                summary_msg: Msg::new("security.abusive_uploads").with("count", es.len()),
                 actions: vec![
                     act(RestrictUploads, &user, PreAuthorised),
                     act(NotifyAdmins, &user, PreAuthorised),
@@ -491,7 +494,8 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
             severity: "medium",
             subject: "tenant".into(),
             event_ids: ids(&ex),
-            summary: format!("{} extraction failures within 30 minutes", ex.len()),
+            summary: String::new(),
+            summary_msg: Msg::new("security.extraction_failures").with("count", ex.len()),
             actions: vec![
                 act(SuspendExtraction, "tenant", RequiresApproval),
                 act(NotifyAdmins, "tenant", PreAuthorised),
@@ -507,10 +511,14 @@ pub fn detect(events: &[Event], now: i64, t: &Thresholds) -> Vec<Detection> {
                 severity: "medium",
                 subject: format!("user:{user}"),
                 event_ids: ids(&es),
-                summary: format!("{} report exports within one hour", es.len()),
+                summary: String::new(),
+                summary_msg: Msg::new("security.mass_export").with("count", es.len()),
                 actions: vec![act(NotifyAdmins, &user, PreAuthorised)],
             });
         }
+    }
+    for d in &mut out {
+        d.summary = d.summary_msg.en();
     }
     out
 }

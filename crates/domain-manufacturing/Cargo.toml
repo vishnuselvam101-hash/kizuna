@@ -13,6 +13,7 @@ rust_decimal.workspace = true
 conflict-engine = { path = "../conflict-engine" }
 entity-resolution = { path = "../entity-resolution" }
 evidence-core = { path = "../evidence-core" }
+kizuna-messages = { path = "../kizuna-messages" }
 
 [dev-dependencies]
 proptest.workspace = true

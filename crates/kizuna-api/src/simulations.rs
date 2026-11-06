@@ -243,7 +243,7 @@ async fn prepare(tx: &mut Tx, change: &SimChange) -> ApiResult<Prepared> {
                     .iter()
                     .map(|id| Change::Withdrawn {
                         old_claim: id.to_string(),
-                        reason: "rejected in review".into(),
+                        reason: kizuna_messages::Msg::new("withdraw.rejected_in_review"),
                     })
                     .collect(),
                 overlay: Overlay {
@@ -383,14 +383,14 @@ fn diff(
 
 fn signal_view(g: &integrity_signals::cert::Signal) -> Value {
     json!({ "fingerprint": g.fingerprint, "kind": g.kind.as_str(), "supplier": g.supplier, "part": g.part,
-            "characteristic": g.characteristic, "strength": g.strength.as_str(), "why": g.why, "why_ja": g.why_ja })
+            "characteristic": g.characteristic, "strength": g.strength.as_str(), "why": g.why, "why_ja": g.why_ja, "msg": g.msg })
 }
 
 fn drift_view(d: &integrity_signals::drift::Drift) -> Value {
     json!({ "fingerprint": d.fingerprint, "kind": d.kind.as_str(), "key": d.key, "part": d.part,
             "earlier_document": d.earlier_document, "later_document": d.later_document,
             "earlier_revision": d.earlier_revision, "later_revision": d.later_revision, "changes": d.changes.len(),
-            "strength": d.strength.as_str(), "why": d.why, "why_ja": d.why_ja })
+            "strength": d.strength.as_str(), "why": d.why, "why_ja": d.why_ja, "msg": d.msg })
 }
 
 type Live = (BTreeMap<String, Value>, BTreeMap<String, Value>);
@@ -493,7 +493,7 @@ pub async fn simulate(tx: &mut Tx, req: &SimReq) -> ApiResult<Value> {
                 "decision_id": i.decision, "kind": r.map(|r| &r.1), "title": r.map(|r| &r.2),
                 "subject_type": r.map(|r| &r.3), "subject_key": r.map(|r| &r.4),
                 "status_before": before, "status_after": status_after(before, i.material),
-                "material": i.material, "cause_kind": i.cause_kind, "reason": i.reason, "path": i.path,
+                "material": i.material, "cause_kind": i.cause_kind, "reason": i.reason, "reason_msg": i.reason_msg, "path": i.path,
                 "semantic_change": i.semantic_change,
             })
         })

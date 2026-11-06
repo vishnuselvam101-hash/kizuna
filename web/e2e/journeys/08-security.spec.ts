@@ -2,7 +2,7 @@
 // quarantine release under four-eyes (the uploader cannot release, a second MFA-verified admin can).
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
-import { alert, axe, ctx, DATA, fillLogin, go, login, logout, noHorizontalScroll, row, shot, status, upload, type Ctx } from "../helpers";
+import { alert, axe, ctx, DATA, fillLogin, go, login, logout, noEnglishSentences, noHorizontalScroll, row, shot, status, upload, type Ctx } from "../helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -32,6 +32,7 @@ test("brute force: failed sign-ins raise an incident; admin approves the account
   const lock = page.getByRole("row").filter({ hasText: c.tv("sec.action", "lock_account") });
   await expect(lock).toContainText(c.t("sec.needs_approval"));
   await axe(page, "incident detail");
+  await noEnglishSentences(page, c, "incident");
   await shot(page, info, "incident");
   await lock.getByRole("button", { name: c.t("sec.approve"), exact: true }).click();
   await expect(lock).toContainText(c.tv("sec.astatus", "executed"));

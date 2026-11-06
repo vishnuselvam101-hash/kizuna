@@ -7,6 +7,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use conflict_engine::units::{QtyCmp, compare, parse_unit, to_base};
+use kizuna_messages::Msg;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -68,7 +69,7 @@ pub enum Change {
         new: Snapshot,
     },
     /// A claim is no longer usable evidence (e.g. rejected in review).
-    Withdrawn { old_claim: String, reason: String },
+    Withdrawn { old_claim: String, reason: Msg },
     /// A new claim about a subject/predicate appeared (not a correction).
     NewEvidence {
         new_claim: String,
@@ -83,9 +84,19 @@ pub struct Impact {
     pub decision: String,
     pub material: bool,
     pub cause_kind: &'static str,
+    /// English rendering of `reason_msg` (kept for API clients).
     pub reason: String,
+    pub reason_msg: Msg,
     pub path: Vec<String>,
     pub semantic_change: Value,
+}
+
+impl Impact {
+    /// Fills the English `reason` from `reason_msg`.
+    pub fn worded(mut self) -> Self {
+        self.reason = self.reason_msg.en();
+        self
+    }
 }
 
 fn norm_text(s: &Option<String>) -> Option<String> {
@@ -94,14 +105,14 @@ fn norm_text(s: &Option<String>) -> Option<String> {
 }
 
 /// Returns (material, explanation).
-pub fn materiality(m: &Materiality, old: &Snapshot, new: &Snapshot) -> (bool, String) {
+pub fn materiality(m: &Materiality, old: &Snapshot, new: &Snapshot) -> (bool, Msg) {
     if *m == Materiality::Informational {
-        return (false, "informational dependency".into());
+        return (false, Msg::new("materiality.informational"));
     }
     let dec = |s: &Option<String>| s.as_deref().and_then(|v| Decimal::from_str(v).ok());
     match (dec(&old.num), dec(&new.num)) {
         (Some(a), Some(b)) => match compare(a, old.unit.as_deref(), b, new.unit.as_deref()) {
-            QtyCmp::Equal => (false, "same quantity (unit-aware)".into()),
+            QtyCmp::Equal => (false, Msg::new("materiality.same_quantity")),
             QtyCmp::Different { a_base, b_base } => match m {
                 Materiality::NumericAbs { threshold } => {
                     let t = Decimal::from_str(threshold).unwrap_or(Decimal::ZERO);
@@ -111,17 +122,23 @@ pub fn materiality(m: &Materiality, old: &Snapshot, new: &Snapshot) -> (bool, St
                     };
                     let diff = (a_base - b_base).abs();
                     if diff > t_base {
-                        (true, format!("change exceeds threshold {threshold}"))
+                        (
+                            true,
+                            Msg::new("materiality.exceeds_threshold").with("threshold", threshold.as_str()),
+                        )
                     } else {
-                        (false, format!("change within threshold {threshold}"))
+                        (
+                            false,
+                            Msg::new("materiality.within_threshold").with("threshold", threshold.as_str()),
+                        )
                     }
                 }
-                _ => (true, "value changed".into()),
+                _ => (true, Msg::new("materiality.value_changed")),
             },
-            QtyCmp::Incompatible | QtyCmp::UnknownUnit => (true, "units no longer comparable".into()),
+            QtyCmp::Incompatible | QtyCmp::UnknownUnit => (true, Msg::new("materiality.units_incomparable")),
         },
-        (None, None) if norm_text(&old.text) == norm_text(&new.text) => (false, "same value".into()),
-        _ => (true, "value changed".into()),
+        (None, None) if norm_text(&old.text) == norm_text(&new.text) => (false, Msg::new("materiality.same_value")),
+        _ => (true, Msg::new("materiality.value_changed")),
     }
 }
 
@@ -162,7 +179,7 @@ pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
 }
 
 /// Unbounded [`upstream_withdrawn_bounded`].
-pub fn upstream_withdrawn(deps: &[Dep], decision: &str, reason: &str) -> Vec<Impact> {
+pub fn upstream_withdrawn(deps: &[Dep], decision: &str, reason: &Msg) -> Vec<Impact> {
     upstream_withdrawn_bounded(deps, decision, reason, usize::MAX).unwrap_or_else(|e| unreachable!("{e}"))
 }
 
@@ -170,7 +187,7 @@ pub fn upstream_withdrawn(deps: &[Dep], decision: &str, reason: &str) -> Vec<Imp
 /// [`reference::assess`] (property-tested), in O(deps + affected paths) instead of O(affected x deps).
 pub fn assess_bounded(deps: &[Dep], change: &Change, max_affected: usize) -> Result<Vec<Impact>, NeedsReviewBatch> {
     let mut run = Run::new(deps, max_affected);
-    let mut memo: HashMap<MemoKey<'_>, Option<(bool, String)>> = HashMap::new();
+    let mut memo: HashMap<MemoKey<'_>, Option<(bool, Msg)>> = HashMap::new();
     for d in deps {
         if let Some(i) = direct_impact(d, change, &mut memo) {
             run.seed(&d.decision, i)?;
@@ -184,7 +201,7 @@ pub fn assess_bounded(deps: &[Dep], change: &Change, max_affected: usize) -> Res
 pub fn upstream_withdrawn_bounded(
     deps: &[Dep],
     decision: &str,
-    reason: &str,
+    reason: &Msg,
     max_affected: usize,
 ) -> Result<Vec<Impact>, NeedsReviewBatch> {
     let mut run = Run::new(deps, max_affected);
@@ -201,7 +218,10 @@ pub fn upstream_withdrawn_bounded(
                 decision: d.decision.clone(),
                 material: d.materiality != Materiality::Informational,
                 cause_kind: "upstream_decision",
-                reason: format!("upstream decision {decision} {reason}"),
+                reason_msg: Msg::new("invalidation.upstream")
+                    .with("decision", decision)
+                    .with_msg("verb", reason.clone()),
+                reason: String::new(),
                 path: vec![decision.to_string(), d.decision.clone()],
                 semantic_change: json!({ "upstream_decision": decision }),
             },
@@ -244,7 +264,7 @@ type MemoKey<'a> = (&'a Materiality, &'a Snapshot, &'a BTreeMap<String, String>)
 fn direct_impact<'a>(
     d: &'a Dep,
     change: &Change,
-    memo: &mut HashMap<MemoKey<'a>, Option<(bool, String)>>,
+    memo: &mut HashMap<MemoKey<'a>, Option<(bool, Msg)>>,
 ) -> Option<Impact> {
     let mut verdict = |new: &Snapshot, superseded: bool| {
         memo.entry((&d.materiality, &d.snapshot, &d.applicability))
@@ -257,14 +277,15 @@ fn direct_impact<'a>(
                         || d.snapshot.scope != new.scope
                         || !applicable(&d.applicability, new);
                     Some(if moved && d.materiality != Materiality::Informational {
-                        (true, "applicability changed (revision or scope)".to_string())
+                        (true, Msg::new("materiality.applicability_changed"))
                     } else {
                         materiality(&d.materiality, &d.snapshot, new)
                     })
                 } else if applicable(&d.applicability, new) {
                     // Confirming evidence (same value) is not a change at all.
-                    Some(materiality(&d.materiality, &d.snapshot, new))
-                        .filter(|(_, why)| why != "same quantity (unit-aware)" && why != "same value")
+                    Some(materiality(&d.materiality, &d.snapshot, new)).filter(|(_, why)| {
+                        why.code != "materiality.same_quantity" && why.code != "materiality.same_value"
+                    })
                 } else {
                     None
                 }
@@ -282,7 +303,8 @@ fn direct_impact<'a>(
                 decision: d.decision.clone(),
                 material,
                 cause_kind: "superseded",
-                reason: format!("evidence corrected: {why}"),
+                reason_msg: Msg::new("invalidation.superseded").with_msg("why", why.clone()),
+                reason: String::new(),
                 path: vec![old_claim.clone(), new_claim.clone(), d.decision.clone()],
                 semantic_change: json!({ "from": d.snapshot.display(), "to": new.display(), "predicate": d.predicate }),
             })
@@ -291,7 +313,8 @@ fn direct_impact<'a>(
             decision: d.decision.clone(),
             material: d.materiality != Materiality::Informational,
             cause_kind: "withdrawn",
-            reason: format!("evidence withdrawn: {reason}"),
+            reason_msg: Msg::new("invalidation.withdrawn").with_msg("reason", reason.clone()),
+            reason: String::new(),
             path: vec![old_claim.clone(), d.decision.clone()],
             semantic_change: json!({ "from": d.snapshot.display(), "to": null, "predicate": d.predicate }),
         }),
@@ -310,7 +333,8 @@ fn direct_impact<'a>(
                 decision: d.decision.clone(),
                 material,
                 cause_kind: "new_evidence",
-                reason: format!("new applicable evidence disagrees: {why}"),
+                reason_msg: Msg::new("invalidation.new_evidence").with_msg("why", why.clone()),
+                reason: String::new(),
                 path: vec![new_claim.clone(), d.decision.clone()],
                 semantic_change: json!({ "from": d.snapshot.display(), "to": new.display(), "predicate": predicate }),
             })
@@ -498,7 +522,8 @@ impl<'a> Run<'a> {
                             decision: self.names[i as usize].to_string(),
                             material,
                             cause_kind: "upstream_decision",
-                            reason: format!("depends on potentially affected decision {parent}"),
+                            reason_msg: Msg::new("invalidation.depends_on").with("decision", parent),
+                            reason: String::new(),
                             path: self.path(i),
                             semantic_change: json!({ "upstream_decision": parent }),
                         }
@@ -506,6 +531,7 @@ impl<'a> Run<'a> {
                     None => unreachable!("filtered to filled slots"),
                 },
             )
+            .map(Impact::worded)
             .collect()
     }
 }
