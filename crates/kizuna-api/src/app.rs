@@ -159,6 +159,26 @@ pub fn router(st: AppState) -> Router {
         .route("/match/line", get(crate::matching::get))
         .route("/match/line/runs", post(crate::matching::record))
         .route("/match/line/accept", post(crate::matching::accept))
+        .route("/match/line/substitution", post(crate::matching::substitution))
+        .route(
+            "/grades/equivalences",
+            get(crate::grades::list_equivalences).post(crate::grades::propose_equivalence),
+        )
+        .route("/grades/equivalences/import", post(crate::grades::import_equivalences))
+        .route(
+            "/grades/equivalences/{id}/approve",
+            post(crate::grades::approve_equivalence),
+        )
+        .route(
+            "/grades/equivalences/{id}/reject",
+            post(crate::grades::reject_equivalence),
+        )
+        .route(
+            "/grades/limits",
+            get(crate::grades::list_limits).post(crate::grades::propose_limit),
+        )
+        .route("/grades/limits/{id}/approve", post(crate::grades::approve_limit))
+        .route("/grades/limits/{id}/reject", post(crate::grades::reject_limit))
         .route(
             "/evidence-requests",
             get(crate::evidence_requests::list).post(crate::evidence_requests::create),

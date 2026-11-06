@@ -317,3 +317,241 @@ fn po_lines_are_listed_once() {
         }]
     );
 }
+
+mod grade_guard {
+    use super::*;
+    use crate::grades::{ApprovedSubstitution, Equivalence, EquivalenceKind, GradeCtx, GradeSide};
+
+    fn line() -> PoLine {
+        PoLine {
+            purchase_order: "PO-1".into(),
+            line: "1".into(),
+            part: "MX-1001".into(),
+        }
+    }
+    /// Drawing and PO require a (fictional) JIS grade; the mill sheet certifies `cert`.
+    fn with_cert(cert: &str) -> B {
+        let mut b = clean();
+        set(&mut b, "po.material", |f| f.text = Some("XQ202".into()));
+        set(&mut b, "mfg.material", |f| f.text = Some("JIS XQ202".into()));
+        set(&mut b, "qa.material", |f| f.text = Some(cert.into()));
+        b
+    }
+    fn entry(kind: EquivalenceKind) -> Equivalence {
+        Equivalence {
+            id: "eqv-1".into(),
+            entry: "ent-1".into(),
+            version: 1,
+            a: GradeSide {
+                standard: Some("JIS".into()),
+                grade: "XQ202".into(),
+            },
+            b: GradeSide {
+                standard: Some("IS".into()),
+                grade: "K9 220".into(),
+            },
+            kind,
+            conditions: (kind == EquivalenceKind::AcceptableWithConditions).then(|| "impact test at -20 C".into()),
+            source_checked: false,
+        }
+    }
+    fn claim(b: &B, pred: &str) -> String {
+        b.facts
+            .iter()
+            .find(|f| f.predicate == pred)
+            .map(|f| f.id.clone())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn cross_standard_certificate_needs_a_decision_with_both_sides_cited() {
+        let b = with_cert("IS 2062 K9-220");
+        let m = b.eval();
+        assert_eq!(kinds(&m), ["substitution_requires_decision"]);
+        let f = &m.findings[0];
+        assert_eq!(f.severity, Severity::Critical, "blocks approval until decided");
+        assert_eq!(f.certificate_claims, [claim(&b, "qa.material")]);
+        assert_eq!(f.drawing_claims, [claim(&b, "mfg.material")]);
+        assert_eq!(f.po_claims, [claim(&b, "po.material")]);
+        assert_eq!(f.certificate_doc.as_deref(), Some("ms"));
+        let d = &f.explanation["detail"];
+        assert_eq!(d["certificate_grade"]["standard"], "IS");
+        assert_eq!(d["required_grade"]["standard"], "JIS");
+        assert_eq!(d["equivalence"], Value::Null);
+        assert_eq!(f.explanation["msg"]["code"], "match.substitution_requires_decision");
+    }
+
+    #[test]
+    fn same_standard_difference_stays_a_material_mismatch() {
+        assert_eq!(kinds(&with_cert("JIS XQ999").eval()), ["certificate_material_mismatch"]);
+        // A bare designation names no system: it may be another standard's grade, so a person decides.
+        assert_eq!(kinds(&with_cert("XQ999").eval()), ["substitution_requires_decision"]);
+        // Notation only: the standard prefix and separators are presentation.
+        assert!(with_cert("JIS G4303 XQ-202").eval().findings.is_empty());
+    }
+
+    #[test]
+    fn the_tenant_table_decides_coverage() {
+        let b = with_cert("IS K9 220");
+        let (cert, reference) = (claim(&b, "qa.material"), claim(&b, "mfg.material"));
+        let ctx = |kind, subs: Vec<ApprovedSubstitution>| GradeCtx {
+            equivalences: vec![entry(kind)],
+            substitutions: subs,
+            ..GradeCtx::default()
+        };
+        // Identical: covered, the basis is recorded (so an acceptance can depend on the entry).
+        let m = evaluate_with(&line(), &b.facts, &b.docs, &ctx(EquivalenceKind::Identical, vec![]));
+        assert!(m.findings.is_empty(), "{:?}", m.findings);
+        assert_eq!(m.material_basis.len(), 1);
+        assert_eq!(m.material_basis[0].equivalence, "eqv-1");
+        assert_eq!(m.material_basis[0].substitution_decision, None);
+        // Conditional: still a decision, now carrying the entry and its conditions.
+        let m = evaluate_with(
+            &line(),
+            &b.facts,
+            &b.docs,
+            &ctx(EquivalenceKind::AcceptableWithConditions, vec![]),
+        );
+        assert_eq!(kinds(&m), ["substitution_requires_decision"]);
+        assert_eq!(
+            m.findings[0].explanation["detail"]["equivalence"]["conditions"],
+            "impact test at -20 C"
+        );
+        assert_eq!(
+            m.findings[0].explanation["msg"]["code"],
+            "match.substitution_conditional"
+        );
+        // ... until a valid substitution decision covers exactly these claims under this entry version.
+        let sub = |c: &str, e: &str| ApprovedSubstitution {
+            decision: "dec-9".into(),
+            certificate_claim: c.into(),
+            reference_claim: reference.clone(),
+            equivalence: e.into(),
+        };
+        let m = evaluate_with(
+            &line(),
+            &b.facts,
+            &b.docs,
+            &ctx(EquivalenceKind::AcceptableWithConditions, vec![sub(&cert, "eqv-1")]),
+        );
+        assert!(m.findings.is_empty());
+        assert_eq!(m.material_basis[0].substitution_decision.as_deref(), Some("dec-9"));
+        for wrong in [sub("other-claim", "eqv-1"), sub(&cert, "eqv-0-older-version")] {
+            let m = evaluate_with(
+                &line(),
+                &b.facts,
+                &b.docs,
+                &ctx(EquivalenceKind::AcceptableWithConditions, vec![wrong]),
+            );
+            assert_eq!(kinds(&m), ["substitution_requires_decision"]);
+        }
+        // Not equivalent: a definitive mismatch citing the entry.
+        let m = evaluate_with(&line(), &b.facts, &b.docs, &ctx(EquivalenceKind::NotEquivalent, vec![]));
+        assert_eq!(kinds(&m), ["certificate_material_mismatch"]);
+        assert_eq!(m.findings[0].explanation["detail"]["equivalence"]["id"], "eqv-1");
+    }
+}
+
+mod grade_limits {
+    use super::*;
+    use crate::grades::{GradeCtx, GradeLimit, GradeSide};
+
+    fn line() -> PoLine {
+        PoLine {
+            purchase_order: "PO-1".into(),
+            line: "1".into(),
+            part: "MX-1001".into(),
+        }
+    }
+    fn limit(pr: &str, min: Option<&str>, max: Option<&str>, unit: &str) -> GradeLimit {
+        GradeLimit {
+            id: format!("lim-{pr}"),
+            entry: format!("ent-{pr}"),
+            version: 1,
+            grade: GradeSide {
+                standard: None,
+                grade: "SUS304".into(),
+            },
+            property: pr.into(),
+            min: min.map(|s| Decimal::from_str(s).unwrap()),
+            max: max.map(|s| Decimal::from_str(s).unwrap()),
+            unit: Some(unit.into()),
+            source_checked: false,
+        }
+    }
+
+    #[test]
+    fn same_name_but_values_fail_the_tenant_limits_of_the_required_grade() {
+        let mut b = clean();
+        b.cert("ms", "qa.property.carbon", None, Some("0.12"), Some("%"), MS);
+        b.cert("ms", "qa.property.elongation", None, Some("45"), Some("%"), MS);
+        let ctx = GradeCtx {
+            limits: vec![
+                limit("carbon", None, Some("0.08"), "%"),
+                limit("elongation", Some("40"), None, "%"),
+            ],
+            ..GradeCtx::default()
+        };
+        // Without the tenant's limits the names agree and nothing is flagged.
+        assert!(b.eval().findings.is_empty());
+        let m = evaluate_with(&line(), &b.facts, &b.docs, &ctx);
+        assert_eq!(kinds(&m), ["grade_property_out_of_limits"]);
+        let f = &m.findings[0];
+        assert_eq!(
+            f.severity,
+            Severity::Major,
+            "blocks approval, but rests on a tenant statement"
+        );
+        assert_eq!(f.check, "grade_limit.carbon");
+        let d = &f.explanation["detail"];
+        assert_eq!(d["limit"]["id"], "lim-carbon");
+        assert_eq!(d["limit"]["verification"], "unverified");
+        assert_eq!(d["value"], "0.12");
+        assert_eq!(f.explanation["msg"]["code"], "match.grade_property_out_of_limits");
+        assert!(f.drawing_claims.len() == 1, "cites the required-grade claim");
+        let row = m.checks.iter().find(|r| r.check == "grade_limit.carbon").unwrap();
+        assert_eq!(row.status, "mismatch");
+        assert_eq!(
+            m.checks
+                .iter()
+                .find(|r| r.check == "grade_limit.elongation")
+                .unwrap()
+                .status,
+            "match"
+        );
+    }
+
+    #[test]
+    fn drawing_limits_govern_and_mismatched_grades_get_no_limit_noise() {
+        let mut b = clean();
+        // The drawing already states tensile ≥ 520; a tenant limit for the same property is not applied twice.
+        let ctx = GradeCtx {
+            limits: vec![limit("tensile_strength", Some("600"), None, "mpa")],
+            ..GradeCtx::default()
+        };
+        assert!(evaluate_with(&line(), &b.facts, &b.docs, &ctx).findings.is_empty());
+        // A certificate whose grade is already a material mismatch is not also checked against the limits.
+        set(&mut b, "qa.material", |f| f.text = Some("SUS316".into()));
+        b.cert("ms", "qa.property.carbon", None, Some("0.5"), Some("%"), MS);
+        let ctx = GradeCtx {
+            limits: vec![limit("carbon", None, Some("0.08"), "%")],
+            ..GradeCtx::default()
+        };
+        assert_eq!(
+            kinds(&evaluate_with(&line(), &b.facts, &b.docs, &ctx)),
+            ["certificate_material_mismatch"]
+        );
+        // A value the certificate does not report is not a finding (the drawing decides what is required).
+        let b = clean();
+        let m = evaluate_with(&line(), &b.facts, &b.docs, &ctx);
+        assert!(m.findings.is_empty());
+        assert_eq!(
+            m.checks
+                .iter()
+                .find(|r| r.check == "grade_limit.carbon")
+                .unwrap()
+                .status,
+            "not_evaluated"
+        );
+    }
+}

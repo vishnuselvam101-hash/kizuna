@@ -1,6 +1,7 @@
-//! Quality three-way match API: PO line ↔ drawing ↔ supplier certificates (`mfg-match@1`, domain pack), recorded
-//! match runs, and the acceptance decision of a PO line whose typed dependencies are exactly the cited claims, so
-//! selective invalidation (M4) reaches the acceptance when any of them changes.
+//! Quality three-way match API: PO line ↔ drawing ↔ supplier certificates (`mfg-match@2`, domain pack), recorded
+//! match runs, and the acceptance decision of a PO line whose typed dependencies are exactly the cited claims (and
+//! the tenant grade-equivalence versions the material check rested on), so selective invalidation (M4) reaches the
+//! acceptance when any of them changes. Cross-standard substitutions are recorded as their own decisions.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -8,6 +9,7 @@ use axum::Json;
 use axum::extract::State;
 use conflict_engine::Fact;
 use dependency_engine::Materiality;
+use domain_manufacturing::grades::GradeCtx;
 use domain_manufacturing::three_way::{self, MATCH_RULE_VERSION, MatchSet, PoLine, norm_line};
 use entity_resolution::safe_normalize;
 use policy_engine::Permission;
@@ -25,13 +27,15 @@ use crate::error::{ApiError, ApiJson, ApiQuery, ApiResult};
 use crate::simulations::Overlay;
 use crate::verification::load_facts_with;
 
-/// Current part facts and the document each came from.
-async fn load(tx: &mut Tx) -> ApiResult<(Vec<Fact>, BTreeMap<String, String>)> {
+type Loaded = (Vec<Fact>, BTreeMap<String, String>, GradeCtx);
+
+/// Current part facts, the document each came from, and the tenant's grade context.
+async fn load(tx: &mut Tx) -> ApiResult<Loaded> {
     load_with(tx, &Overlay::default()).await
 }
 
 /// [`load`] with a simulated change applied (what-if).
-pub(crate) async fn load_with(tx: &mut Tx, ov: &Overlay) -> ApiResult<(Vec<Fact>, BTreeMap<String, String>)> {
+pub(crate) async fn load_with(tx: &mut Tx, ov: &Overlay) -> ApiResult<Loaded> {
     let facts = load_facts_with(tx, "part", None, ov).await?;
     let docs: Vec<(Uuid, Uuid)> = sqlx::query_as(
         "SELECT id, artifact_id FROM claims WHERE subject_type = 'part' AND artifact_id IS NOT NULL AND superseded_at IS NULL",
@@ -49,16 +53,17 @@ pub(crate) async fn load_with(tx: &mut Tx, ov: &Overlay) -> ApiResult<(Vec<Fact>
     {
         docs.insert(s.claim.id.to_string(), a.to_string());
     }
-    Ok((facts, docs))
+    let grades = crate::grades::load_ctx(tx).await?;
+    Ok((facts, docs, grades))
 }
 
-/// Findings of every PO line (`mfg-match@1`) over `facts`.
-pub(crate) fn all_findings(facts: &[Fact], docs: &BTreeMap<String, String>) -> Vec<(PoLine, MatchSet)> {
+/// Findings of every PO line (`mfg-match@2`) over `facts`.
+pub(crate) fn all_findings(facts: &[Fact], docs: &BTreeMap<String, String>, g: &GradeCtx) -> Vec<(PoLine, MatchSet)> {
     let parts = by_part(facts);
     three_way::po_lines(facts)
         .into_iter()
         .map(|l| {
-            let m = three_way::evaluate(&l, parts.get(l.part.as_str()).map_or(&[][..], |v| v), docs);
+            let m = three_way::evaluate_with(&l, parts.get(l.part.as_str()).map_or(&[][..], |v| v), docs, g);
             (l, m)
         })
         .collect()
@@ -133,7 +138,7 @@ pub async fn list(
 ) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::ClaimRead).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let (facts, docs) = load(&mut tx).await?;
+    let (facts, docs, grades) = load(&mut tx).await?;
     let acc = latest_acceptance(&mut tx).await?;
     tx.commit().await?;
     let parts = by_part(&facts);
@@ -146,7 +151,7 @@ pub async fn list(
         {
             continue;
         }
-        let m = three_way::evaluate(&l, parts.get(l.part.as_str()).map_or(&[][..], |v| v), &docs);
+        let m = three_way::evaluate_with(&l, parts.get(l.part.as_str()).map_or(&[][..], |v| v), &docs, &grades);
         out.push(summarize(&m, acc.get(&line_key(&l)).cloned()));
         if out.len() >= 1000 {
             break;
@@ -225,9 +230,9 @@ async fn citations(tx: &mut Tx, m: &MatchSet) -> ApiResult<Value> {
 pub async fn get(State(st): State<AppState>, p: Principal, ApiQuery(q): ApiQuery<LineQuery>) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::ClaimRead).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let (facts, docs) = load(&mut tx).await?;
+    let (facts, docs, grades) = load(&mut tx).await?;
     let l = resolve(&facts, &q)?;
-    let m = three_way::evaluate(&l, &facts, &docs);
+    let m = three_way::evaluate_with(&l, &facts, &docs, &grades);
     let cites = citations(&mut tx, &m).await?;
     let runs: Vec<Value> = sqlx::query_scalar(
         "SELECT json_build_object('id', r.id, 'created_at', r.created_at, 'blocking', r.blocking, \
@@ -299,9 +304,9 @@ pub async fn record(
 ) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::ClaimWrite).await?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-    let (facts, docs) = load(&mut tx).await?;
+    let (facts, docs, grades) = load(&mut tx).await?;
     let l = resolve(&facts, &q)?;
-    let m = three_way::evaluate(&l, &facts, &docs);
+    let m = three_way::evaluate_with(&l, &facts, &docs, &grades);
     let id = Uuid::now_v7();
     let sha = record_run(&mut tx, &p, id, &m, None).await?;
     audit::append(&mut tx, p.tenant_id, Record::user(p.user_id, "match.recorded", "match_run", id,
@@ -343,14 +348,14 @@ pub async fn accept(
         .bind(p.tenant_id.to_string())
         .execute(&mut *tx)
         .await?;
-    let (facts, docs) = load(&mut tx).await?;
+    let (facts, docs, grades) = load(&mut tx).await?;
     let q = LineQuery {
         po: req.po.clone(),
         line: req.line.clone(),
         part: req.part.clone(),
     };
     let l = resolve(&facts, &q)?;
-    let m = three_way::evaluate(&l, &facts, &docs);
+    let m = three_way::evaluate_with(&l, &facts, &docs, &grades);
     if req.outcome == "approved" && m.blocking() > 0 {
         return Err(ApiError::Conflict("match_has_blocking_findings"));
     }
@@ -410,7 +415,8 @@ pub async fn accept(
         evidence: vec![],
         depends_on: vec![],
     };
-    let notes = vec![
+    let eqs = crate::grades::basis_ids(&m);
+    let mut notes = vec![
         format!("match_run:{run_id}"),
         format!("match_rule:{MATCH_RULE_VERSION}"),
         format!("match_result_sha256:{result_sha}"),
@@ -419,7 +425,21 @@ pub async fn accept(
             m.findings.iter().map(|f| f.kind).collect::<Vec<_>>().join(",")
         ),
     ];
-    let did = decisions::insert_decision(&mut tx, &p, &header, None, evidence, vec![], None, notes).await?;
+    notes.extend(eqs.iter().map(|e| format!("grade_equivalence:{e}")));
+    // Substitution decisions the material check rested on are upstream decisions of the acceptance.
+    let mut upstream = Vec::new();
+    for s in m
+        .material_basis
+        .iter()
+        .filter_map(|b| b.substitution_decision.as_deref())
+        .collect::<BTreeSet<_>>()
+    {
+        let d = decisions::fetch(&mut tx, Uuid::parse_str(s).map_err(ApiError::internal)?).await?;
+        upstream.push((d, "basis".to_string()));
+    }
+    let did = decisions::insert_decision(&mut tx, &p, &header, None, evidence, upstream, None, notes).await?;
+    let eq_deps: Vec<(Uuid, String)> = eqs.into_iter().map(|e| (e, "basis".to_string())).collect();
+    decisions::add_equivalence_deps(&mut tx, p.tenant_id, did, &eq_deps).await?;
     let sha = record_run(&mut tx, &p, run_id, &m, Some(did)).await?;
     audit::append(&mut tx, p.tenant_id, Record::user(p.user_id, "match.accepted", "decision", did,
         json!({ "po_line": line_key(&l), "part": l.part, "outcome": req.outcome, "match_run": run_id, "result_sha256": sha,
@@ -427,4 +447,134 @@ pub async fn accept(
     let out = decisions::fetch(&mut tx, did).await?;
     tx.commit().await?;
     Ok(Json(json!({ "decision": out, "run_id": run_id, "result_sha256": sha })))
+}
+
+#[derive(Deserialize)]
+pub struct SubstitutionReq {
+    pub po: String,
+    pub line: String,
+    pub part: Option<String>,
+    /// The certificate's material claim the decision is about.
+    pub certificate_claim: Uuid,
+    pub outcome: String,
+    pub rationale: String,
+}
+
+/// POST /match/line/substitution — records the decision on a cross-standard substitution the match flagged under a
+/// conditional entry of the tenant's equivalence table. Its dependencies are the certificate's material claim
+/// (basis), the required-grade claim (condition) and the approved equivalence version (basis), so a change to any
+/// of them flags it. `approved` / `conditional` lets the material check accept the certificate grade; `rejected`
+/// records the refusal and the finding stays. Cross-standard grades without an entry need a tenant entry first:
+/// KIZUNA never decides an equivalence itself.
+pub async fn substitution(
+    State(st): State<AppState>,
+    p: Principal,
+    ApiJson(req): ApiJson<SubstitutionReq>,
+) -> ApiResult<Json<Value>> {
+    p.require(&st, Permission::DecisionWrite).await?;
+    p.require(&st, Permission::ReviewDecide).await?;
+    if !matches!(req.outcome.as_str(), "approved" | "conditional" | "rejected") {
+        return Err(ApiError::BadRequest("invalid_outcome"));
+    }
+    if req.rationale.trim().is_empty() || req.rationale.chars().count() > 4000 {
+        return Err(ApiError::BadRequest("rationale_required"));
+    }
+    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 15))")
+        .bind(p.tenant_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+    let (facts, docs, grades) = load(&mut tx).await?;
+    let q = LineQuery {
+        po: req.po.clone(),
+        line: req.line.clone(),
+        part: req.part.clone(),
+    };
+    let l = resolve(&facts, &q)?;
+    let m = three_way::evaluate_with(&l, &facts, &docs, &grades);
+    let cert = req.certificate_claim.to_string();
+    let f = m
+        .findings
+        .iter()
+        .find(|f| f.kind == "substitution_requires_decision" && f.certificate_claims.contains(&cert))
+        .ok_or(ApiError::Conflict("no_open_substitution"))?;
+    let detail = &f.explanation["detail"];
+    let eq = detail["equivalence"]["id"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or(ApiError::Conflict("no_equivalence_entry"))?;
+    let reference = detail["reference_claim"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or_else(|| ApiError::internal("finding without reference claim"))?;
+    let mut evidence = Vec::new();
+    for (id, role) in [(req.certificate_claim, "basis"), (reference, "condition")] {
+        sqlx::query("SELECT 1 FROM claims WHERE id = $1 FOR SHARE")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        let c = claims::fetch(&mut tx, id).await?;
+        if c.superseded_at.is_some() || c.review_status == "rejected" {
+            return Err(ApiError::Conflict("claim_changed_retry"));
+        }
+        let artifact_sha256 = decisions::artifact_sha(&mut tx, &c).await?;
+        evidence.push(Prepared {
+            claim: c,
+            role: role.into(),
+            materiality: Materiality::AnyChange,
+            artifact_sha256,
+        });
+    }
+    let header = CreateReq {
+        kind: "material_substitution".into(),
+        title: format!(
+            "Material substitution {} for {} ({})",
+            detail["certificate"].as_str().unwrap_or(""),
+            detail["required"].as_str().unwrap_or(""),
+            line_key(&l)
+        )
+        .chars()
+        .take(200)
+        .collect(),
+        subject_type: "po_line".into(),
+        subject_key: line_key(&l),
+        outcome: req.outcome.clone(),
+        rationale: req.rationale.trim().to_string(),
+        effective_from: None,
+        evidence: vec![],
+        depends_on: vec![],
+    };
+    let notes = vec![
+        format!("match_rule:{MATCH_RULE_VERSION}"),
+        format!("grade_rule:{}", domain_manufacturing::grades::GRADE_RULE_VERSION),
+        format!("grade_equivalence:{eq}"),
+        format!(
+            "grade_equivalence_verification:{}",
+            detail["equivalence"]["verification"].as_str().unwrap_or("unverified")
+        ),
+        format!(
+            "conditions:{}",
+            detail["equivalence"]["conditions"].as_str().unwrap_or("")
+        ),
+    ];
+    let did = decisions::insert_decision(&mut tx, &p, &header, None, evidence, vec![], None, notes).await?;
+    decisions::add_equivalence_deps(&mut tx, p.tenant_id, did, &[(eq, "basis".to_string())]).await?;
+    audit::append(
+        &mut tx,
+        p.tenant_id,
+        Record::user(
+            p.user_id,
+            "match.substitution",
+            "decision",
+            did,
+            json!({ "po_line": line_key(&l), "part": l.part, "outcome": req.outcome, "certificate_claim": cert,
+                "reference_claim": reference, "grade_equivalence": eq }),
+        ),
+    )
+    .await?;
+    let out = decisions::fetch(&mut tx, did).await?;
+    tx.commit().await?;
+    Ok(Json(
+        json!({ "decision": out, "grade_equivalence": detail["equivalence"] }),
+    ))
 }

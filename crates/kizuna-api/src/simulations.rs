@@ -322,9 +322,15 @@ fn status_after(before: &str, material: bool) -> &str {
 }
 
 /// Keyed, comparable view of one three-way-match finding.
-fn match_findings(facts_docs: &(Vec<conflict_engine::Fact>, BTreeMap<String, String>)) -> BTreeMap<String, Value> {
+fn match_findings(
+    facts_docs: &(
+        Vec<conflict_engine::Fact>,
+        BTreeMap<String, String>,
+        domain_manufacturing::grades::GradeCtx,
+    ),
+) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
-    for (l, m) in crate::matching::all_findings(&facts_docs.0, &facts_docs.1) {
+    for (l, m) in crate::matching::all_findings(&facts_docs.0, &facts_docs.1, &facts_docs.2) {
         for f in &m.findings {
             let key = serde_json::to_string(&(
                 &l.purchase_order,
