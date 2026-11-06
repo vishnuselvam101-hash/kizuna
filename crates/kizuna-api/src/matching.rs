@@ -327,6 +327,7 @@ pub struct AcceptReq {
 pub async fn accept(
     State(st): State<AppState>,
     p: Principal,
+    rl: crate::lang::ReqLang,
     ApiJson(req): ApiJson<AcceptReq>,
 ) -> ApiResult<Json<Value>> {
     p.require(&st, Permission::DecisionWrite).await?;
@@ -393,7 +394,11 @@ pub async fn accept(
     ));
     let header = CreateReq {
         kind: "po_line_acceptance".into(),
-        title: format!("Accept {} line {} ({})", l.purchase_order, l.line, l.part)
+        title: kizuna_messages::Msg::new("decision.title.po_line_acceptance")
+            .with("po", l.purchase_order.as_str())
+            .with("line", l.line.as_str())
+            .with("part", l.part.as_str())
+            .render(rl.0.unwrap_or(kizuna_messages::Lang::En))
             .chars()
             .take(200)
             .collect(),

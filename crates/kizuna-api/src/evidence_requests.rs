@@ -243,7 +243,7 @@ pub(crate) async fn compute_with(
                 .filter_map(|c| c.1.get("predicate").and_then(Value::as_str))
                 .collect();
             no_action.push(json!({ "decision_id": d, "changed_predicates": preds,
-                "why": "the material changes do not concern any supplier statement this decision relies on" }));
+                "why": kizuna_messages::Msg::new("rerequest.no_action").en(), "msg": kizuna_messages::Msg::new("rerequest.no_action") }));
         }
     }
     // Other current supplier documents carrying the same item can also answer it: add them as candidates.
@@ -609,22 +609,30 @@ pub struct DocQuery {
 }
 
 /// GET /evidence-requests/{id}/document?lang=ja|en — the letter as UTF-8 text (download). Drafts are marked as such.
+/// Without `lang` the letter is in the request language (`Accept-Language`, default Japanese).
 pub async fn document(
     State(st): State<AppState>,
     p: Principal,
     Path(id): Path<Uuid>,
+    rl: crate::lang::ReqLang,
     ApiQuery(q): ApiQuery<DocQuery>,
 ) -> ApiResult<Response> {
     p.require(&st, Permission::DecisionRead).await?;
-    let lang = match q.lang.as_deref().unwrap_or("ja") {
-        "ja" => Lang::Ja,
-        "en" => Lang::En,
-        _ => return Err(ApiError::BadRequest("invalid_lang")),
-    };
+    let lang = rl.resolve(q.lang.as_deref(), Lang::Ja)?;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let r = fetch(&mut tx, id).await?;
-    audit::append(&mut tx, p.tenant_id, Record::user(p.user_id, "evidence_request.exported", "evidence_request", id,
-        json!({ "lang": q.lang.as_deref().unwrap_or("ja"), "status": r.status, "content_sha256": r.content_sha256 }))).await?;
+    audit::append(
+        &mut tx,
+        p.tenant_id,
+        Record::user(
+            p.user_id,
+            "evidence_request.exported",
+            "evidence_request",
+            id,
+            json!({ "lang": lang.as_str(), "status": r.status, "content_sha256": r.content_sha256 }),
+        ),
+    )
+    .await?;
     tx.commit().await?;
     let mut body = match lang {
         Lang::Ja => r.body_ja,

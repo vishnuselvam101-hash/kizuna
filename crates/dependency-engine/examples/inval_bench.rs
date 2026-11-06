@@ -92,7 +92,7 @@ fn main() {
             graph(edges, 500, &mut rng),
             Change::Withdrawn {
                 old_claim: "c7".into(),
-                reason: "rejected".into(),
+                reason: kizuna_messages::Msg::new("withdraw.rejected_in_review"),
             },
         ),
         // Many claims, a correction to one: a handful of direct impacts and a short downstream tail.

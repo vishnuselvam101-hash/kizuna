@@ -5,7 +5,7 @@ stdin:  {"media_type": str, "data_b64": str, "limits"?: {...}, "options"?: {...}
         csv_delimiter ","|";"|"\t", csv_encoding "utf-8"|"shift_jis",
         header_row 0..100 (0 = first non-empty row), xlsx_sheet (name, "" = all), ocr bool,
         ocr_language "jpn+eng"|"eng+jpn"|"eng"|"jpn"
-stdout: {"ok": true, "extractor": "pdf@2", "worker_version", "records": [...], "claims": [...],
+stdout: {"ok": true, "extractor": "pdf@3", "worker_version", "records": [...], "claims": [...],
          "unmapped_labels": [...], "warnings": [...]}  or  {"ok": false, "error": code}
 
 The request carries document bytes only: no paths, tenant ids or URLs are accepted, so the worker cannot be
@@ -117,10 +117,10 @@ def extract(
     warnings: list[str] = []
     if media_type == "text/csv":
         warnings += csv_records(data, limits, sink, opts)
-        name = "csv@2"
+        name = "csv@3"
     elif media_type == XLSX:
         warnings += xlsx_records(data, limits, sink, opts)
-        name = "xlsx@2"
+        name = "xlsx@3"
     elif media_type == "application/pdf":
         lines, meta, w = pdf_extract(data, limits)
         warnings += w
@@ -132,17 +132,10 @@ def extract(
             ocr = TesseractOcr(opts["ocr_language"])
             if ocr.available():
                 for pno in range(1, min(limits["max_pages"], limits["max_ocr_pages"]) + 1):
-                    small = render_small(data, pno, SEAL_DPI)  # also gives the page size
-                    if small is None:
+                    got = _ocr_pdf_page(data, pno, ocr, warnings)
+                    if got is None:
                         break
-                    dpi = page_dpi(max(small[0], small[1]) / SEAL_DPI)
-                    png = rasterize_page(data, pno, dpi)
-                    if png is None:
-                        break
-                    k = dpi / BASE_DPI
-                    regions = seal_regions(*small)
-                    masks = [[round(v * k) for v in r["bbox_px"]] for r in regions]
-                    page_lines = _ocr(ocr, png, "png", 1.0, masks, pno, k, warnings)
+                    page_lines, regions = got
                     seals(regions, pno, page_lines, sink)
                     lines += page_lines
                 method = "ocr"
@@ -151,8 +144,10 @@ def extract(
                 warnings.append("pdf_has_no_text_layer_ocr_unavailable")
         records_from_lines(lines, method, sink)
         title_block(lines, sink, method)
+        if method == "pdf" and any(ln.extra.get("hidden_text") for ln in lines):
+            verify_hidden_text(data, lines, sink.items, opts, limits, warnings)
         pdf_metadata(meta, sink)
-        name = "pdf@2"
+        name = "pdf@3"
     elif media_type in DXF:
         warnings += dxf_records(data, limits, sink)
         name = "dxf@1"
@@ -176,7 +171,7 @@ def extract(
         records_from_lines(lines, "ocr", sink)
         title_block(lines, sink, "ocr")
         seals(regions, 1, lines, sink)
-        name = "ocr-tesseract@2"
+        name = "ocr-tesseract@3"
     else:
         raise ExtractionError("unsupported_media_type")
     if sink.full:
@@ -185,6 +180,88 @@ def extract(
 
 
 SEAL_DPI = 50  # seal detection resolution for scanned PDF pages (stamps.SCALE = 200 / 50)
+
+
+def _ocr_pdf_page(data: bytes, pno: int, ocr: TesseractOcr, warnings: list[str]) -> tuple[list, list] | None:
+    """OCR of one rendered PDF page: (lines in base pixels, 印影 regions), None past the last page."""
+    small = render_small(data, pno, SEAL_DPI)  # also gives the page size
+    if small is None:
+        return None
+    dpi = page_dpi(max(small[0], small[1]) / SEAL_DPI)
+    png = rasterize_page(data, pno, dpi)
+    if png is None:
+        return None
+    k = dpi / BASE_DPI
+    regions = seal_regions(*small)
+    masks = [[round(v * k) for v in r["bbox_px"]] for r in regions]
+    return _ocr(ocr, png, "png", 1.0, masks, pno, k, warnings), regions
+
+
+# A hidden text layer (render mode 3 over a page image) is some scanner's OCR: its values are only as good as
+# that OCR. Each value is checked against our own OCR of the page image; the value's line must show it.
+HIDDEN_AGREE_MAX = (
+    0.95  # confidence of a hidden-layer value our OCR reads the same (capped by OCR confidence)
+)
+HIDDEN_DISAGREE = 0.40  # our OCR reads something else there: below the review floor
+HIDDEN_UNVERIFIED = 0.70  # no OCR available to check it: below the review floor
+
+
+def _squash(s: str) -> str:
+    import unicodedata
+
+    return "".join(unicodedata.normalize("NFKC", s).casefold().split())
+
+
+def _skeleton(s: str) -> str:
+    """Letters and digits only: signs (±, −/-, ○) are where OCR engines differ most; digits matter."""
+    return "".join(ch for ch in _squash(s) if ch.isalnum())
+
+
+def _agrees(value: str, ocr_text: str) -> bool:
+    sk = _skeleton(value)
+    if sk:
+        return sk in _skeleton(ocr_text)
+    v = _squash(value)
+    return bool(v) and v in _squash(ocr_text)
+
+
+def verify_hidden_text(
+    data: bytes, lines: list, records: list[dict], opts: dict, limits: dict, warnings: list[str]
+) -> None:
+    """Records read from hidden text layers get `ocr_confidence` (they are OCR values) and method
+    `pdf-hidden-text`: high when our OCR of the same line agrees, below the review floor when it does not or
+    when it cannot be checked."""
+    hidden = {(ln.page, ln.no): ln for ln in lines if ln.extra.get("hidden_text")}
+    pages = sorted({p for p, _n in hidden})
+    ocr = TesseractOcr(opts["ocr_language"]) if opts["ocr"] else None
+    ocr_lines: dict[int, list] = {}
+    if ocr is not None and ocr.available():
+        for pno in pages[: limits["max_ocr_pages"]]:
+            got = _ocr_pdf_page(data, pno, ocr, warnings)
+            if got is not None:
+                ocr_lines[pno] = got[0]
+    if len(ocr_lines) < len(pages):
+        warnings.append("pdf_hidden_text_unverified")
+    px = BASE_DPI / 72.0
+    for r in records:
+        loc = r["location"]
+        ln = hidden.get((loc.get("page"), loc.get("line")))
+        if ln is None or ln.y is None:
+            continue
+        conf = HIDDEN_UNVERIFIED
+        if ln.page in ocr_lines:
+            page_h = ln.extra.get("page_h", 842.0)
+            top, bottom = (page_h - ln.y - ln.size) * px, (page_h - ln.y + 0.4 * ln.size) * px
+            near = [
+                o
+                for o in ocr_lines[ln.page]
+                if o.extra.get("px_bbox") and o.extra["px_bbox"][1] <= bottom and o.extra["px_bbox"][3] >= top
+            ]
+            agree = bool(near) and _agrees(r["value"], " ".join(o.text for o in near))
+            conf = min(HIDDEN_AGREE_MAX, min(o.confidence for o in near)) if agree else HIDDEN_DISAGREE
+        loc["ocr_confidence"] = round(conf, 3)
+        r["confidence"] = round(min(r["confidence"], conf), 3)
+        r["method"] = "pdf-hidden-text"
 
 
 def _ocr(

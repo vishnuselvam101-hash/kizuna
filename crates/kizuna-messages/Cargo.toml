@@ -1,0 +1,15 @@
+[package]
+name = "kizuna-messages"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Stable message codes + typed parameters for server-generated text, rendered from one EN/JA catalogue shared with the web app."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

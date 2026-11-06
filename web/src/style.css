@@ -259,6 +259,21 @@ figure.graph { margin: 0; }
 .graph-gl { position: relative; border: 1px solid var(--line); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 60%, color-mix(in srgb, var(--info) 6%, transparent), transparent 70%); }
 .graph-gl canvas { width: 100%; height: 100%; display: block; }
 .graph-svg { width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.graph-gl canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.graph-hover { position: absolute; pointer-events: none; max-width: 40ch; padding: 2px var(--s2); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); color: var(--fg); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.graph-progress { margin: 0 0 var(--s2); font-size: var(--t-xs); }
+.graph-keys { margin: var(--s2) 0 0; font-size: var(--t-xs); }
+.graph-detail { margin-top: var(--s2); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--radius); font-size: var(--t-sm); }
+.graph-detail p { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2); }
+.graph-nb { list-style: none; margin: var(--s2) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); }
+.g-tone { font-size: var(--t-xs); color: var(--fg-muted); }
+.g-tone::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: var(--s1); transform: rotate(45deg); border: 1.5px solid currentColor; }
+.g-tone.crit { color: var(--crit-fg); }
+.g-tone.ok { color: var(--gold-fg); }
+.g-tone.info { color: var(--info-fg); }
+.g-tone.warn { color: var(--warn-fg); }
+.graph-filters { display: flex; flex-wrap: wrap; gap: var(--s3); margin-bottom: var(--s2); }
+.graph-pager { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s2) 0 0; font-size: var(--t-sm); }
 .g-edge { stroke: var(--info); stroke-opacity: 0.3; stroke-width: 1; }
 .g-node rect { fill: var(--surface-2); stroke: var(--fg-muted); stroke-width: 1.5; }
 .g-node text { fill: var(--fg-muted); font-size: 12px; font-family: var(--font-mono); }

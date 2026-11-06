@@ -3,7 +3,7 @@ import { App } from "./App";
 import { DecisionsView } from "./DecisionsView";
 import { DocumentsView } from "./DocumentsView";
 import { CompareView } from "./CompareView";
-import { orgGraph } from "./DashboardView";
+import { GraphModel, streamPages, type GraphPage } from "./graphmodel";
 import { RecordsView } from "./RecordsView";
 import { artifact, claim, conflict, conflictDetail, dashboardSummary, decision, orgReport, subjects, trace, users } from "./fixtures";
 import { ReportsView } from "./ReportsView";
@@ -11,6 +11,18 @@ import { UsersView } from "./UsersView";
 import { fakeApi, ME, renderWithSession, type Handler } from "./test-utils";
 
 const TOKENS = { access_token: "acc-SECRET", refresh_token: "ref-SECRET", mfa_verified: true };
+
+const overviewPage = {
+  nodes: [
+    { id: "doc:a-1", kind: "document", label: "spec.pdf", tone: "base" },
+    { id: "dec:d-1", kind: "decision", label: "Release", tone: "ok" },
+    { id: "claim:c-a", kind: "claim", label: "BRK-100 mfg.material", tone: "base" },
+    { id: "subj:part:BRK-100", kind: "subject", label: "BRK-100", tone: "info" },
+  ],
+  edges: [["doc:a-1", "claim:c-a"], ["claim:c-a", "dec:d-1"], ["claim:c-a", "subj:part:BRK-100"]],
+  next: null,
+  claims_total: 1,
+};
 
 function backend(extra: Record<string, Handler | unknown> = {}) {
   return fakeApi({
@@ -21,6 +33,7 @@ function backend(extra: Record<string, Handler | unknown> = {}) {
     "GET /claims": [claim("c-a", "S355")],
     "GET /conflicts?status=open": [conflict],
     "GET /dashboard/summary": dashboardSummary,
+    "GET /graph/overview": overviewPage,
     "GET /decisions": [decision],
     "GET /audit/verify": { intact: true, events_checked: 42, problem: null, head_seq: 42, head_hash: "aa".repeat(32) },
     "GET /conflicts/cf-1": conflictDetail,
@@ -248,13 +261,32 @@ test("overview counts come from /dashboard/summary; graph links decisions to the
   expect(kpi("Open conflicts")).toContain("2 awaiting evidence");
   expect(kpi("Valid decisions")).toContain("of 3 recorded");
   expect(calls.some((c) => c.path === "/dashboard/summary")).toBe(true);
-  expect(calls.some((c) => c.path === "/claims?limit=301")).toBe(true);
+  expect(calls.some((c) => c.path === "/graph/overview?limit=5000")).toBe(true);
   expect(calls.some((c) => c.path.includes("needs_evidence"))).toBe(false);
-  const g = orgGraph({ artifacts: [artifact], claims: [claim("c-a", "S355")], decisions: [decision], open: [] });
-  expect(g.edges).toContainEqual(["claim:c-a", "dec:d-1"]);
-  expect(g.edges).not.toContainEqual(["subj:part:BRK-100", "dec:d-1"]);
-  const fallback = orgGraph({ artifacts: [], claims: [claim("c-a", "S355")], decisions: [{ ...decision, evidence_claim_ids: [] }], open: [] });
-  expect(fallback.edges).toContainEqual(["subj:part:BRK-100", "dec:d-1"]);
+  // Small graph without WebGL (jsdom): the SVG drawing, with every streamed node.
+  const fig = await screen.findByRole("group", { name: /Evidence graph: 1 documents, 1 claims, 1 records, 1 decisions/ });
+  expect(fig.querySelectorAll(".g-node").length).toBe(4);
+});
+
+test("graph model: pages stream in order, edges wait for nodes from later pages, duplicates merge", async () => {
+  const pages: Record<string, GraphPage> = {
+    first: { nodes: [{ id: "doc:a", kind: "document", label: "A", tone: "base" }, { id: "dec:d", kind: "decision", label: "D", tone: "ok" }], edges: [["subj:part:P", "dec:d"]], next: "c1", claims_total: 2 },
+    c1: { nodes: [{ id: "claim:c1", kind: "claim", label: "P m", tone: "ok" }, { id: "subj:part:P", kind: "subject", label: "P", tone: "info" }], edges: [["doc:a", "claim:c1"], ["claim:c1", "subj:part:P"], ["claim:c2", "dec:d"]], next: "c2" },
+    c2: { nodes: [{ id: "claim:c2", kind: "claim", label: "P n", tone: "crit" }, { id: "subj:part:P", kind: "subject", label: "P", tone: "info" }], edges: [["claim:c2", "subj:part:P"], ["doc:a", "claim:c1"]], next: null },
+  };
+  const m = new GraphModel();
+  let progress = 0;
+  await streamPages(m, async (after) => pages[after ?? "first"], new AbortController().signal, () => progress++);
+  expect(progress).toBe(3);
+  expect(m.done).toBe(true);
+  expect(m.size).toBe(5);
+  expect(m.expected).toBeGreaterThanOrEqual(4);
+  const g = m.toGraph();
+  expect(g.edges).toContainEqual(["subj:part:P", "dec:d"]);
+  expect(g.edges).toContainEqual(["claim:c2", "dec:d"]);
+  expect(g.edges.filter(([a, b]) => a === "doc:a" && b === "claim:c1")).toHaveLength(1);
+  expect(m.count("claim")).toBe(2);
+  expect(m.neighbours(m.indexOf("dec:d")!).map((i) => m.ids[i]).sort()).toEqual(["claim:c2", "subj:part:P"]);
 });
 
 test("records: subjects listed and paged from /subjects; supplier duplicates can be decided", async () => {

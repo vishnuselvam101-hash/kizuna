@@ -1,7 +1,7 @@
 // Conflict detection and review: approve (waiver), reject (naming the faulty evidence), request evidence,
 // and the four-eyes rule (whoever uploaded the evidence may not review the finding).
 import { expect, test, type Page } from "@playwright/test";
-import { alert, axe, ctx, go, login, noHorizontalScroll, shot, status, type Ctx } from "../helpers";
+import { alert, axe, ctx, go, login, noEnglishSentences, noHorizontalScroll, shot, status, type Ctx } from "../helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -22,6 +22,7 @@ test("analyst runs detection: the mill sheet's SUS316 contradicts the specified 
   await expect(f).toContainText("SUS316");
   await expect(f).toContainText("SUS304");
   await expect(f).toContainText("ミルシート_JA-BRK-1001.pdf");
+  await noEnglishSentences(page, c, "findings");
   // Analysts may run detection but not decide reviews.
   await expect(page.getByRole("button", { name: c.t("finding.reject"), exact: true })).toHaveCount(0);
   await axe(page, "finding detail");

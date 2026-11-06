@@ -6,6 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use kizuna_messages::{Lang, Msg};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use serde_json::Value;
@@ -90,6 +91,8 @@ pub struct Drift {
     pub strength: Strength,
     pub why: String,
     pub why_ja: String,
+    /// The explanation as a message code (`why`/`why_ja` are its EN/JA renderings).
+    pub msg: Msg,
     pub fingerprint: String,
 }
 
@@ -310,52 +313,20 @@ pub fn detect(versions: &[DocVersion], s: &Settings) -> Vec<Drift> {
                 continue;
             };
             let n = changes.len();
-            let (why, why_ja) = match kind {
-                DriftKind::SilentChange if n == 0 => (
-                    format!(
-                        "{} and {} of {key} both carry revision {ra} and have different files, but the extracted content is identical (often a re-scan).",
-                        a.document, b.document
-                    ),
-                    format!(
-                        "{key} の {} と {} はどちらもリビジョン {ra} で、ファイルは異なりますが抽出内容は同一です（再スキャンの可能性）。",
-                        a.document, b.document
-                    ),
-                ),
-                DriftKind::SilentChange => (
-                    format!(
-                        "{n} field(s) of {key} differ between {} and {}, but both carry revision {ra}. A change without a revision update means copies with the same revision may not match. An extraction difference is also possible; compare the source locations.",
-                        a.document, b.document
-                    ),
-                    format!(
-                        "{key} の {} と {} は同じリビジョン {ra} ですが、{n} 項目が異なります。リビジョン更新のない変更は、同一リビジョンの写しが一致しない恐れがあります。抽出の差の可能性もあるため、出典箇所を比較してください。",
-                        a.document, b.document
-                    ),
-                ),
-                DriftKind::RevisionWithoutChange => (
-                    format!(
-                        "The revision of {key} changed from {ra} ({}) to {rb} ({}), but none of the {} extracted fields changed. The change may be in content that is not extracted; please confirm what changed.",
-                        a.document,
-                        b.document,
-                        field_count(b)
-                    ),
-                    format!(
-                        "{key} のリビジョンは {ra}（{}）から {rb}（{}）に変わりましたが、抽出された {} 項目に変更はありません。抽出対象外の内容が変わった可能性があります。変更内容を確認してください。",
-                        a.document,
-                        b.document,
-                        field_count(b)
-                    ),
-                ),
-                DriftKind::RevisionRegression => (
-                    format!(
-                        "The revision of {key} goes back from {ra} ({}) to {rb} ({}), captured later. An older copy may have been received again; {n} field(s) differ.",
-                        a.document, b.document
-                    ),
-                    format!(
-                        "{key} のリビジョンが {ra}（{}）から、後で取り込まれた {rb}（{}）へ戻っています。古い写しを再受領した可能性があります。差分 {n} 項目。",
-                        a.document, b.document
-                    ),
-                ),
-            };
+            let msg = match kind {
+                DriftKind::SilentChange if n == 0 => Msg::new("drift.silent_change_rescan"),
+                DriftKind::SilentChange => Msg::new("drift.silent_change"),
+                DriftKind::RevisionWithoutChange => {
+                    Msg::new("drift.revision_without_change").with("fields", field_count(b))
+                }
+                DriftKind::RevisionRegression => Msg::new("drift.revision_regression"),
+            }
+            .with("key", key)
+            .with("a", a.document.as_str())
+            .with("b", b.document.as_str())
+            .with("ra", ra.as_str())
+            .with("rb", rb.as_str())
+            .with("n", n);
             out.push(Drift {
                 kind,
                 key: key.to_string(),
@@ -369,8 +340,9 @@ pub fn detect(versions: &[DocVersion], s: &Settings) -> Vec<Drift> {
                 changes,
                 file_changed: true,
                 strength,
-                why,
-                why_ja,
+                why: msg.en(),
+                why_ja: msg.render(Lang::Ja),
+                msg,
                 fingerprint: fingerprint(&[kind.as_str(), key, &a.id, &b.id]),
             });
         }

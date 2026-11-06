@@ -145,3 +145,30 @@ export async function shot(page: Page, info: TestInfo, name: string) {
 }
 
 export const ja = (f: string) => join(DATA, "ja", f);
+
+/**
+ * On Japanese screens, server-generated text (finding explanations, incident summaries, reasons) must be
+ * Japanese: no text node may hold a run of three or more plain English words. Identifiers (value_mismatch,
+ * qa.result, SHA-256) and document data in Latin script with fewer than three words pass.
+ */
+export async function noEnglishSentences(page: Page, c: Ctx, where: string) {
+  if (c.lang !== "ja") return;
+  const runs = await page.locator("main").evaluate((root) => {
+    const out: string[] = [];
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      let run: string[] = [];
+      for (const x of (n.textContent ?? "").split(/[^A-Za-z0-9'_{}.-]+/).map((y) => y.replace(/[.]+$/, ""))) {
+        if (x.length >= 2 && /^[A-Za-z']+$/.test(x)) {
+          run.push(x);
+          if (run.length >= 3) {
+            out.push((n.textContent ?? "").trim());
+            break;
+          }
+        } else if (x) run = [];
+      }
+    }
+    return out;
+  });
+  expect(runs, `English sentences on the Japanese ${where} screen`).toEqual([]);
+}

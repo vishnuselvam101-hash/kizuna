@@ -18,6 +18,7 @@ export interface SimImpact {
   material: boolean;
   cause_kind: string;
   reason: string;
+  reason_msg?: unknown;
   path: string[];
   semantic_change: Record<string, unknown>;
 }
@@ -93,7 +94,7 @@ export function useSimPreview(): { sim: SimResult | null; ids: ReadonlySet<strin
 /** What-if panel for one claim (value/spec/revision change or withdrawal) or one document (withdraw all). */
 export function WhatIfPanel({ claim, doc, onClose }: { claim?: Claim; doc?: { id: string; name: string }; onClose: () => void }) {
   const { api } = useSession();
-  const { t, lang } = useI18n();
+  const { tm, t, lang } = useI18n();
   const [mode, setMode] = useState<"supersede" | "withdraw">(claim ? "supersede" : "withdraw");
   const [text, setText] = useState(claim?.value_text ?? "");
   const [num, setNum] = useState(claim?.value_num ?? "");
@@ -152,7 +153,7 @@ export function WhatIfPanel({ claim, doc, onClose }: { claim?: Claim; doc?: { id
     }
   }
 
-  const why = (v: Record<string, unknown>) => String((lang === "ja" ? v.why_ja : v.why) ?? v.why ?? v.kind ?? "");
+  const why = (v: Record<string, unknown>) => tm(v.msg, String((lang === "ja" ? v.why_ja : v.why) ?? v.why ?? v.kind ?? ""));
   const id = claim?.id ?? doc?.id ?? "x";
   return (
     <section
@@ -291,7 +292,7 @@ function DiffBlock({ title, d, label }: { title: string; d: SimDiff; label: (v: 
 }
 
 export function SimView({ r, why }: { r: SimResult; why: (v: Record<string, unknown>) => string }) {
-  const { t, tv, fmtNum } = useI18n();
+  const { tm, t, tv, fmtNum } = useI18n();
   const d = r.decisions;
   const before = r.change.before;
   return (
@@ -355,7 +356,7 @@ export function SimView({ r, why }: { r: SimResult; why: (v: Record<string, unkn
                       <Badge group="bool" value={i.material ? "material" : "not_material"} tone={i.material ? "crit" : "info"} />
                     </td>
                     <td>
-                      <Badge group="cause" value={i.cause_kind} tone="info" /> {i.reason}
+                      <Badge group="cause" value={i.cause_kind} tone="info" /> {tm(i.reason_msg, i.reason)}
                     </td>
                     <td className="mono">{i.path.map(short).join(" → ")}</td>
                   </tr>

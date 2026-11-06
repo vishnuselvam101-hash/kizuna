@@ -38,7 +38,7 @@ export interface MatchFinding {
   drawing_claims: string[];
   certificate_claims: string[];
   certificate_doc: string | null;
-  explanation: { rule: string; why: string; detail?: Record<string, unknown> };
+  explanation: { rule: string; why: string; msg?: unknown; detail?: Record<string, unknown> };
 }
 interface CitedClaim {
   predicate: string;
@@ -99,7 +99,7 @@ function Citation({ id, d }: { id: string; d: MatchDetail }) {
 }
 
 function FindingCard({ f, d }: { f: MatchFinding; d: MatchDetail }) {
-  const { t, tv } = useI18n();
+  const { tm, t, tv } = useI18n();
   const ids = { po: f.po_claims, drawing: f.drawing_claims, certificate: f.certificate_claims };
   return (
     <li className="finding">
@@ -107,7 +107,7 @@ function FindingCard({ f, d }: { f: MatchFinding; d: MatchDetail }) {
         <Badge group="match.sev" value={f.severity} tone={SEV_TONE[f.severity]} /> <b>{tv("match.kind", f.kind)}</b>{" "}
         <span className="muted">· {checkLabel(tv, f.check)}</span>
       </header>
-      <p>{f.explanation.why}</p>
+      <p>{tm(f.explanation.msg, f.explanation.why)}</p>
       <div className="match-sides">
         {SIDES.map((s) => (
           <section key={s} aria-label={t(`match.side.${s}` as never)}>

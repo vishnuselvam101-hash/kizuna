@@ -34,7 +34,7 @@ export function traceGraph(t: Trace): Graph {
 }
 
 export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "reconfirm" | "revoke", comment: string) => void; canAct: boolean }) {
-  const { t: tr, tv, fmtDate } = useI18n();
+  const { tm, t: tr, tv, fmtDate } = useI18n();
   const [comment, setComment] = useState("");
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const d = t.decision;
@@ -107,7 +107,7 @@ export function TraceView({ t, onAction, canAct }: { t: Trace; onAction: (a: "re
         <ol className="timeline">
           {t.invalidations.map((i, k) => (
             <li key={k}>
-              <span className="num muted">{fmtDate(i.recorded_at)}</span> <Badge group="cause" value={i.cause_kind} tone="info" /> {i.reason}{" "}
+              <span className="num muted">{fmtDate(i.recorded_at)}</span> <Badge group="cause" value={i.cause_kind} tone="info" /> {tm(i.reason_msg, i.reason)}{" "}
               <Badge group="bool" value={i.material ? "material" : "not_material"} tone={i.material ? "crit" : "info"} />
             </li>
           ))}

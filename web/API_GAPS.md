@@ -23,7 +23,7 @@ Every gap has a server endpoint with integration tests (`crates/kizuna-api/tests
 |---|---|---|
 | 1 | `GET/PUT /integrations/import-settings` (versioned, optimistic concurrency, admin+MFA, audited) | Integrations → Import settings; **consumed by the extraction worker since M7** (CSV delimiter/encoding/header row, XLSX sheet/header row, OCR on/off + language, record/page/sheet limits, long-table column mapping); the run records `import_settings_version` |
 | 2 | `GET /dashboard/summary` | Overview key figures |
-| 3 | `/claims?limit&after`, `GET /subjects?type&after&limit` | Overview graph (first 300 claims), Records paging ("Load more"; the identifier filter searches loaded pages only) |
+| 3 | `/claims?limit&after`, `GET /subjects?type&after&limit` | Records paging ("Load more"; the identifier filter searches loaded pages only) |
 | 4 | `artifact_display_name` in claims | Evidence tables |
 | 5 | `evidence_claim_ids` in decisions | Org graph links decisions to their cited claims |
 | 6 | supplier entity decisions | Duplicate review on Components and Suppliers |
@@ -34,3 +34,10 @@ Every gap has a server endpoint with integration tests (`crates/kizuna-api/tests
 New in M7, with screens: `GET/PUT /integrations/ai-extraction` (Integrations → AI-assisted extraction; opt-in with
 the provider data-processing notice, ADR 0018) and `GET/PUT /security/detection-settings` (Security → detection
 thresholds, ADR 0015). `POST /artifacts/{id}/reextract` (reason) re-runs extraction after an import-settings change.
+
+New with the scalable graph (branch `webgl-scale`, see PERF_GRAPH.md): `GET /graph/overview?after&limit` — keyset-paged
+evidence graph (default 5000 claims per page, max 20000; claim/record nodes and their document, record and
+decision links; the first page also carries every document, decision and open finding plus `claims_total`).
+Requires claim and decision read. The Overview graph streams it until `next` is absent, replacing the old
+first-300-claims cap.
+

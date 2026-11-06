@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use axum::Json;
 use axum::extract::{Path, State};
+use kizuna_messages::Msg;
 use policy_engine::Permission;
 use security_detection::{ActionKind, Detection, Event, Policy, Thresholds, detect};
 use serde::{Deserialize, Serialize};
@@ -174,17 +175,20 @@ async fn upsert_incident(tx: &mut Tx, tenant: Uuid, d: &Detection) -> ApiResult<
                     all.push(e.clone());
                 }
             }
-            sqlx::query("UPDATE incidents SET event_ids = $2, last_seen = now(), summary = $3 WHERE id = $1")
-                .bind(id)
-                .bind(json!(all))
-                .bind(&d.summary)
-                .execute(&mut **tx)
-                .await?;
+            sqlx::query(
+                "UPDATE incidents SET event_ids = $2, last_seen = now(), summary = $3, summary_msg = $4 WHERE id = $1",
+            )
+            .bind(id)
+            .bind(json!(all))
+            .bind(&d.summary)
+            .bind(d.summary_msg.to_value())
+            .execute(&mut **tx)
+            .await?;
             id
         }
         None => {
             let id = Uuid::now_v7();
-            sqlx::query("INSERT INTO incidents (id, tenant_id, rule, severity, subject, summary, event_ids) VALUES ($1,$2,$3,$4,$5,$6,$7)")
+            sqlx::query("INSERT INTO incidents (id, tenant_id, rule, severity, subject, summary, event_ids, summary_msg) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
                 .bind(id)
                 .bind(tenant)
                 .bind(d.rule)
@@ -192,6 +196,7 @@ async fn upsert_incident(tx: &mut Tx, tenant: Uuid, d: &Detection) -> ApiResult<
                 .bind(&d.subject)
                 .bind(&d.summary)
                 .bind(json!(d.event_ids))
+                .bind(d.summary_msg.to_value())
                 .execute(&mut **tx)
                 .await?;
             audit::append(tx, tenant, Record { actor_user_id: None, actor_kind: "system", action: "incident.opened", target_type: "incident",
@@ -230,7 +235,15 @@ async fn upsert_incident(tx: &mut Tx, tenant: Uuid, d: &Detection) -> ApiResult<
                 && !still_active(tx, a.kind, &a.target).await?
             {
                 let (st, detail) = execute(tx, tenant, aid, a.kind, &a.target, false).await?;
-                finish_action(tx, tenant, aid, st, &format!("re-applied: {detail}"), None).await?;
+                finish_action(
+                    tx,
+                    tenant,
+                    aid,
+                    st,
+                    &Msg::new("action.reapplied").with_msg("detail", detail),
+                    None,
+                )
+                .await?;
                 if st == "executed" {
                     applied.push(json!({ "action": a.kind.code(), "target": a.target, "reapplied": true }));
                 }
@@ -278,16 +291,18 @@ async fn finish_action(
     tenant: Uuid,
     aid: Uuid,
     status: &str,
-    detail: &str,
+    detail_msg: &Msg,
     by: Option<Uuid>,
 ) -> ApiResult<()> {
+    let detail = detail_msg.en();
     sqlx::query(
-        "UPDATE response_actions SET status = $2, detail = $3, decided_by = $4, updated_at = now() WHERE id = $1",
+        "UPDATE response_actions SET status = $2, detail = $3, decided_by = $4, detail_msg = $5, updated_at = now() WHERE id = $1",
     )
     .bind(aid)
     .bind(status)
-    .bind(detail)
+    .bind(&detail)
     .bind(by)
+    .bind(detail_msg.to_value())
     .execute(&mut **tx)
     .await?;
     audit::append(
@@ -323,24 +338,21 @@ async fn execute(
     kind: ActionKind,
     target: &str,
     approved: bool,
-) -> ApiResult<(&'static str, String)> {
+) -> ApiResult<(&'static str, Msg)> {
     let user = || Uuid::parse_str(target).map_err(|_| ApiError::BadRequest("invalid_target"));
     Ok(match kind {
         ActionKind::NotifyAdmins => {
             tracing::warn!(%tenant, target, "security incident: administrators notified in-app");
-            ("executed", "in-app notification (incident dashboard)".into())
+            ("executed", Msg::new("action.notified"))
         }
         ActionKind::RevokeUserSessions => {
             let n = revoke_user_sessions(tx, tenant, user()?, None, "incident_response").await?;
-            ("executed", format!("{n} sessions revoked"))
+            ("executed", Msg::new("action.sessions_revoked").with("n", n))
         }
         ActionKind::LockAccount => {
             let u = user()?;
             if is_last_active_admin(tx, u).await? {
-                (
-                    "refused",
-                    "would disable the last active administrator; use the emergency procedure instead".into(),
-                )
+                ("refused", Msg::new("action.last_admin_escalated"))
             } else {
                 sqlx::query(
                     "UPDATE users SET status = 'disabled', disabled_by_action = $2, updated_at = now() WHERE id = $1",
@@ -350,7 +362,7 @@ async fn execute(
                 .execute(&mut **tx)
                 .await?;
                 let n = revoke_user_sessions(tx, tenant, u, None, "account_locked_incident").await?;
-                ("executed", format!("account disabled, {n} sessions revoked"))
+                ("executed", Msg::new("action.account_disabled").with("n", n))
             }
         }
         ActionKind::BlockIp => {
@@ -366,10 +378,7 @@ async fn execute(
                     .bind(aid)
                     .execute(&mut **tx)
                     .await?;
-                return Ok((
-                    "proposed",
-                    "address used by an active administrator; escalated for approval".into(),
-                ));
+                return Ok(("proposed", Msg::new("action.admin_address_escalated")));
             }
             sqlx::query(
                 "INSERT INTO ip_blocks (tenant_id, ip, until, action_id) VALUES ($1,$2, now() + make_interval(secs => $3), $4) \
@@ -383,7 +392,9 @@ async fn execute(
             .await?;
             (
                 "executed",
-                format!("logins from {target} blocked for {} minutes", BLOCK_SECS / 60),
+                Msg::new("action.ip_blocked")
+                    .with("target", target)
+                    .with("minutes", BLOCK_SECS / 60),
             )
         }
         ActionKind::QuarantineArtifact => {
@@ -395,7 +406,7 @@ async fn execute(
             .bind(aid.to_string())
             .execute(&mut **tx)
             .await?;
-            ("executed", "artifact quarantined".into())
+            ("executed", Msg::new("action.artifact_quarantined"))
         }
         ActionKind::RestrictUploads => {
             sqlx::query(
@@ -409,7 +420,7 @@ async fn execute(
             .await?;
             (
                 "executed",
-                format!("uploads restricted for {} minutes", UPLOAD_RESTRICT_SECS / 60),
+                Msg::new("action.uploads_restricted").with("minutes", UPLOAD_RESTRICT_SECS / 60),
             )
         }
         ActionKind::SuspendExtraction => {
@@ -423,7 +434,7 @@ async fn execute(
             .await?;
             (
                 "executed",
-                format!("extraction suspended for {} minutes", EXTRACTION_SUSPEND_SECS / 60),
+                Msg::new("action.extraction_suspended").with("minutes", EXTRACTION_SUSPEND_SECS / 60),
             )
         }
     })
@@ -450,7 +461,7 @@ async fn revert(
     aid: Uuid,
     kind: &str,
     target: &str,
-) -> ApiResult<Result<String, &'static str>> {
+) -> ApiResult<Result<Msg, &'static str>> {
     Ok(match kind {
         "lock_account" => {
             let u = Uuid::parse_str(target).map_err(|_| ApiError::BadRequest("invalid_target"))?;
@@ -467,7 +478,7 @@ async fn revert(
             if n == 0 {
                 return Ok(Err("account_disabled_for_another_reason"));
             }
-            Ok("account re-enabled".into())
+            Ok(Msg::new("action.account_reenabled"))
         }
         "block_ip" => {
             // Only this action's own block: a newer block of the same address stays (review M5-M7 L5).
@@ -478,9 +489,9 @@ async fn revert(
                 .await?
                 .rows_affected();
             Ok(if n == 0 {
-                "block already replaced by a newer action; left in place".into()
+                Msg::new("action.block_superseded")
             } else {
-                "block lifted".into()
+                Msg::new("action.block_lifted")
             })
         }
         "quarantine_artifact" => Err("release_via_artifact_review"),
@@ -496,9 +507,9 @@ async fn revert(
             .await?
             .rows_affected();
             Ok(if n == 0 {
-                "restriction already replaced by a newer action; left in place".into()
+                Msg::new("action.restriction_superseded")
             } else {
-                "upload restriction lifted".into()
+                Msg::new("action.restriction_lifted")
             })
         }
         "suspend_extraction" => {
@@ -506,7 +517,7 @@ async fn revert(
                 .bind(tenant)
                 .execute(&mut **tx)
                 .await?;
-            Ok("extraction resumed".into())
+            Ok(Msg::new("action.extraction_resumed"))
         }
         _ => Err("not_reversible"),
     })
@@ -606,7 +617,9 @@ pub struct IncidentOut {
     pub rule: String,
     pub severity: String,
     pub subject: String,
+    /// English text; `summary_msg` is the same summary as a message code (absent on incidents opened before codes).
     pub summary: String,
+    pub summary_msg: Option<Value>,
     pub status: String,
     pub event_ids: Value,
     #[serde(with = "time::serde::rfc3339")]
@@ -623,14 +636,17 @@ pub struct ActionOut {
     pub target: String,
     pub policy: String,
     pub status: String,
+    /// English text; `detail_msg` is the same detail as a message code (absent on actions finished before codes).
     pub detail: Option<String>,
+    pub detail_msg: Option<Value>,
     pub decided_by: Option<Uuid>,
     #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 
-const INC_COLS: &str = "id, rule, severity, subject, summary, status, event_ids, first_seen, last_seen, resolution";
-const ACT_COLS: &str = "id, kind, target, policy, status, detail, decided_by, updated_at";
+const INC_COLS: &str =
+    "id, rule, severity, subject, summary, summary_msg, status, event_ids, first_seen, last_seen, resolution";
+const ACT_COLS: &str = "id, kind, target, policy, status, detail, detail_msg, decided_by, updated_at";
 
 pub async fn list(State(st): State<AppState>, p: Principal) -> ApiResult<Json<Vec<IncidentOut>>> {
     p.require(&st, Permission::SecurityEventRead).await?;
@@ -737,7 +753,9 @@ pub async fn decide_action(
                 p.tenant_id,
                 action,
                 s,
-                &format!("{detail}; approved: {comment}"),
+                &Msg::new("action.approved")
+                    .with_msg("detail", detail)
+                    .with("comment", comment.as_str()),
                 Some(p.user_id),
             )
             .await?;
@@ -752,7 +770,15 @@ pub async fn decide_action(
             if status != "proposed" {
                 return Err(ApiError::Conflict("action_not_proposed"));
             }
-            finish_action(&mut tx, p.tenant_id, action, "rejected", &comment, Some(p.user_id)).await?;
+            finish_action(
+                &mut tx,
+                p.tenant_id,
+                action,
+                "rejected",
+                &Msg::new("text.verbatim").with("text", comment.as_str()),
+                Some(p.user_id),
+            )
+            .await?;
         }
         "revert" => {
             if status != "executed" {
@@ -765,7 +791,9 @@ pub async fn decide_action(
                         p.tenant_id,
                         action,
                         "reverted",
-                        &format!("{detail}; {comment}"),
+                        &Msg::new("action.reverted")
+                            .with_msg("detail", detail)
+                            .with("comment", comment.as_str()),
                         Some(p.user_id),
                     )
                     .await?
@@ -821,7 +849,7 @@ pub async fn resolve(
     }
     // Pending proposals of a closed incident are closed with it.
     sqlx::query(
-        "UPDATE response_actions SET status = 'rejected', detail = 'incident closed', decided_by = $2, updated_at = now() \
+        "UPDATE response_actions SET status = 'rejected', detail = 'incident closed', detail_msg = jsonb_build_object('code', 'action.incident_closed'), decided_by = $2, updated_at = now() \
          WHERE incident_id = $1 AND status = 'proposed'",
     )
     .bind(id)

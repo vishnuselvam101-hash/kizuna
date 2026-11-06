@@ -1579,18 +1579,16 @@ pub struct DocQuery {
 }
 
 /// GET /capa/supplier-requests/{id}/document?lang=ja|en: the letter as text; unapproved drafts are marked.
+/// Without `lang` the letter is in the request language (`Accept-Language`, default Japanese).
 pub async fn supplier_request_document(
     State(st): State<AppState>,
     p: Principal,
     Path(rid): Path<Uuid>,
+    rl: crate::lang::ReqLang,
     ApiQuery(q): ApiQuery<DocQuery>,
 ) -> ApiResult<Response> {
     p.require(&st, Permission::DecisionRead).await?;
-    let ja = match q.lang.as_deref().unwrap_or("ja") {
-        "ja" => true,
-        "en" => false,
-        _ => return Err(ApiError::BadRequest("invalid_lang")),
-    };
+    let ja = rl.resolve(q.lang.as_deref(), crate::lang::Lang::Ja)? == crate::lang::Lang::Ja;
     let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
     let (case_id, reference, status, body_ja, body_en): (Uuid, String, String, String, String) =
         sqlx::query_as("SELECT case_id, reference, status, body_ja, body_en FROM capa_supplier_requests WHERE id = $1")

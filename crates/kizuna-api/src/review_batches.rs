@@ -94,6 +94,9 @@ struct StoredImpact {
     material: bool,
     cause_kind: String,
     reason: String,
+    /// Absent on items stored before message codes: the recorded English text is shown as is.
+    #[serde(default)]
+    reason_msg: Option<kizuna_messages::Msg>,
     path: Vec<String>,
     semantic_change: Value,
 }
@@ -111,6 +114,9 @@ impl StoredImpact {
             decision: self.decision,
             material: self.material,
             cause_kind,
+            reason_msg: self
+                .reason_msg
+                .unwrap_or_else(|| kizuna_messages::Msg::new("text.verbatim").with("text", self.reason.as_str())),
             reason: self.reason,
             path: self.path,
             semantic_change: self.semantic_change,

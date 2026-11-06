@@ -20,7 +20,7 @@ export interface IntegritySignal {
   part_key: string | null;
   characteristic: string | null;
   strength: string;
-  explanation: { why: string; why_ja: string };
+  explanation: { why: string; why_ja: string; msg?: unknown };
   statistic: Record<string, unknown>;
   evidence: EvidenceRef[];
   status: string;
@@ -42,6 +42,7 @@ export interface SignalDetail {
   reviews: Review[];
   requires_human_review: boolean;
   limitations: string;
+  limitations_msg?: unknown;
 }
 interface Side {
   value: string;
@@ -66,7 +67,7 @@ export interface DriftFinding {
   later_revision: string | null;
   changes: DriftChange[];
   strength: string;
-  explanation: { why: string; why_ja: string };
+  explanation: { why: string; why_ja: string; msg?: unknown };
   status: string;
   detected_at: string;
 }
@@ -77,6 +78,7 @@ export interface DriftDetail {
   requires_human_review: boolean;
   potentially_affected_decisions: { id: string; title: string; status: string }[];
   limitations: string;
+  limitations_msg?: unknown;
 }
 
 const SIGNAL_STATUSES = ["open", "needs_evidence", "explained", "follow_up", "obsolete"] as const;
@@ -165,7 +167,7 @@ function Documents({ docs }: { docs: Doc[] }) {
 }
 
 export function SignalDetailView({ d, canReview, onReview }: { d: SignalDetail; canReview: boolean; onReview: (decision: string, comment: string) => void }) {
-  const { t, tv, lang, fmtDate } = useI18n();
+  const { tm, t, tv, lang, fmtDate } = useI18n();
   const s = d.signal;
   return (
     <article className="finding" aria-labelledby="sig-h">
@@ -178,7 +180,7 @@ export function SignalDetailView({ d, canReview, onReview }: { d: SignalDetail; 
       </header>
       <section aria-labelledby="sig-why">
         <h3 id="sig-why">{t("finding.why")}</h3>
-        <p>{lang === "ja" ? s.explanation.why_ja : s.explanation.why}</p>
+        <p>{tm(s.explanation.msg, lang === "ja" ? s.explanation.why_ja : s.explanation.why)}</p>
         <p>
           {t("integrity.strength")}: <Badge group="integrity.strength" value={s.strength} tone={strengthTone(s.strength)} />{" "}
           <span className="muted">{t("integrity.strengthNote")}</span>
@@ -224,7 +226,7 @@ export function SignalDetailView({ d, canReview, onReview }: { d: SignalDetail; 
       <Documents docs={d.documents} />
       <section aria-labelledby="sig-lim">
         <h3 id="sig-lim">{t("finding.confidence")}</h3>
-        <p className="muted">{d.limitations}</p>
+        <p className="muted">{tm(d.limitations_msg, d.limitations)}</p>
       </section>
       <section aria-labelledby="sig-rev">
         <h3 id="sig-rev">{t("finding.reviewNeeded")}</h3>
@@ -249,7 +251,7 @@ export function SignalDetailView({ d, canReview, onReview }: { d: SignalDetail; 
 
 export function IntegrityView() {
   const { api, can } = useSession();
-  const { t, tv, lang } = useI18n();
+  const { tm, t, tv, lang } = useI18n();
   const [status, setStatus] = useState("open");
   const list = useLoad(() => api.request<IntegritySignal[]>("GET", `/integrity/signals?status=${status}`), [status]);
   const [detail, setDetail] = useState<SignalDetail | null>(null);
@@ -314,7 +316,7 @@ export function IntegrityView() {
                   ),
                 },
                 { key: "strength", label: t("integrity.strength"), value: (s) => s.strength, render: (s) => <Badge group="integrity.strength" value={s.strength} tone={strengthTone(s.strength)} /> },
-                { key: "why", label: t("finding.why"), value: (s) => s.explanation.why, render: (s) => <span className="muted clamp">{lang === "ja" ? s.explanation.why_ja : s.explanation.why}</span> },
+                { key: "why", label: t("finding.why"), value: (s) => s.explanation.why, render: (s) => <span className="muted clamp">{tm(s.explanation.msg, lang === "ja" ? s.explanation.why_ja : s.explanation.why)}</span> },
               ]}
             />
           )}
@@ -326,7 +328,7 @@ export function IntegrityView() {
 }
 
 export function DriftDetailView({ d, canReview, onReview }: { d: DriftDetail; canReview: boolean; onReview: (decision: string, comment: string) => void }) {
-  const { t, tv, lang, fmtDate } = useI18n();
+  const { tm, t, tv, lang, fmtDate } = useI18n();
   const f = d.drift;
   const docName = (id: string) => d.documents.find((x) => x.artifact_id === id)?.display_name ?? id.slice(0, 8);
   const cell = (sides: Side[]) =>
@@ -350,7 +352,7 @@ export function DriftDetailView({ d, canReview, onReview }: { d: DriftDetail; ca
       </header>
       <section aria-labelledby="drift-why">
         <h3 id="drift-why">{t("finding.why")}</h3>
-        <p>{lang === "ja" ? f.explanation.why_ja : f.explanation.why}</p>
+        <p>{tm(f.explanation.msg, lang === "ja" ? f.explanation.why_ja : f.explanation.why)}</p>
         <p>
           {t("drift.revisions")}: <span className="mono">{f.earlier_revision ?? "—"}</span> ({docName(f.earlier_artifact)}) → <span className="mono">{f.later_revision ?? "—"}</span> ({docName(f.later_artifact)}) ·{" "}
           {t("integrity.strength")}: <Badge group="integrity.strength" value={f.strength} tone={strengthTone(f.strength)} />
@@ -391,7 +393,7 @@ export function DriftDetailView({ d, canReview, onReview }: { d: DriftDetail; ca
       <Documents docs={d.documents} />
       <section aria-labelledby="drift-lim">
         <h3 id="drift-lim">{t("finding.confidence")}</h3>
-        <p className="muted">{d.limitations}</p>
+        <p className="muted">{tm(d.limitations_msg, d.limitations)}</p>
       </section>
       <section aria-labelledby="drift-rev">
         <h3 id="drift-rev">{t("finding.reviewNeeded")}</h3>
@@ -430,7 +432,7 @@ export function DriftDetailView({ d, canReview, onReview }: { d: DriftDetail; ca
 
 export function DriftView() {
   const { api, can } = useSession();
-  const { t, tv, lang } = useI18n();
+  const { tm, t, tv, lang } = useI18n();
   const [status, setStatus] = useState("open");
   const list = useLoad(() => api.request<DriftFinding[]>("GET", `/integrity/drift?status=${status}`), [status]);
   const [detail, setDetail] = useState<DriftDetail | null>(null);
@@ -496,7 +498,7 @@ export function DriftView() {
                 },
                 { key: "revs", label: t("drift.revisions"), value: (f) => `${f.earlier_revision ?? ""}→${f.later_revision ?? ""}`, render: (f) => <span className="mono">{`${f.earlier_revision ?? "—"} → ${f.later_revision ?? "—"}`}</span> },
                 { key: "strength", label: t("integrity.strength"), value: (f) => f.strength, render: (f) => <Badge group="integrity.strength" value={f.strength} tone={strengthTone(f.strength)} /> },
-                { key: "why", label: t("finding.why"), value: (f) => f.explanation.why, render: (f) => <span className="muted clamp">{lang === "ja" ? f.explanation.why_ja : f.explanation.why}</span> },
+                { key: "why", label: t("finding.why"), value: (f) => f.explanation.why, render: (f) => <span className="muted clamp">{tm(f.explanation.msg, lang === "ja" ? f.explanation.why_ja : f.explanation.why)}</span> },
               ]}
             />
           )}
