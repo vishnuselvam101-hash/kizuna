@@ -52,8 +52,17 @@ def fold_cjk_compat(s: str) -> str:
     return _COMPAT.sub(lambda m: _RADICALS.get(m.group()) or unicodedata.normalize("NFKC", m.group()), s)
 
 
-def lines_from_fragments(page: int, frags: list[tuple[float, float, float, str]]) -> list[Line]:
-    """frags: (x, y, font_size, text). Groups fragments into lines by baseline and into cells by gaps."""
+def lines_from_fragments(
+    page: int, frags: list[tuple[float, float, float, str]], rules: list | None = None
+) -> list[Line]:
+    """frags: (x, y, font_size, text). Groups fragments into lines by baseline and into cells by gaps; a
+    vertical ruling line between two fragments (`rules`: (x0, y0, x1, y1) segments, PDF points) always starts
+    a new cell, however small the gap (tightly ruled tables)."""
+    verts = [(r[0], r[1], r[3]) for r in rules or [] if r[0] == r[2]]
+
+    def ruled(x0: float, x1: float, y: float, size: float) -> bool:
+        return any(x0 <= vx <= x1 and lo - size <= y <= hi + size for vx, lo, hi in verts)
+
     frags = [(x, y, s, fold_cjk_compat(t)) for x, y, s, t in frags]
     frags = sorted(frags, key=lambda f: (-round(f[1], 0), f[0]))
     rows: list[list[tuple[float, float, float, str]]] = []
@@ -66,13 +75,15 @@ def lines_from_fragments(page: int, frags: list[tuple[float, float, float, str]]
     for row in rows:
         row.sort(key=lambda f: f[0])
         cells: list[Cell] = []
-        last = ""
+        last, prev_x = "", 0.0
         for x, _y, size, text in row:
             # Full-width (CJK) glyphs advance about one em, Latin about half an em.
             width = sum(size if is_cjk(ch) else size * 0.5 for ch in text)
             gap = x - cells[-1].x1 if cells else 0.0
+            if cells and verts and ruled(prev_x + 1.0, x - 0.5, _y, size):
+                cells.append(Cell(text, x, x + width))
             # Per-glyph exports (single characters almost touching) are one word; Latin words keep spaces.
-            if cells and gap <= size * 0.3 and len(last) == 1 and len(text) == 1:
+            elif cells and gap <= size * 0.3 and len(last) == 1 and len(text) == 1:
                 cells[-1].text += text
                 cells[-1].x1 = max(cells[-1].x1, x + width)
             elif cells and gap <= size * 1.0:
@@ -80,7 +91,7 @@ def lines_from_fragments(page: int, frags: list[tuple[float, float, float, str]]
                 cells[-1].x1 = max(cells[-1].x1, x + width)
             else:
                 cells.append(Cell(text, x, x + width))
-            last = text
+            last, prev_x = text, x
         out.append(Line(page, len(out) + 1, cells, y=row[0][1], size=max(f[2] for f in row)))
     return out
 

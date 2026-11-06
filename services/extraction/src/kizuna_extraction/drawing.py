@@ -8,6 +8,7 @@ ATTRIB/ATTDEF entities are needed, and ezdxf would add numpy/fonttools to the sa
 
 import re
 
+from .claims import label_like, lookup, normalize_label
 from .errors import ExtractionError
 from .ja import parse_date
 from .layout import Line
@@ -77,39 +78,84 @@ def _stamp_date(plines: list[Line], start: int, c, label: str, sink: Sink, metho
                 return
 
 
+def _title_label(text: str) -> bool:
+    """A cell that is only a label: a title-block label, or (v3) any label in the vocabulary."""
+    t = text.strip()
+    if _norm(t) in TITLE_LABELS:
+        return True
+    return len(t) <= 24 and not any(ch in t for ch in ":：") and lookup(normalize_label(t)[0]) is not None
+
+
+def _value_cell(c) -> bool:
+    return not LABEL_VALUE.match(c.text) and not label_like(c.text) and not _title_label(c.text)
+
+
 def title_block(lines: list[Line], sink: Sink, method: str = "pdf") -> None:
-    """Label cell followed by a value cell on the same line, or by the cell directly below it."""
+    """Label cell followed by a value cell on the same line, or by the cell directly below it, or (v3) with
+    the
+    value directly above it (title blocks with the caption under the value). Values already read by another
+    layout reader are not read again."""
     seen = {(r["location"].get("page"), r["location"].get("line"), r["value"]) for r in sink.items}
+    read_lines = {(r["location"].get("page"), r["location"].get("line")) for r in sink.items}
     by_page: dict[int, list[Line]] = {}
     for ln in lines:
         by_page.setdefault(ln.page, []).append(ln)
     for plines in by_page.values():
         for i, ln in enumerate(plines):
             for ci, c in enumerate(ln.cells):
-                if _norm(c.text) not in TITLE_LABELS:
-                    continue
+                if (
+                    not _title_label(c.text)
+                    or ln.extra.get("read")
+                    or (ln.page, ln.no) in read_lines
+                    and c.text != ln.text
+                ):
+                    continue  # table headers, row labels and strips are not title-block labels
                 label = c.text.strip().rstrip(".")
-                value_cell, at = None, ln
-                if ci + 1 < len(ln.cells) and _norm(ln.cells[ci + 1].text) not in TITLE_LABELS:
-                    value_cell = ln.cells[ci + 1]
-                    loc = _loc(ln, cell=ci + 2)
-                elif i + 1 < len(plines):
-                    below = plines[i + 1]
-                    tol = max(4.0, (c.x1 - c.x0) * 0.5)
-                    for bj, b in enumerate(below.cells, start=1):
-                        if abs(b.x0 - c.x0) <= tol and _norm(b.text) not in TITLE_LABELS:
-                            value_cell, at = b, below
-                            loc = _loc(below, cell=bj)
+                value_cell, at, loc = None, ln, {}
+                tol = max(4.0, (c.x1 - c.x0) * 0.5)
+                cands = []
+                if ci + 1 < len(ln.cells):
+                    cands.append((ln, ci + 1, ln.cells[ci + 1], len(ln.cells) > 1))
+                below = plines[i + 1] if i + 1 < len(plines) else None
+                above = plines[i - 1] if i and _stacked(ln, plines[i - 1]) else None
+                for other in (below, above):
+                    if other is None:
+                        continue
+                    for bj, b in enumerate(other.cells):
+                        if abs(b.x0 - c.x0) <= tol or (min(b.x1, c.x1) - max(b.x0, c.x0)) > 0.5 * (
+                            c.x1 - c.x0
+                        ):
+                            cands.append((other, bj, b, True))
                             break
-                if value_cell is None or LABEL_VALUE.match(value_cell.text):
+                for other, bj, b, cell_loc in cands:
+                    if (
+                        not _value_cell(b)
+                        or (other.page, other.no, b.text) in seen
+                        or other.extra.get("read")
+                    ):
+                        continue
+                    value_cell, at = b, other
+                    loc = _loc(other, cell=bj + 1) if cell_loc else _loc(other)
+                    break
+                if value_cell is None:
                     continue
-                if (at.page, at.no, value_cell.text) in seen:
-                    continue  # already extracted as a table cell
+                seen.add((at.page, at.no, value_cell.text))
                 conf = 0.75 * (value_cell.conf if value_cell.conf is not None else at.confidence)
                 if label in STAMP_LABELS and at is not ln:
-                    loc["region"] = _region(ln, at, c.x0, max(c.x1, value_cell.x1))
-                    _stamp_date(plines, i + 2, c, label, sink, method)
+                    top, bottom = (ln, at) if at.no > ln.no else (at, ln)
+                    loc["region"] = _region(top, bottom, c.x0, max(c.x1, value_cell.x1))
+                    if at.no > ln.no:
+                        _stamp_date(plines, i + 2, c, label, sink, method)
                 sink.add(_rec(label, value_cell.text, loc, "title_block", f"{method}-title-block", conf))
+
+
+def _stacked(a: Line, b: Line) -> bool:
+    """`b` is the line directly above or below `a` (next/previous line number, at most ~2.6 line heights)."""
+    if a.page != b.page or abs(a.no - b.no) != 1:
+        return False
+    if a.y is None or b.y is None:
+        return True
+    return abs(a.y - b.y) <= 2.6 * max(a.size, b.size, 1.0)
 
 
 def pdf_metadata(meta: dict[str, str], sink: Sink) -> None:

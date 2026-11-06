@@ -122,7 +122,7 @@ pub struct ValidClaim {
 /// Keys a claim's source location may carry. Values: small unsigned integers, short strings or short integer
 /// arrays (boxes). `original` keeps printed text a value was normalised from (全角, 和暦), `review` =
 /// "needs_confirmation" marks a low-confidence OCR value, `ocr_conf_bps` its confidence.
-pub const LOCATION_KEYS: [&str; 29] = [
+pub const LOCATION_KEYS: [&str; 31] = [
     "page",
     "table",
     "row",
@@ -152,10 +152,12 @@ pub const LOCATION_KEYS: [&str; 29] = [
     "subject_label",
     "subject_as",
     "p_correct_bps",
+    "subject_conf_bps",
+    "layout",
 ];
 
 /// Location keys the mapper derives itself; values a document carried under these names are dropped.
-pub const DERIVED_LOCATION_KEYS: [&str; 9] = [
+pub const DERIVED_LOCATION_KEYS: [&str; 10] = [
     "review",
     "original",
     "label_basis",
@@ -165,6 +167,7 @@ pub const DERIVED_LOCATION_KEYS: [&str; 9] = [
     "subject_label",
     "subject_as",
     "p_correct_bps",
+    "subject_conf_bps",
 ];
 
 pub fn validate(c: &ClaimInput) -> Result<ValidClaim, ClaimError> {

@@ -1,4 +1,5 @@
-//! Deterministic record → claim mapping (`mfg-map@5`: @5 adds the fallback inference + tenant synonyms (ja-v2); @4 adds Japanese dimension/tolerance tokens from QA; @2 added heat number, certificate type, property bounds and
+//! Deterministic record → claim mapping (`mfg-map@6`: @6 adds part sections (several parts in one document),
+//! subject OCR confidence and layout-aware calibration groups (ja-v3); @5 adds the fallback inference + tenant synonyms (ja-v2); @4 adds Japanese dimension/tolerance tokens from QA; @2 added heat number, certificate type, property bounds and
 //! side-specific drawing references for the quality three-way match; @3 adds Japanese documents, see `ja`).
 //! Document text is data: labels are matched against a fixed
 //! vocabulary and nothing in a document can add predicates, change rules or trigger actions.
@@ -14,7 +15,7 @@ use crate::calibration;
 use crate::infer::{self, LabelSynonyms};
 use crate::ja;
 
-pub const MAPPING_VERSION: &str = "mfg-map@5";
+pub const MAPPING_VERSION: &str = "mfg-map@6";
 
 /// One label/value pair produced by the extraction worker. `group` ties values of one row/document together.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -574,11 +575,14 @@ fn resolve(label: &str, unit: Option<&str>, value: &str, syn: &LabelSynonyms) ->
 /// confirmation when it is below the review gate. Returns the probability.
 fn calibrate(loc: &mut Value, basis: &Basis, guessed: bool) -> u32 {
     let Value::Object(o) = loc else { return 0 };
-    let conf = o
-        .get("ocr_conf_bps")
-        .and_then(Value::as_u64)
-        .map(|c| c.min(10_000) as u32);
-    let g = calibration::group(conf.is_some(), basis.name(), guessed);
+    // A value is only right if its subject is: an OCR-read subject's confidence bounds the value's (mfg-map@6).
+    let read = |k: &str| o.get(k).and_then(Value::as_u64).map(|c| c.min(10_000) as u32);
+    let conf = match (read("ocr_conf_bps"), read("subject_conf_bps")) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+    let layout = o.get("layout").and_then(Value::as_str);
+    let g = calibration::group(conf.is_some(), basis.name(), guessed, layout);
     let p = calibration::p_correct_bps(&g, conf);
     o.insert("p_correct_bps".into(), json!(p));
     if calibration::needs_review(p) {
@@ -668,14 +672,50 @@ pub fn map_records(kind: &str, records: &[Record], confidence_bps: i32) -> Mappe
 /// [`map_records`] with the tenant's learnt label synonyms.
 pub fn map_records_with(kind: &str, records: &[Record], confidence_bps: i32, syn: &LabelSynonyms) -> Mapped {
     let mut out = Mapped::default();
-    let mut groups: BTreeMap<&str, Vec<Item>> = BTreeMap::new();
+    let mut resolved: Vec<Item> = Vec::with_capacity(records.len());
     for r in records {
         let (label, unit) = normalize_label(&r.label);
         let (f, basis) = resolve(&label, unit.as_deref(), &r.value, syn);
         if f.is_none() && !out.unmapped_labels.contains(&r.label) && out.unmapped_labels.len() < 200 {
             out.unmapped_labels.push(r.label.chars().take(80).collect());
         }
-        groups.entry(r.group.as_str()).or_default().push((r, f, unit, basis));
+        resolved.push((r, f, unit, basis));
+    }
+    // mfg-map@6 part sections: when the document's `label: value` fields name two or more different parts, every
+    // positioned record belongs to the nearest part header above it (0 = before the first). Header fields of a
+    // section are grouped as `sec<n>`, so they are about that section's part and not the first part's.
+    let pos = |r: &Record| {
+        Some((
+            r.location.get("page").and_then(Value::as_i64).unwrap_or(1),
+            r.location.get("line").and_then(Value::as_i64)?,
+        ))
+    };
+    let heads: Vec<((i64, i64), String)> = resolved
+        .iter()
+        .filter(|(r, f, ..)| r.group == "doc" && f.as_ref() == Some(&Field::Part) && !r.value.trim().is_empty())
+        .filter_map(|(r, ..)| Some((pos(r)?, safe_normalize(r.value.trim()))))
+        .collect();
+    let distinct: std::collections::BTreeSet<&String> = heads.iter().map(|(_, v)| v).collect();
+    let section = |r: &Record| -> Option<i64> {
+        if distinct.len() < 2 {
+            return None;
+        }
+        let p = pos(r)?;
+        Some(heads.iter().filter(|(h, _)| *h <= p).count() as i64)
+    };
+    let mut groups: BTreeMap<String, Vec<Item>> = BTreeMap::new();
+    let mut group_section: BTreeMap<String, i64> = BTreeMap::new();
+    for item in resolved {
+        let r = item.0;
+        let sec = section(r);
+        let key = match sec {
+            Some(n) if n > 0 && r.group == "doc" => format!("sec{n}"),
+            _ => r.group.clone(),
+        };
+        if let Some(n) = sec {
+            group_section.entry(key.clone()).or_insert(n);
+        }
+        groups.entry(key).or_default().push(item);
     }
     let doc_like = !matches!(kind, "purchase_order" | "inspection_report");
     let pfx = match kind {
@@ -688,9 +728,10 @@ pub fn map_records_with(kind: &str, records: &[Record], confidence_bps: i32, syn
     // Subjects named by rule/synonym labels win; fallback-mapped ones count only when there are none, and an
     // identifier inferred from shape and position only when there is no subject at all.
     let any_trusted = groups.values().any(|i| own_subject(i, doc_like, false).is_some());
+    // A part section's header names its part even when that label was only guessed (it stays flagged).
     let mut subjects: Vec<Subject> = groups
-        .values()
-        .filter_map(|i| own_subject(i, doc_like, !any_trusted))
+        .iter()
+        .filter_map(|(g, i)| own_subject(i, doc_like, !any_trusted || g.starts_with("sec")))
         .collect();
     subjects.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
     subjects.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
@@ -733,6 +774,40 @@ pub fn map_records_with(kind: &str, records: &[Record], confidence_bps: i32, syn
             .map(|(r, _, _, _)| r.value.trim().to_string())
     };
     let doc_revision = doc_subject.as_ref().and_then(|_| doc_first(&Field::Revision));
+    // OCR confidence of each subject identifier read by OCR (lowest reading of that key).
+    let mut subject_conf: BTreeMap<String, u32> = BTreeMap::new();
+    for (r, f, ..) in groups.values().flatten() {
+        if !matches!(f, Some(Field::Part | Field::Drawing | Field::Text("heat_number"))) {
+            continue;
+        }
+        if let Some(c) = r
+            .location
+            .get("ocr_confidence")
+            .and_then(Value::as_f64)
+            .filter(|c| (0.0..=1.0).contains(c))
+        {
+            let bps = (c * 10_000.0).round() as u32;
+            let e = subject_conf.entry(safe_normalize(r.value.trim())).or_insert(bps);
+            *e = (*e).min(bps);
+        }
+    }
+    // Part sections (worker groups `sec<n>`): section number → its part, and that part's revision.
+    let mut section_subjects: BTreeMap<i64, Subject> = BTreeMap::new();
+    let mut section_revision: BTreeMap<String, String> = BTreeMap::new();
+    for (g, items) in &groups {
+        if !g.starts_with("sec") {
+            continue;
+        }
+        if let (Some(n), Some(s)) = (group_section.get(g).copied(), own_subject(items, doc_like, true)) {
+            if let Some((r, ..)) = items
+                .iter()
+                .find(|(r, f, ..)| f.as_ref() == Some(&Field::Revision) && !r.value.trim().is_empty())
+            {
+                section_revision.insert(s.1.clone(), r.value.trim().to_string());
+            }
+            section_subjects.entry(n).or_insert(s);
+        }
+    }
     for (g, items) in &groups {
         let first = |want: &Field| {
             items
@@ -741,256 +816,283 @@ pub fn map_records_with(kind: &str, records: &[Record], confidence_bps: i32, syn
                 .map(|(r, _, _, _)| r.value.trim().to_string())
         };
         let own = own_subject(items, doc_like, false).or_else(|| {
-            if any_trusted {
+            if any_trusted && !g.starts_with("sec") {
                 None
             } else {
                 own_subject(items, doc_like, true)
             }
         });
-        let Some((subject_type, subject, subject_basis)) = own.or_else(|| doc_subject.clone()) else {
+        // mfg-map@6: in a document naming several parts in sections, a group without its own
+        // part is about its section's part; header-level groups (section 0) are about every part.
+        let section = group_section.get(g).copied();
+        let targets: Vec<Subject> = match (own, section) {
+            (Some(s), _) => vec![s],
+            (None, Some(n)) if n > 0 && section_subjects.contains_key(&n) => vec![section_subjects[&n].clone()],
+            (None, _) if doc_subject.is_some() => vec![doc_subject.clone().expect("checked")],
+            (None, Some(0)) => section_subjects.values().cloned().collect(),
+            _ => vec![],
+        };
+        if targets.is_empty() {
             if items.iter().any(|(_, f, _, _)| f.is_some()) {
                 out.warnings
                     .push(format!("group '{g}': no part number; values not mapped"));
             }
             continue;
-        };
-        let revision = first(&Field::Revision).or_else(|| doc_revision.clone());
-        let mut scope = serde_json::Map::new();
-        if let Some(s) = first(&Field::Supplier) {
-            scope.insert("supplier".into(), json!(safe_normalize(&s)));
         }
-        if let Some(po) = first(&Field::PoNumber) {
-            scope.insert("purchase_order".into(), json!(safe_normalize(&po)));
-        }
-        if let Some(l) = first(&Field::PoLine) {
-            scope.insert("po_line".into(), json!(l));
-        }
-        if let Some(l) = first(&Field::Lot) {
-            scope.insert("lot".into(), json!(safe_normalize(&l)));
-        }
-        if let Some(h) = first(&Field::Text("heat_number")) {
-            scope.insert("heat".into(), json!(safe_normalize(&h)));
-        }
-        let single_dim: Vec<&'static str> = items
-            .iter()
-            .filter_map(|(_, f, _, _)| match f {
-                Some(Field::Dimension(d)) | Some(Field::Nominal(d)) => Some(*d),
-                _ => None,
-            })
-            .collect();
-        let elements = items
-            .iter()
-            .filter(|(_, f, _, _)| matches!(f, Some(Field::Element(_))))
-            .count();
-        let row_unit = first(&Field::UnitColumn)
-            .filter(|u| ja::ja_unit(u).is_some() || parse_quantity(&format!("1 {u}"), None).is_some());
-        for (r, f, label_unit, basis) in items {
-            let Some(f) = f else { continue };
-            let v = r.value.trim();
-            if v.is_empty() {
-                continue;
+        for (subject_type, subject, subject_basis) in targets {
+            let revision = first(&Field::Revision)
+                .or_else(|| section_revision.get(&subject).cloned())
+                .or_else(|| doc_revision.clone());
+            let mut scope = serde_json::Map::new();
+            if let Some(s) = first(&Field::Supplier) {
+                scope.insert("supplier".into(), json!(safe_normalize(&s)));
             }
-            let mut emit = |predicate: String, text: Option<String>, num: Option<(String, Option<String>)>| {
-                let (value_num, value_unit) = match num {
-                    Some((n, u)) => (Some(n), u),
-                    None => (None, None),
-                };
-                let mut loc = claim_location(r, text.as_deref());
-                add_provenance(&mut loc, basis, &subject_basis);
-                let guessed = basis.is_fallback() || subject_basis.is_fallback();
-                let p_bps = calibrate(&mut loc, basis, guessed);
-                out.claims.push(ClaimInput {
-                    subject_type: subject_type.into(),
-                    subject_key: subject.clone(),
-                    predicate,
-                    value_text: text,
-                    value_num,
-                    value_unit,
-                    scope: Some(Value::Object(scope.clone())),
-                    revision: match kind {
-                        "purchase_order" => None,
-                        _ => revision.clone(),
-                    },
-                    source_location: Some(loc),
-                    confidence_bps: Some(
-                        if guessed {
-                            confidence_bps.min(FALLBACK_CONFIDENCE_BPS)
-                        } else {
-                            confidence_bps
+            if let Some(po) = first(&Field::PoNumber) {
+                scope.insert("purchase_order".into(), json!(safe_normalize(&po)));
+            }
+            if let Some(l) = first(&Field::PoLine) {
+                scope.insert("po_line".into(), json!(l));
+            }
+            if let Some(l) = first(&Field::Lot) {
+                scope.insert("lot".into(), json!(safe_normalize(&l)));
+            }
+            if let Some(h) = first(&Field::Text("heat_number")) {
+                scope.insert("heat".into(), json!(safe_normalize(&h)));
+            }
+            let single_dim: Vec<&'static str> = items
+                .iter()
+                .filter_map(|(_, f, _, _)| match f {
+                    Some(Field::Dimension(d)) | Some(Field::Nominal(d)) => Some(*d),
+                    _ => None,
+                })
+                .collect();
+            let elements = items
+                .iter()
+                .filter(|(_, f, _, _)| matches!(f, Some(Field::Element(_))))
+                .count();
+            let row_unit = first(&Field::UnitColumn)
+                .filter(|u| ja::ja_unit(u).is_some() || parse_quantity(&format!("1 {u}"), None).is_some());
+            for (r, f, label_unit, basis) in items {
+                let Some(f) = f else { continue };
+                let v = r.value.trim();
+                if v.is_empty() {
+                    continue;
+                }
+                let mut emit = |predicate: String, text: Option<String>, num: Option<(String, Option<String>)>| {
+                    let (value_num, value_unit) = match num {
+                        Some((n, u)) => (Some(n), u),
+                        None => (None, None),
+                    };
+                    let mut loc = claim_location(r, text.as_deref());
+                    if let Value::Object(o) = &mut loc {
+                        if let Some(n) = section {
+                            o.insert("section".into(), json!(n));
                         }
-                        .min(p_bps as i32),
-                    ),
-                });
-            };
-            let lu = label_unit.as_deref();
-            let label = normalize_label(&r.label).0;
-            match (f, doc_like, kind) {
-                (Field::Part, ..) | (Field::PoNumber, ..) | (Field::PoLine, ..) | (Field::Lot, ..) => {}
-                (Field::UnitColumn, ..) => {}
-                (Field::Text("heat_number"), ..) if subject_type == "heat" => {}
-                (Field::Revision, true, _) => emit("mfg.revision".into(), Some(safe_normalize(v)), None),
-                (Field::Revision, false, "purchase_order") => {
-                    emit("po.revision_ordered".into(), Some(safe_normalize(v)), None)
-                }
-                (Field::Revision, false, _) => emit("qa.revision_inspected".into(), Some(safe_normalize(v)), None),
-                (Field::Drawing, true, _) => emit("mfg.drawing_number".into(), Some(safe_normalize(v)), None),
-                (Field::Drawing, false, "purchase_order") => {
-                    emit("po.drawing_number".into(), Some(safe_normalize(v)), None)
-                }
-                (Field::Drawing, false, _) => emit("qa.drawing_number".into(), Some(safe_normalize(v)), None),
-                (Field::CertificateType, ..) => emit(
-                    format!("{}.certificate_type", side_prefix(doc_like, kind)),
-                    Some(safe_normalize(v)),
-                    None,
-                ),
-                (Field::Material, true, _) => emit("mfg.material".into(), Some(safe_normalize(v)), None),
-                (Field::Material, false, "purchase_order") => emit("po.material".into(), Some(safe_normalize(v)), None),
-                (Field::Material, false, _) => emit("qa.material".into(), Some(safe_normalize(v)), None),
-                (Field::Supplier, true, _) => emit("mfg.supplier".into(), Some(safe_normalize(v)), None),
-                (Field::Supplier, false, _) => emit(
-                    format!("{}.supplier", if kind == "purchase_order" { "po" } else { "qa" }),
-                    Some(safe_normalize(v)),
-                    None,
-                ),
-                (Field::Text(name), ..) => emit(format!("{pfx}.{name}"), Some(ja::fold(v)), None),
-                (Field::Date(name), ..) => match parse_date(v) {
-                    // Certificates: issue/delivery dates are the certificate and shipment dates the integrity
-                    // signals read (`qa.certificate_date`, `qa.ship_date`).
-                    Some(d) => emit(
-                        match (pfx, *name) {
-                            ("qa", "issue_date") => "qa.certificate_date".into(),
-                            ("qa", "delivery_date") => "qa.ship_date".into(),
-                            _ => format!("{pfx}.{name}"),
+                        if let Some(sc) = subject_conf.get(&subject) {
+                            o.insert("subject_conf_bps".into(), json!(sc));
+                            if f64::from(*sc) < OCR_REVIEW_FLOOR * 10_000.0 {
+                                o.insert("review".into(), json!("needs_confirmation"));
+                            }
+                        }
+                    }
+                    add_provenance(&mut loc, basis, &subject_basis);
+                    let guessed = basis.is_fallback() || subject_basis.is_fallback();
+                    let p_bps = calibrate(&mut loc, basis, guessed);
+                    out.claims.push(ClaimInput {
+                        subject_type: subject_type.into(),
+                        subject_key: subject.clone(),
+                        predicate,
+                        value_text: text,
+                        value_num,
+                        value_unit,
+                        scope: Some(Value::Object(scope.clone())),
+                        revision: match kind {
+                            "purchase_order" => None,
+                            _ => revision.clone(),
                         },
-                        Some(d),
+                        source_location: Some(loc),
+                        confidence_bps: Some(
+                            if guessed {
+                                confidence_bps.min(FALLBACK_CONFIDENCE_BPS)
+                            } else {
+                                confidence_bps
+                            }
+                            .min(p_bps as i32),
+                        ),
+                    });
+                };
+                let lu = label_unit.as_deref();
+                let label = normalize_label(&r.label).0;
+                match (f, doc_like, kind) {
+                    (Field::Part, ..) | (Field::PoNumber, ..) | (Field::PoLine, ..) | (Field::Lot, ..) => {}
+                    (Field::UnitColumn, ..) => {}
+                    (Field::Text("heat_number"), ..) if subject_type == "heat" => {}
+                    (Field::Revision, true, _) => emit("mfg.revision".into(), Some(safe_normalize(v)), None),
+                    (Field::Revision, false, "purchase_order") => {
+                        emit("po.revision_ordered".into(), Some(safe_normalize(v)), None)
+                    }
+                    (Field::Revision, false, _) => emit("qa.revision_inspected".into(), Some(safe_normalize(v)), None),
+                    (Field::Drawing, true, _) => emit("mfg.drawing_number".into(), Some(safe_normalize(v)), None),
+                    (Field::Drawing, false, "purchase_order") => {
+                        emit("po.drawing_number".into(), Some(safe_normalize(v)), None)
+                    }
+                    (Field::Drawing, false, _) => emit("qa.drawing_number".into(), Some(safe_normalize(v)), None),
+                    (Field::CertificateType, ..) => emit(
+                        format!("{}.certificate_type", side_prefix(doc_like, kind)),
+                        Some(safe_normalize(v)),
                         None,
                     ),
-                    None => out.warnings.push(format!("unparsed {}", name.replace('_', " "))),
-                },
-                (Field::UnitPrice, ..) => match parse_quantity(v, lu) {
-                    Some(q) => emit(format!("{pfx}.unit_price"), None, Some(q)),
-                    None => out.warnings.push("unparsed unit price".into()),
-                },
-                (Field::Quantity, ..) => match parse_quantity(v, lu.or(row_unit.as_deref())) {
-                    Some(q) => emit("po.quantity".into(), None, Some(q)),
-                    None => out.warnings.push(format!(
-                        "unparsed quantity '{}'",
-                        v.chars().take(40).collect::<String>()
-                    )),
-                },
-                (Field::Nominal(d), ..) | (Field::Dimension(d), true, _) | (Field::Measured(d), true, _) => {
-                    let pred = format!("mfg.dimension.{d}");
-                    match parse_quantity(v, lu) {
-                        Some(q) => emit(pred, None, Some(q)),
-                        None => match ja::split_inline_tolerance(&ja::fold(v)) {
-                            // "120.5㎜ ±0.1": the dimension and its tolerance in one value
-                            Some((head, tol))
-                                if parse_quantity(&head, lu).is_some() && parse_tolerance(&tol, lu).is_some() =>
-                            {
-                                let q = parse_quantity(&head, lu);
-                                let unit = q.as_ref().and_then(|q| q.1.clone());
-                                emit(pred, None, q);
-                                if let Some((p, m, u)) = parse_tolerance(&tol, lu) {
-                                    let u = u.or(unit);
-                                    emit(format!("mfg.tolerance.{d}.plus"), None, Some((p, u.clone())));
-                                    emit(format!("mfg.tolerance.{d}.minus"), None, Some((m, u)));
-                                }
-                            }
-                            _ => emit(pred, Some(v.to_string()), None),
-                        },
+                    (Field::Material, true, _) => emit("mfg.material".into(), Some(safe_normalize(v)), None),
+                    (Field::Material, false, "purchase_order") => {
+                        emit("po.material".into(), Some(safe_normalize(v)), None)
                     }
-                }
-                (Field::Dimension(d), false, _) | (Field::Measured(d), false, _) => match parse_quantity(v, lu) {
-                    Some(q) => emit(format!("qa.measured.{d}"), None, Some(q)),
-                    None => out.warnings.push(format!(
-                        "unparsed measurement '{}'",
-                        v.chars().take(40).collect::<String>()
-                    )),
-                },
-                (Field::Tolerance(d), ..) => {
-                    let d = d.or(if single_dim.len() == 1 {
-                        Some(single_dim[0])
-                    } else {
-                        None
-                    });
-                    match (d, parse_tolerance(v, lu)) {
-                        (Some(d), Some((p, m, u))) => {
-                            emit(format!("mfg.tolerance.{d}.plus"), None, Some((p, u.clone())));
-                            emit(format!("mfg.tolerance.{d}.minus"), None, Some((m, u)));
-                        }
-                        _ => out.warnings.push(format!(
-                            "tolerance '{}' not attributable to one dimension",
+                    (Field::Material, false, _) => emit("qa.material".into(), Some(safe_normalize(v)), None),
+                    (Field::Supplier, true, _) => emit("mfg.supplier".into(), Some(safe_normalize(v)), None),
+                    (Field::Supplier, false, _) => emit(
+                        format!("{}.supplier", if kind == "purchase_order" { "po" } else { "qa" }),
+                        Some(safe_normalize(v)),
+                        None,
+                    ),
+                    (Field::Text(name), ..) => emit(format!("{pfx}.{name}"), Some(ja::fold(v)), None),
+                    (Field::Date(name), ..) => match parse_date(v) {
+                        // Certificates: issue/delivery dates are the certificate and shipment dates the integrity
+                        // signals read (`qa.certificate_date`, `qa.ship_date`).
+                        Some(d) => emit(
+                            match (pfx, *name) {
+                                ("qa", "issue_date") => "qa.certificate_date".into(),
+                                ("qa", "delivery_date") => "qa.ship_date".into(),
+                                _ => format!("{pfx}.{name}"),
+                            },
+                            Some(d),
+                            None,
+                        ),
+                        None => out.warnings.push(format!("unparsed {}", name.replace('_', " "))),
+                    },
+                    (Field::UnitPrice, ..) => match parse_quantity(v, lu) {
+                        Some(q) => emit(format!("{pfx}.unit_price"), None, Some(q)),
+                        None => out.warnings.push("unparsed unit price".into()),
+                    },
+                    (Field::Quantity, ..) => match parse_quantity(v, lu.or(row_unit.as_deref())) {
+                        Some(q) => emit("po.quantity".into(), None, Some(q)),
+                        None => out.warnings.push(format!(
+                            "unparsed quantity '{}'",
                             v.chars().take(40).collect::<String>()
                         )),
-                    }
-                }
-                (Field::Element(e), ..) => {
-                    // A chemistry value: in a mill-sheet row (≥ 3 element columns) or a mass-% labelled column.
-                    let pct = matches!(
-                        lu.map(|u| u.replace(' ', "").to_lowercase()).as_deref(),
-                        Some("%" | "wt%" | "mass%" | "質量%")
-                    );
-                    if elements >= 3 || pct {
-                        let pred = format!("{}.chem.{e}", if pfx == "mfg" { "mfg" } else { "qa" });
-                        match parse_quantity(v, Some(if pct { "%" } else { lu.unwrap_or("%") })) {
+                    },
+                    (Field::Nominal(d), ..) | (Field::Dimension(d), true, _) | (Field::Measured(d), true, _) => {
+                        let pred = format!("mfg.dimension.{d}");
+                        match parse_quantity(v, lu) {
                             Some(q) => emit(pred, None, Some(q)),
-                            None => emit(pred, Some(v.to_string()), None),
+                            None => match ja::split_inline_tolerance(&ja::fold(v)) {
+                                // "120.5㎜ ±0.1": the dimension and its tolerance in one value
+                                Some((head, tol))
+                                    if parse_quantity(&head, lu).is_some() && parse_tolerance(&tol, lu).is_some() =>
+                                {
+                                    let q = parse_quantity(&head, lu);
+                                    let unit = q.as_ref().and_then(|q| q.1.clone());
+                                    emit(pred, None, q);
+                                    if let Some((p, m, u)) = parse_tolerance(&tol, lu) {
+                                        let u = u.or(unit);
+                                        emit(format!("mfg.tolerance.{d}.plus"), None, Some((p, u.clone())));
+                                        emit(format!("mfg.tolerance.{d}.minus"), None, Some((m, u)));
+                                    }
+                                }
+                                _ => emit(pred, Some(v.to_string()), None),
+                            },
                         }
                     }
-                }
-                (Field::Property(p), _, _) => {
-                    let pfx = if doc_like { "mfg" } else { "qa" };
-                    if let (true, Some((bound, n, u))) = (doc_like, parse_bound(v, lu)) {
-                        emit(format!("mfg.property.{p}.{bound}"), None, Some((n, u)));
-                        continue;
-                    }
-                    match parse_quantity(v, lu) {
-                        Some(q) => emit(format!("{pfx}.property.{p}"), None, Some(q)),
-                        None => emit(format!("{pfx}.property.{p}"), Some(v.to_string()), None),
-                    }
-                }
-                (Field::ApprovalStatus, ..) => emit("mfg.approval.status".into(), Some(approval(v)), None),
-                (Field::ApprovedBy, ..) => emit("mfg.approval.by".into(), Some(v.to_string()), None),
-                (Field::Stamp(role), ..) => {
-                    if let Some(d) = parse_date(v) {
-                        // a date in the approval box dates the sign-off; only 承認's date is the approval date
-                        if *role == "approved" {
-                            emit("mfg.approval.date".into(), Some(d), None);
+                    (Field::Dimension(d), false, _) | (Field::Measured(d), false, _) => match parse_quantity(v, lu) {
+                        Some(q) => emit(format!("qa.measured.{d}"), None, Some(q)),
+                        None => out.warnings.push(format!(
+                            "unparsed measurement '{}'",
+                            v.chars().take(40).collect::<String>()
+                        )),
+                    },
+                    (Field::Tolerance(d), ..) => {
+                        let d = d.or(if single_dim.len() == 1 {
+                            Some(single_dim[0])
+                        } else {
+                            None
+                        });
+                        match (d, parse_tolerance(v, lu)) {
+                            (Some(d), Some((p, m, u))) => {
+                                emit(format!("mfg.tolerance.{d}.plus"), None, Some((p, u.clone())));
+                                emit(format!("mfg.tolerance.{d}.minus"), None, Some((m, u)));
+                            }
+                            _ => out.warnings.push(format!(
+                                "tolerance '{}' not attributable to one dimension",
+                                v.chars().take(40).collect::<String>()
+                            )),
                         }
-                    } else if let Some(s) = approval_word(v).filter(|_| *role == "approved") {
-                        emit("mfg.approval.status".into(), Some(s.into()), None);
-                    } else {
-                        let by = match *role {
-                            "approved" => "mfg.approval.by".to_string(),
-                            r => format!("mfg.approval.{r}_by"),
+                    }
+                    (Field::Element(e), ..) => {
+                        // A chemistry value: in a mill-sheet row (≥ 3 element columns) or a mass-% labelled column.
+                        let pct = matches!(
+                            lu.map(|u| u.replace(' ', "").to_lowercase()).as_deref(),
+                            Some("%" | "wt%" | "mass%" | "質量%")
+                        );
+                        if elements >= 3 || pct {
+                            let pred = format!("{}.chem.{e}", if pfx == "mfg" { "mfg" } else { "qa" });
+                            match parse_quantity(v, Some(if pct { "%" } else { lu.unwrap_or("%") })) {
+                                Some(q) => emit(pred, None, Some(q)),
+                                None => emit(pred, Some(v.to_string()), None),
+                            }
+                        }
+                    }
+                    (Field::Property(p), _, _) => {
+                        let pfx = if doc_like { "mfg" } else { "qa" };
+                        if let (true, Some((bound, n, u))) = (doc_like, parse_bound(v, lu)) {
+                            emit(format!("mfg.property.{p}.{bound}"), None, Some((n, u)));
+                            continue;
+                        }
+                        match parse_quantity(v, lu) {
+                            Some(q) => emit(format!("{pfx}.property.{p}"), None, Some(q)),
+                            None => emit(format!("{pfx}.property.{p}"), Some(v.to_string()), None),
+                        }
+                    }
+                    (Field::ApprovalStatus, ..) => emit("mfg.approval.status".into(), Some(approval(v)), None),
+                    (Field::ApprovedBy, ..) => emit("mfg.approval.by".into(), Some(v.to_string()), None),
+                    (Field::Stamp(role), ..) => {
+                        if let Some(d) = parse_date(v) {
+                            // a date in the approval box dates the sign-off; only 承認's date is the approval date
+                            if *role == "approved" {
+                                emit("mfg.approval.date".into(), Some(d), None);
+                            }
+                        } else if let Some(s) = approval_word(v).filter(|_| *role == "approved") {
+                            emit("mfg.approval.status".into(), Some(s.into()), None);
+                        } else {
+                            let by = match *role {
+                                "approved" => "mfg.approval.by".to_string(),
+                                r => format!("mfg.approval.{r}_by"),
+                            };
+                            emit(by, Some(v.to_string()), None);
+                            if STAMP_LABELS.contains(&label.as_str()) {
+                                // a name in a paper approval box: a mark is present (not an approval decision)
+                                emit(format!("mfg.approval.mark.{role}"), Some("present".into()), None);
+                            }
+                        }
+                    }
+                    (Field::Seal, ..) => {
+                        let role = match field(&normalize_label(v).0) {
+                            Some(Field::Stamp(r)) => r,
+                            _ => "unassigned",
                         };
-                        emit(by, Some(v.to_string()), None);
-                        if STAMP_LABELS.contains(&label.as_str()) {
-                            // a name in a paper approval box: a mark is present (not an approval decision)
-                            emit(format!("mfg.approval.mark.{role}"), Some("present".into()), None);
-                        }
+                        emit(format!("mfg.approval.mark.{role}"), Some("present".into()), None);
                     }
+                    (Field::Fax(part), ..) => {
+                        let text = if *part == "sent_at" { v.to_string() } else { ja::fold(v) };
+                        emit(format!("capture.fax.{part}"), Some(text), None)
+                    }
+                    (Field::ApprovalDate, ..) => match parse_date(v) {
+                        Some(d) => emit("mfg.approval.date".into(), Some(d), None),
+                        None => out.warnings.push("unparsed approval date".into()),
+                    },
+                    (Field::Expiry, ..) => match parse_date(v) {
+                        Some(d) => emit("mfg.certificate.expiry".into(), Some(d), None),
+                        None => out.warnings.push("unparsed expiry date".into()),
+                    },
+                    (Field::Result, ..) => emit("qa.result".into(), Some(inspection_result(v)), None),
                 }
-                (Field::Seal, ..) => {
-                    let role = match field(&normalize_label(v).0) {
-                        Some(Field::Stamp(r)) => r,
-                        _ => "unassigned",
-                    };
-                    emit(format!("mfg.approval.mark.{role}"), Some("present".into()), None);
-                }
-                (Field::Fax(part), ..) => {
-                    let text = if *part == "sent_at" { v.to_string() } else { ja::fold(v) };
-                    emit(format!("capture.fax.{part}"), Some(text), None)
-                }
-                (Field::ApprovalDate, ..) => match parse_date(v) {
-                    Some(d) => emit("mfg.approval.date".into(), Some(d), None),
-                    None => out.warnings.push("unparsed approval date".into()),
-                },
-                (Field::Expiry, ..) => match parse_date(v) {
-                    Some(d) => emit("mfg.certificate.expiry".into(), Some(d), None),
-                    None => out.warnings.push("unparsed expiry date".into()),
-                },
-                (Field::Result, ..) => emit("qa.result".into(), Some(inspection_result(v)), None),
             }
         }
     }
@@ -1251,6 +1353,80 @@ mod ja_tests {
 
     fn get<'a>(m: &'a Mapped, pred: &str) -> Vec<&'a ClaimInput> {
         m.claims.iter().filter(|c| c.predicate == pred).collect()
+    }
+
+    #[test]
+    fn part_sections_attribute_values_to_the_nearest_part_above() {
+        let at = |line: i64| json!({"page": 1, "line": line});
+        let r = vec![
+            rec("仕入先", "東和精工", "doc", at(1)),
+            rec("品番", "MP-1", "doc", at(3)),
+            rec("材質", "S45C", "doc", at(4)),
+            rec("品番", "MP-2", "doc", at(6)),
+            rec("材質", "SPCC", "doc", at(7)),
+            rec("外径 規格値 (mm)", "25.00", "p1t1r1", at(8)),
+        ];
+        let m = map_records("specification", &r, 9000);
+        let mat: Vec<(&str, &str)> = get(&m, "mfg.material")
+            .iter()
+            .map(|c| (c.subject_key.as_str(), c.value_text.as_deref().unwrap()))
+            .collect();
+        assert_eq!(mat, vec![("MP-1", "S45C"), ("MP-2", "SPCC")]);
+        let dim = get(&m, "mfg.dimension.outer_diameter");
+        assert_eq!((dim.len(), dim[0].subject_key.as_str()), (1, "MP-2"));
+        assert_eq!(dim[0].source_location.as_ref().unwrap()["section"], json!(2));
+        // a header field before the first part is about every part
+        let sup: Vec<&str> = get(&m, "mfg.supplier").iter().map(|c| c.subject_key.as_str()).collect();
+        assert_eq!(sup, vec!["MP-1", "MP-2"]);
+        // one part named twice is not a multi-part document
+        let one = vec![
+            rec("品番", "MP-1", "doc", at(1)),
+            rec("品番", "MP-1", "doc", at(9)),
+            rec("材質", "S45C", "doc", at(10)),
+        ];
+        let m = map_records("specification", &one, 9000);
+        assert!(
+            m.claims
+                .iter()
+                .all(|c| c.source_location.as_ref().unwrap().get("section").is_none())
+        );
+    }
+
+    #[test]
+    fn ocr_read_subject_bounds_its_values_and_layout_selects_the_group() {
+        let r = vec![
+            rec(
+                "品番",
+                "KZ-7",
+                "doc",
+                json!({"page": 1, "line": 1, "ocr_confidence": 0.4}),
+            ),
+            rec("材質", "S45C", "doc", json!({"page": 1, "line": 2, "layout": "pair"})),
+        ];
+        let m = map_records("specification", &r, 9000);
+        let c = get(&m, "mfg.material")[0].source_location.clone().unwrap();
+        assert_eq!(c["subject_conf_bps"], json!(4000));
+        assert_eq!(c["review"], json!("needs_confirmation"));
+        assert_eq!(c["layout"], json!("pair"));
+        // a document cannot pre-set the subject confidence
+        let r = vec![
+            rec("品番", "KZ-7", "doc", json!({"page": 1, "line": 1})),
+            rec(
+                "材質",
+                "S45C",
+                "doc",
+                json!({"page": 1, "line": 2, "subject_conf_bps": 10000}),
+            ),
+        ];
+        let m = map_records("specification", &r, 9000);
+        assert!(
+            get(&m, "mfg.material")[0]
+                .source_location
+                .as_ref()
+                .unwrap()
+                .get("subject_conf_bps")
+                .is_none()
+        );
     }
 
     #[test]

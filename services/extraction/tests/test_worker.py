@@ -20,7 +20,7 @@ def run(media_type: str, data: bytes, **limits) -> dict:
 
 def test_csv_records_have_locations_and_row_groups():
     r = run("text/csv", b"Part Number,Rev,Qty\nBRK-100,B,50\nSHF-2,A,1\n")
-    assert r["ok"] and r["extractor"] == "csv@2"
+    assert r["ok"] and r["extractor"] == "csv@3"
     first = r["records"][0]
     assert first == {
         "label": "Part Number",
@@ -121,7 +121,7 @@ def test_ocr_extracts_text_from_image():
     argv += ["-fill", "black", "-annotate", "+20+100", "Part Number: BRK-100", "png:-"]
     png = subprocess.run(argv, capture_output=True, check=True).stdout  # noqa: S603
     r = run("image/png", png)
-    assert r["ok"] and r["extractor"] == "ocr-tesseract@2", r
+    assert r["ok"] and r["extractor"] == "ocr-tesseract@3", r
     assert ("Part Number", "BRK-100") in {(x["label"], x["value"]) for x in r["records"]}, r
 
 

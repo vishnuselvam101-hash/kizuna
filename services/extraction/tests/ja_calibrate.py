@@ -24,10 +24,19 @@ TARGET_CATCH = 0.90
 MIN_BLOCK = 10  # values per calibration step (fewer gives noisy, over-cautious steps)
 
 
+def conf(r: dict) -> int | None:
+    """OCR confidence a value is calibrated on: its own, bounded by its OCR-read subject's (mapping.rs)."""
+    cs = [c for c in (r.get("ocr_conf_bps"), r.get("subject_conf_bps")) if c is not None]
+    return min(cs) if cs else None
+
+
+GEOMETRIC = ("pair", "title", "htable")  # calibration::GEOMETRIC_LAYOUTS
+
+
 def group(r: dict) -> str:
-    src = "ocr" if r.get("ocr_conf_bps") is not None else "text"
+    src = "ocr" if conf(r) is not None else "text"
     basis = "fallback" if r.get("subject_basis") == "fallback" else r.get("label_basis") or "rule"
-    return f"{src}/{basis}"
+    return f"{src}/{basis}" + ("/geom" if r.get("layout") in GEOMETRIC else "")
 
 
 def pav(points: list[tuple[int, float, float]]) -> list[list[float]]:
@@ -44,7 +53,7 @@ def pav(points: list[tuple[int, float, float]]) -> list[list[float]]:
 def fit_group(rows: list[dict]) -> list[list[int]]:
     by_x: dict[int, list[int]] = {}
     for r in rows:
-        x = min(10_000, r["ocr_conf_bps"] if r.get("ocr_conf_bps") is not None else 10_000)
+        x = min(10_000, conf(r) if conf(r) is not None else 10_000)
         by_x.setdefault(x, []).append(1 if r["ok"] else 0)
     pts = [(x, float(sum(v)), float(len(v))) for x, v in sorted(by_x.items())]
     raw: list[list[float]] = []
@@ -62,15 +71,23 @@ def fit_group(rows: list[dict]) -> list[list[int]]:
     return steps
 
 
+def steps_of(groups: dict, g: str) -> list[list[int]]:
+    """As calibration::p_correct_bps: the group, else without `/geom`, else the source fallback group."""
+    for k in (g, g.removesuffix("/geom"), g.split("/")[0] + "/fallback"):
+        if k in groups:
+            return groups[k]
+    return [[10_000, 0]]
+
+
 def p_of(steps: list[list[int]], conf: int | None) -> int:
     c = 10_000 if conf is None else min(conf, 10_000)
     return next((p for upper, p in steps if c <= upper), steps[-1][1])
 
 
 def flagged(r: dict, p: int, gate: int) -> bool:
-    forced = (r.get("ocr_conf_bps") is not None and r["ocr_conf_bps"] < OCR_FLOOR_BPS) or group(r).endswith(
-        "/fallback"
-    )
+    confs = (r.get("ocr_conf_bps"), r.get("subject_conf_bps"))
+    forced = any(c is not None and c < OCR_FLOOR_BPS for c in confs)
+    forced = forced or "/fallback" in group(r)
     return forced or p < gate
 
 
@@ -82,17 +99,19 @@ def fit(rows: list[dict]) -> dict:
         gr = [r for r in fit_rows if group(r) == g]
         groups[g] = fit_group(gr) if gr else [[10_000, 0]]
     for src in ("text", "ocr"):
-        groups[f"{src}/tenant_synonym"] = groups[f"{src}/rule"]
+        for geom in ("", "/geom"):
+            if f"{src}/rule{geom}" in groups:
+                groups[f"{src}/tenant_synonym{geom}"] = groups[f"{src}/rule{geom}"]
     dev = [r for r in rows if r["split"] in GATE_SPLITS]
     wrong = [r for r in dev if not r["ok"]]
     cands = sorted({p for s in groups.values() for _, p in s} | {0, 10_000})
     gate = 10_000
     for t in cands:
-        caught = sum(flagged(r, p_of(groups[group(r)], r.get("ocr_conf_bps")), t) for r in wrong)
+        caught = sum(flagged(r, p_of(steps_of(groups, group(r)), conf(r)), t) for r in wrong)
         if not wrong or caught / len(wrong) >= TARGET_CATCH:
             gate = t
             break
-    return {"version": "cal@1", "fitted_on": "+".join(FIT), "gate_bps": min(gate, 10_000), "groups": groups}
+    return {"version": "cal@2", "fitted_on": "+".join(FIT), "gate_bps": min(gate, 10_000), "groups": groups}
 
 
 def report(table: dict, rows: list[dict]) -> dict:
@@ -100,7 +119,7 @@ def report(table: dict, rows: list[dict]) -> dict:
     for split in sorted({r["split"] for r in rows}):
         rs = [r for r in rows if r["split"] == split]
         gate = table["gate_bps"]
-        fl = [flagged(r, p_of(table["groups"][group(r)], r.get("ocr_conf_bps")), gate) for r in rs]
+        fl = [flagged(r, p_of(steps_of(table["groups"], group(r)), conf(r)), gate) for r in rs]
         wrong = [f for r, f in zip(rs, fl, strict=True) if not r["ok"]]
         out[split] = {
             "claims": len(rs),
