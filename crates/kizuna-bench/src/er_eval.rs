@@ -41,6 +41,26 @@ const PLACES: &[(&str, &str, &str, &str)] = &[
     ("丸一", "丸一", "マルイチ", "maruichi"),
 ];
 
+/// Places that are deliberately NOT in the ER reading dictionary (`entity_resolution::v2::reading`): the
+/// "unseen vocabulary" set measures what dictionary readings cannot do.
+const UNSEEN_PLACES: &[(&str, &str, &str, &str)] = &[
+    ("甲府", "甲府", "コウフ", "koufu"),
+    ("宇都宮", "宇都宮", "ウツノミヤ", "utsunomiya"),
+    ("松江", "松江", "マツエ", "matsue"),
+    ("鳥取", "鳥取", "トットリ", "tottori"),
+    ("高松", "高松", "タカマツ", "takamatsu"),
+    ("徳島", "德島", "トクシマ", "tokushima"),
+    ("秋田", "秋田", "アキタ", "akita"),
+    ("盛岡", "盛岡", "モリオカ", "morioka"),
+    ("熊本", "熊本", "クマモト", "kumamoto"),
+    ("大分", "大分", "オオイタ", "ooita"),
+    ("佐賀", "佐賀", "サガ", "saga"),
+    ("福井", "福井", "フクイ", "fukui"),
+    ("富山", "富山", "トヤマ", "toyama"),
+    ("山形", "山形", "ヤマガタ", "yamagata"),
+    ("沼津", "沼津", "ヌマヅ", "numazu"),
+];
+
 const BUSINESSES: &[(&str, &str, &str, &str)] = &[
     ("精機", "精機", "セイキ", "seiki"),
     ("精密", "精密", "セイミツ", "seimitsu"),
@@ -221,8 +241,19 @@ fn en_legal(l: Legal, style: u64) -> &'static str {
 
 /// Japanese supplier names: `n` entities with 1–4 surface forms each.
 pub fn ja_suppliers(seed: u64, n: usize) -> Dataset {
+    ja_suppliers_from(seed, n, PLACES, "ja_suppliers")
+}
+
+/// Supplier names whose place words are not in the reading dictionary (at most 225 entities).
+pub fn ja_suppliers_unseen(seed: u64, n: usize) -> Dataset {
+    ja_suppliers_from(seed, n, UNSEEN_PLACES, "ja_suppliers_unseen")
+}
+
+type Word = (&'static str, &'static str, &'static str, &'static str);
+
+fn ja_suppliers_from(seed: u64, n: usize, places: &[Word], label: &str) -> Dataset {
     let mut rng = Rng::new(seed);
-    let mut combos: Vec<(usize, usize)> = (0..PLACES.len())
+    let mut combos: Vec<(usize, usize)> = (0..places.len())
         .flat_map(|p| (0..BUSINESSES.len()).map(move |b| (p, b)))
         .collect();
     // Deterministic shuffle.
@@ -233,7 +264,7 @@ pub fn ja_suppliers(seed: u64, n: usize) -> Dataset {
     let mut used = BTreeSet::new();
     let mut eid = 0u32;
     for &(p, b) in combos.iter().take(n) {
-        let (pk, pv, pr, pw) = PLACES[p];
+        let (pk, pv, pr, pw) = places[p];
         let (bk, bv, br, bw) = BUSINESSES[b];
         let legal = match rng.below(20) {
             0..=15 => Legal::Kk,
@@ -296,7 +327,7 @@ pub fn ja_suppliers(seed: u64, n: usize) -> Dataset {
         eid += 1;
     }
     Dataset {
-        name: format!("ja_suppliers_seed{seed}_{n}"),
+        name: format!("{label}_seed{seed}_{n}"),
         kind: Kind::Company,
         items,
         context: BTreeMap::new(),

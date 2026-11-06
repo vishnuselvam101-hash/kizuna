@@ -580,6 +580,20 @@ pub fn resolve_with_context(
     }
 }
 
+/// Record pairs blocking produces (raw keys, each pair sorted), before any scoring. For blocking evaluation:
+/// a true pair missing here can never be surfaced, whatever the weights.
+pub fn blocked_pairs(kind: Kind, keys: &[String], cfg: &Config) -> Vec<(String, String)> {
+    let mut ks: Vec<&String> = keys.iter().collect();
+    ks.sort();
+    ks.dedup();
+    let prep: Vec<Prepared> = ks.iter().map(|k| prepare(kind, k)).collect();
+    let bk: Vec<RecordKeys> = prep.iter().map(|p| block_keys(kind, p)).collect();
+    block::candidate_pairs(&bk, &cfg.block)
+        .into_iter()
+        .map(|(i, j)| (ks[i as usize].clone(), ks[j as usize].clone()))
+        .collect()
+}
+
 /// Legal form of a company name (for display and tests).
 pub fn legal_form(s: &str) -> Option<LegalForm> {
     company_key(s).legal
