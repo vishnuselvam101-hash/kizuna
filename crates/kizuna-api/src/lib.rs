@@ -14,6 +14,7 @@ pub mod config;
 pub mod crypto;
 pub mod db;
 pub mod decisions;
+pub mod delivery_receipts;
 pub mod error;
 pub mod evidence_pack;
 pub mod evidence_requests;

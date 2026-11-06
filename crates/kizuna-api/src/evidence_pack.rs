@@ -56,16 +56,15 @@ async fn capture_event(tx: &mut Tx, artifact: Uuid, sha: &str) -> ApiResult<Opti
     .await?)
 }
 
-/// The newest KZCP3 checkpoint under the current key that covers `upto`, with a valid signature; otherwise a new
-/// one when the caller may create checkpoints (`audit_verify`), else 409 `checkpoint_required`.
-async fn covering_checkpoint(
+/// The newest KZCP3 checkpoint of `tenant` under the current key, if it covers `upto` and its signature verifies.
+pub(crate) async fn latest_covering(
     st: &AppState,
-    p: &Principal,
+    tenant: Uuid,
     upto: i64,
     public: &[u8; 32],
-) -> ApiResult<audit::Checkpoint> {
+) -> ApiResult<Option<audit::Checkpoint>> {
     let kid = audit::key_id(public);
-    let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
+    let mut tx = db::tenant_tx(&st.pool, tenant).await?;
     let row: Option<audit::CpRow> = sqlx::query_as(&format!(
         "SELECT {} FROM audit_checkpoints WHERE merkle_root IS NOT NULL ORDER BY seq DESC, signed_at DESC LIMIT 1",
         audit::CP_COLS
@@ -78,7 +77,7 @@ async fn covering_checkpoint(
         && key == kid
     {
         let c = audit::Checkpoint {
-            tenant_id: p.tenant_id,
+            tenant_id: tenant,
             seq,
             head_hash: hex::encode(&head),
             signed_at_us: audit::micros(at),
@@ -89,8 +88,22 @@ async fn covering_checkpoint(
             merkle_root: root.map(hex::encode),
         };
         if checkpoint::verify(public, &audit::message_of(&c, &head), &sig) {
-            return Ok(c);
+            return Ok(Some(c));
         }
+    }
+    Ok(None)
+}
+
+/// The newest covering checkpoint (see [`latest_covering`]); otherwise a new one when the caller may create
+/// checkpoints (`audit_verify`), else 409 `checkpoint_required`.
+async fn covering_checkpoint(
+    st: &AppState,
+    p: &Principal,
+    upto: i64,
+    public: &[u8; 32],
+) -> ApiResult<audit::Checkpoint> {
+    if let Some(c) = latest_covering(st, p.tenant_id, upto, public).await? {
+        return Ok(c);
     }
     let may_sign = matches!(
         st.policy.authorize(
@@ -110,11 +123,15 @@ async fn covering_checkpoint(
     audit::sign_checkpoint(st, p).await
 }
 
-fn entry(r: &audit::Row, tree: &merkle::Tree) -> ApiResult<EventEntry> {
-    let proof = u64::try_from(r.0 - 1)
-        .ok()
-        .and_then(|i| tree.prove(i))
-        .ok_or(ApiError::Conflict("audit_chain_not_intact"))?;
+/// An audit row as a pack/receipt event entry, with its inclusion proof in `tree` (none when `tree` is `None`).
+pub(crate) fn entry(r: &audit::Row, tree: Option<&merkle::Tree>) -> ApiResult<EventEntry> {
+    let proof = match tree {
+        None => Vec::new(),
+        Some(tree) => u64::try_from(r.0 - 1)
+            .ok()
+            .and_then(|i| tree.prove(i))
+            .ok_or(ApiError::Conflict("audit_chain_not_intact"))?,
+    };
     Ok(EventEntry {
         seq: r.0,
         occurred_at_us: audit::micros(r.1),
@@ -128,6 +145,71 @@ fn entry(r: &audit::Row, tree: &merkle::Tree) -> ApiResult<EventEntry> {
         hash: h32(&r.9)?,
         proof: proof.into_iter().map(H32).collect(),
     })
+}
+
+/// The Merkle tree over the stored chain up to `cp`, checked against the signed root and head and against every row of
+/// `events` (a mismatch is recorded as `audit.chain_broken`), and `cp` as a pack/receipt checkpoint entry.
+pub(crate) async fn anchored(
+    st: &AppState,
+    tenant: Uuid,
+    user: Option<Uuid>,
+    via: &str,
+    cp: &audit::Checkpoint,
+    public: &[u8; 32],
+    events: &[audit::Row],
+) -> ApiResult<(CheckpointEntry, merkle::Tree)> {
+    let mut tx = db::tenant_snapshot_tx(&st.pool, tenant).await?;
+    let leaves = audit::chain_hashes(&mut tx, tenant, cp.seq).await?;
+    tx.commit().await?;
+    let tree = tokio::task::spawn_blocking(move || merkle::Tree::from_leaves(leaves))
+        .await
+        .map_err(ApiError::internal)?;
+    let root = hex::decode(cp.merkle_root.as_deref().unwrap_or_default()).unwrap_or_default();
+    let head = hex::decode(&cp.head_hash).unwrap_or_default();
+    let head_proof = tree.prove(tree.len().saturating_sub(1));
+    let leaf_ok = |seq: i64, h: &[u8]| {
+        u64::try_from(seq - 1)
+            .ok()
+            .and_then(|i| tree.prove(i).map(|p| (i, p)))
+            .is_some_and(|(i, p)| {
+                h.try_into()
+                    .is_ok_and(|h: [u8; 32]| merkle::verify(&tree.root(), tree.len(), i, &h, &p).is_ok())
+            })
+    };
+    if tree.root().as_slice() != root.as_slice()
+        || head_proof.is_none()
+        || !leaf_ok(cp.seq, &head)
+        || !events.iter().all(|e| leaf_ok(e.0, &e.9))
+    {
+        sec::record(
+            &st.pool,
+            Some(tenant),
+            Kind::AuditChainBroken,
+            user,
+            None,
+            json!({ "via": via, "checkpoint_seq": cp.seq }),
+        )
+        .await;
+        return Err(ApiError::Conflict("audit_chain_not_intact"));
+    }
+    let cp_entry = CheckpointEntry {
+        message_version: "KZCP3".into(),
+        seq: cp.seq,
+        head_hash: h32(&head)?,
+        signed_at_us: cp.signed_at_us,
+        prev_signature_sha256: h32(
+            &hex::decode(cp.prev_signature_sha256.as_deref().unwrap_or_default()).unwrap_or_default()
+        )?,
+        merkle_root: h32(&root)?,
+        key_id: cp.key_id.clone(),
+        public_key: H32(*public),
+        signature: H64(
+            <[u8; 64]>::try_from(hex::decode(&cp.signature).unwrap_or_default().as_slice())
+                .map_err(ApiError::internal)?,
+        ),
+        head_proof: head_proof.unwrap_or_default().into_iter().map(H32).collect(),
+    };
+    Ok((cp_entry, tree))
 }
 
 fn pretty(v: &Value) -> ApiResult<Vec<u8>> {
@@ -215,58 +297,20 @@ pub async fn export(
 
     // Signed checkpoint covering every event, and its Merkle tree rebuilt from the stored chain.
     let cp = covering_checkpoint(&st, &p, upto, &public).await?;
-    let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
-    let leaves = audit::chain_hashes(&mut tx, p.tenant_id, cp.seq).await?;
-    tx.commit().await?;
-    let tree = tokio::task::spawn_blocking(move || merkle::Tree::from_leaves(leaves))
-        .await
-        .map_err(ApiError::internal)?;
-    let root = hex::decode(cp.merkle_root.as_deref().unwrap_or_default()).unwrap_or_default();
-    let head = hex::decode(&cp.head_hash).unwrap_or_default();
-    let head_proof = tree.prove(tree.len().saturating_sub(1));
-    let leaf_ok = |seq: i64, h: &[u8]| {
-        u64::try_from(seq - 1)
-            .ok()
-            .and_then(|i| tree.prove(i).map(|p| (i, p)))
-            .is_some_and(|(i, p)| {
-                h.try_into()
-                    .is_ok_and(|h: [u8; 32]| merkle::verify(&tree.root(), tree.len(), i, &h, &p).is_ok())
-            })
-    };
-    if tree.root().as_slice() != root.as_slice()
-        || head_proof.is_none()
-        || !leaf_ok(cp.seq, &head)
-        || !events.iter().all(|e| leaf_ok(e.0, &e.9))
-    {
-        sec::record(
-            &st.pool,
-            Some(p.tenant_id),
-            Kind::AuditChainBroken,
-            Some(p.user_id),
-            None,
-            json!({ "via": "evidence_pack", "checkpoint_seq": cp.seq }),
-        )
-        .await;
-        return Err(ApiError::Conflict("audit_chain_not_intact"));
-    }
-    let cp_entry = CheckpointEntry {
-        message_version: "KZCP3".into(),
-        seq: cp.seq,
-        head_hash: h32(&head)?,
-        signed_at_us: cp.signed_at_us,
-        prev_signature_sha256: h32(
-            &hex::decode(cp.prev_signature_sha256.as_deref().unwrap_or_default()).unwrap_or_default()
-        )?,
-        merkle_root: h32(&root)?,
-        key_id: cp.key_id.clone(),
-        public_key: H32(public),
-        signature: H64(
-            <[u8; 64]>::try_from(hex::decode(&cp.signature).unwrap_or_default().as_slice())
-                .map_err(ApiError::internal)?,
-        ),
-        head_proof: head_proof.unwrap_or_default().into_iter().map(H32).collect(),
-    };
-    let event_entries = events.iter().map(|e| entry(e, &tree)).collect::<ApiResult<Vec<_>>>()?;
+    let (cp_entry, tree) = anchored(
+        &st,
+        p.tenant_id,
+        Some(p.user_id),
+        "evidence_pack",
+        &cp,
+        &public,
+        &events,
+    )
+    .await?;
+    let event_entries = events
+        .iter()
+        .map(|e| entry(e, Some(&tree)))
+        .collect::<ApiResult<Vec<_>>>()?;
 
     // Document bytes, re-checked against the captured hash on the way out (never ship a corrupted file).
     let mut pack_artifacts = Vec::new();

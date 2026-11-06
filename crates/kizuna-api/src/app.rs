@@ -182,6 +182,7 @@ pub fn router(st: AppState) -> Router {
         .route("/portal/requests", get(crate::portal::list_requests))
         .route("/portal/requests/{id}", get(crate::portal::get_request))
         .route("/portal/requests/{id}/uploads", get(crate::portal::list_uploads))
+        .route("/portal/uploads/{id}/receipt", get(crate::delivery_receipts::download))
         .route("/capa/cases", get(crate::capa::list).post(crate::capa::open))
         .route("/capa/cases/{id}", get(crate::capa::get))
         .route("/capa/cases/{id}/steps/{d}", put(crate::capa::save_step))

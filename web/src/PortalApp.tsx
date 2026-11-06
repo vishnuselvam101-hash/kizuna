@@ -4,7 +4,7 @@ import { Api, ApiError } from "./api";
 import { KnotMark } from "./brand";
 import { I18nProvider, useI18n, type Key, type Lang } from "./i18n";
 import { Prefs } from "./Prefs";
-import { Badge, Empty, Loading, Notice, useLoad } from "./ui";
+import { Badge, Empty, Loading, Notice, download, useLoad } from "./ui";
 
 // Supplier portal (/portal, ADR 0025). A separate, minimal app for an external supplier user: sign in (password +
 // authenticator, always), see the open requests addressed to the supplier, upload documents, follow their status.
@@ -29,6 +29,8 @@ export interface PortalUpload {
   status: string;
   reason_code: string | null;
   created_at: string;
+  /** Sealed delivery receipt (I7); null when the file was refused before it was stored. */
+  receipt_id: string | null;
 }
 interface PortalToken {
   access_token: string;
@@ -268,6 +270,15 @@ function RequestDetail({ api, id, onBack }: { api: Api; id: string; onBack: () =
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState<unknown>(null);
+  async function receipt(u: PortalUpload) {
+    setErr(null);
+    try {
+      const b = await api.blob("GET", `/portal/uploads/${u.id}/receipt`);
+      download(`kizuna-delivery-receipt-${u.receipt_id}.json`, b, "application/json");
+    } catch (x) {
+      setErr(x);
+    }
+  }
   async function upload(e: React.FormEvent) {
     e.preventDefault();
     const f = file.current?.files?.[0];
@@ -364,9 +375,15 @@ function RequestDetail({ api, id, onBack }: { api: Api; id: string; onBack: () =
                   </span>
                   <Badge group="upload" value={u.status} tone={UPLOAD_TONE[u.status]} />
                   {u.reason_code && <span className="hint">{tv("upload.reason", u.reason_code)}</span>}
+                  {u.receipt_id && (
+                    <button className="link" onClick={() => receipt(u)} aria-label={t("portal.receipt.for", { name: u.original_filename })}>
+                      {t("portal.receipt")}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
+            {ups.data?.some((u) => u.receipt_id) && <p className="hint">{t("portal.receipt.hint")}</p>}
           </div>
         </>
       )}

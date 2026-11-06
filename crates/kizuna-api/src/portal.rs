@@ -1099,9 +1099,13 @@ pub struct PortalUploadOut {
     pub reason_code: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    /// Sealed delivery receipt (innovation I7), downloadable at `/portal/uploads/{id}/receipt`; none when the file was
+    /// refused before it was stored.
+    pub receipt_id: Option<Uuid>,
 }
 
-const UP_COLS: &str = "id, original_filename, size_bytes, status, reason_code, created_at";
+const UP_COLS: &str = "id, original_filename, size_bytes, status, reason_code, created_at, \
+    (SELECT r.id FROM delivery_receipts r WHERE r.portal_upload_id = portal_uploads.id) AS receipt_id";
 
 /// GET /portal/requests/{id}/uploads — the caller's supplier's uploads against the request, with status.
 pub async fn list_uploads(

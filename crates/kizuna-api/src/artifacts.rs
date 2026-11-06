@@ -361,7 +361,7 @@ pub(crate) async fn ingest(
         // An 8D response for a CAPA case: linked as supplier evidence once accepted (now or on release).
         crate::capa::link_portal_upload(&mut tx, up.tenant, id).await?;
     }
-    audit::append(
+    let capture_seq = audit::append(
         &mut tx,
         up.tenant,
         Record {
@@ -379,6 +379,10 @@ pub(crate) async fn ingest(
         },
     )
     .await?;
+    // A supplier delivery is receipted in the same transaction as its capture (innovation I7).
+    if let (Session::Supplier(_), Some(pu)) = (&up.session, portal_upload) {
+        crate::delivery_receipts::issue(&mut tx, up, pu, id, &sha, data.len(), name, capture_seq).await?;
+    }
     // From here the commit outcome may be unknown: never discard; the sweep promotes or deletes by the row.
     let staged = staged.1.take();
     tx.commit().await?;
