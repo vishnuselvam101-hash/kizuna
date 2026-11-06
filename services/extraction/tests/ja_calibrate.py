@@ -4,9 +4,12 @@ Input: a `ja_eval.py --out` result (Rust pipeline claim rows, strict correctness
 dev_scan, never the independent holdout. Per group (`text|ocr` / `rule|fallback`): isotonic regression
 (pool-adjacent-violators) of correctness on OCR confidence, blocks of at least 10 values, estimates smoothed
 as (k+1)/(n+2) and re-pooled so they stay monotone. Tenant-synonym groups reuse the rule groups (a reviewer
-confirmed the label mapping; not measurable on a synthetic corpus). The review gate is the smallest
-threshold that, together with the mapper's fixed flags (OCR confidence below 0.80, guessed labels or
-subjects), flags at least 90 % of the wrong values on dev + dev_scan.
+confirmed the label mapping; not measurable on a synthetic corpus). The review gate is a split-conformal
+threshold (MATH v2; mirrors quality_stats::conformal::ConformalGate): score = -1 for values the mapper always
+flags (OCR confidence below 0.80, guessed labels or subjects), else p_correct; with the n wrong values of
+dev + dev_scan, k = ceil(0.9 (n + 1)) and the gate flags scores <= the k-th smallest, so a new wrong value
+exchangeable with them is flagged with probability >= 90 % (k > n: everything is flagged). The guarantee
+does not carry over to new layouts (see docs/research/MATH_V2_2026-11.md for the measured holdout coverage).
 
     uv run python tests/ja_calibrate.py ev.json --write ../../crates/domain-manufacturing/src/calibration.json
 """
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 FIT = ("train", "dev", "dev_scan")
@@ -91,6 +95,22 @@ def flagged(r: dict, p: int, gate: int) -> bool:
     return forced or p < gate
 
 
+def score(r: dict, p: int) -> int:
+    """Conformal score of a value: -1 when the mapper always flags it, else its calibrated p_correct (bps)."""
+    return -1 if flagged(r, 10**9, 0) else p
+
+
+def conformal_threshold(scores: list[int], alpha: float = 1 - TARGET_CATCH) -> int | None:
+    """k-th smallest score, k = ceil((1 - alpha)(n + 1)); None = flag everything (k > n)."""
+    k = max(1, math.ceil((1 - alpha) * (len(scores) + 1) - 1e-9))
+    return sorted(scores)[k - 1] if k <= len(scores) else None
+
+
+def gate_from_threshold(t: int | None) -> int:
+    """`flagged` uses p < gate: threshold t (flag score <= t) becomes gate t + 1; -1 = forced flags only."""
+    return 10_000 if t is None else max(0, min(10_000, t + 1))
+
+
 def fit(rows: list[dict]) -> dict:
     fit_rows = [r for r in rows if r["split"] in FIT and not r["field"].startswith("pdf_info")]
     groups: dict[str, list[list[int]]] = {}
@@ -104,13 +124,8 @@ def fit(rows: list[dict]) -> dict:
                 groups[f"{src}/tenant_synonym{geom}"] = groups[f"{src}/rule{geom}"]
     dev = [r for r in rows if r["split"] in GATE_SPLITS]
     wrong = [r for r in dev if not r["ok"]]
-    cands = sorted({p for s in groups.values() for _, p in s} | {0, 10_000})
-    gate = 10_000
-    for t in cands:
-        caught = sum(flagged(r, p_of(steps_of(groups, group(r)), conf(r)), t) for r in wrong)
-        if not wrong or caught / len(wrong) >= TARGET_CATCH:
-            gate = t
-            break
+    scores = [score(r, p_of(steps_of(groups, group(r)), conf(r))) for r in wrong]
+    gate = gate_from_threshold(conformal_threshold(scores)) if wrong else 0
     return {"version": "cal@2", "fitted_on": "+".join(FIT), "gate_bps": min(gate, 10_000), "groups": groups}
 
 

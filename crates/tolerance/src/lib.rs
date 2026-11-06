@@ -5,6 +5,8 @@
 //! * [`parse`] — JA/EN drawing and certificate notations, full-width aware, never panics.
 //! * [`conformance`] — ISO 14253-1 pass / fail / indeterminate with expanded uncertainty U.
 //! * [`stack`] — 1-D stack-up: worst case, RSS, modified RSS (Bender), predicted yield from supplier capability.
+//! * [`mc`] — Monte Carlo stack-up with non-normal links (uniform, triangular, skewed lognormal, Johnson fitted by
+//!   Slifker–Shapiro), Wilson 95 % CI on the yield, Pearson moment diagnostic.
 //!
 //! Design decisions: `docs/decisions/0020-tolerance-engine.md`.
 //! WARNING: the ISO 286 and ISO 965 table values were typed from memory and are NOT yet verified against the
@@ -13,6 +15,7 @@
 pub mod conformance;
 pub mod error;
 pub mod iso286;
+pub mod mc;
 pub mod normal;
 pub mod parse;
 pub mod spec;
@@ -23,6 +26,10 @@ pub mod units;
 pub use conformance::{Outcome, Verdict, judge};
 pub use error::{TolError, TolResult};
 pub use iso286::{Feature, Fit, Letter};
+pub use mc::{
+    Distribution, JohnsonFamily, JohnsonFit, McReport, PearsonDiagnostic, PearsonType, SplitMix64, Z95, monte_carlo,
+    monte_carlo_with, pearson_type, wilson_ci,
+};
 pub use parse::{Parsed, parse, parse_spec};
 pub use spec::{Bound, Spec};
 pub use stack::{Direction, Finding, Link, Process, StackOptions, StackReport, analyze};

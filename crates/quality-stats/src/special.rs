@@ -8,6 +8,8 @@
 //! | [`normal_quantile`] | Acklam's rational approximation (rel. error 1.15e-9) + one Halley refinement step | ~1e-14 |
 //! | [`chi2_cdf`], [`chi2_sf`] | P(k/2, x/2), Q(k/2, x/2) | as `gamma_p` |
 //! | [`chi2_quantile`] | bisection on `chi2_cdf` to 1e-12 relative | 1e-10 |
+//! | [`beta_inc`] | continued fraction with the modified Lentz method, symmetry I_x(a,b) = 1 − I_{1−x}(b,a) above the mean (Numerical Recipes §6.4; A&S 26.5.8) | ~1e-13 absolute |
+//! | [`student_t_cdf`], [`f_cdf`] | via [`beta_inc`] (A&S 26.7.1, 26.6.2) | as `beta_inc` |
 //! | [`binomial_sf`] | direct summation of the pmf from k upward using the ratio recurrence, start term from `ln_gamma` | ~1e-12 relative |
 //!
 //! Inputs outside a function's domain return NaN (internal use only; public statistics validate first).
@@ -244,6 +246,90 @@ pub fn chi2_quantile(p: f64, k: f64) -> f64 {
     0.5 * (lo + hi)
 }
 
+/// Regularised incomplete beta I_x(a, b), a, b > 0, x in [0, 1].
+pub fn beta_inc(a: f64, b: f64, x: f64) -> f64 {
+    if a.is_nan() || b.is_nan() || x.is_nan() || a <= 0.0 || b <= 0.0 || !(0.0..=1.0).contains(&x) {
+        return f64::NAN;
+    }
+    if x == 0.0 || x == 1.0 {
+        return x;
+    }
+    let ln_front = ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b) + a * x.ln() + b * (-x).ln_1p();
+    if x < (a + 1.0) / (a + b + 2.0) {
+        (ln_front.exp() * beta_cf(a, b, x) / a).clamp(0.0, 1.0)
+    } else {
+        (1.0 - ln_front.exp() * beta_cf(b, a, 1.0 - x) / b).clamp(0.0, 1.0)
+    }
+}
+
+fn beta_cf(a: f64, b: f64, x: f64) -> f64 {
+    let (qab, qap, qam) = (a + b, a + 1.0, a - 1.0);
+    let mut c = 1.0;
+    let mut d = 1.0 - qab * x / qap;
+    if d.abs() < TINY {
+        d = TINY;
+    }
+    d = 1.0 / d;
+    let mut h = d;
+    for m in 1..MAX_ITER {
+        let m = m as f64;
+        let m2 = 2.0 * m;
+        let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+        d = 1.0 + aa * d;
+        if d.abs() < TINY {
+            d = TINY;
+        }
+        c = 1.0 + aa / c;
+        if c.abs() < TINY {
+            c = TINY;
+        }
+        d = 1.0 / d;
+        h *= d * c;
+        let aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+        d = 1.0 + aa * d;
+        if d.abs() < TINY {
+            d = TINY;
+        }
+        c = 1.0 + aa / c;
+        if c.abs() < TINY {
+            c = TINY;
+        }
+        d = 1.0 / d;
+        let del = d * c;
+        h *= del;
+        if (del - 1.0).abs() < EPS {
+            break;
+        }
+    }
+    h
+}
+
+/// Student t CDF with `df` > 0 degrees of freedom.
+pub fn student_t_cdf(t: f64, df: f64) -> f64 {
+    if t.is_nan() || df.is_nan() || df <= 0.0 {
+        return f64::NAN;
+    }
+    if t.is_infinite() {
+        return if t > 0.0 { 1.0 } else { 0.0 };
+    }
+    let tail = 0.5 * beta_inc(df / 2.0, 0.5, df / (df + t * t));
+    if t > 0.0 { 1.0 - tail } else { tail }
+}
+
+/// F CDF with (`d1`, `d2`) degrees of freedom: P(F ≤ f).
+pub fn f_cdf(f: f64, d1: f64, d2: f64) -> f64 {
+    if f.is_nan() || d1.is_nan() || d2.is_nan() || d1 <= 0.0 || d2 <= 0.0 {
+        return f64::NAN;
+    }
+    if f <= 0.0 {
+        return 0.0;
+    }
+    if f.is_infinite() {
+        return 1.0;
+    }
+    beta_inc(d1 / 2.0, d2 / 2.0, d1 * f / (d1 * f + d2))
+}
+
 /// P(X ≥ k) for X ~ Binomial(n, p).
 pub fn binomial_sf(k: u64, n: u64, p: f64) -> f64 {
     if !(0.0..=1.0).contains(&p) {
@@ -320,6 +406,22 @@ mod tests {
     }
 
     #[test]
+    fn beta_t_f_reference_values() {
+        // I_0.5(2, 3) = P(Bin(4, 0.5) ≥ 2) = 11/16; I_x(1, 1) = x.
+        close(beta_inc(2.0, 3.0, 0.5), 11.0 / 16.0, 1e-13);
+        close(beta_inc(1.0, 1.0, 0.3), 0.3, 1e-14);
+        close(beta_inc(0.5, 0.5, 0.5), 0.5, 1e-13);
+        // t tables: t_{0.975, 10} = 2.228138851986, t_{0.995, 3} = 5.840909309733; t(1) is Cauchy.
+        close(student_t_cdf(2.228_138_851_986, 10.0), 0.975, 1e-11);
+        close(student_t_cdf(-5.840_909_309_733, 3.0), 0.005, 1e-11);
+        close(student_t_cdf(1.0, 1.0), 0.75, 1e-13);
+        close(student_t_cdf(0.0, 7.0), 0.5, 1e-15);
+        // F tables: F_{0.95}(5, 10) = 3.325834530, F_{0.99}(2, 20) = 5.848931925 (closed form 1 − (1 + f/10)^{−10}).
+        close(f_cdf(3.325_834_530, 5.0, 10.0), 0.95, 1e-9);
+        close(f_cdf(5.848_931_924_611, 2.0, 20.0), 0.99, 1e-9);
+    }
+
+    #[test]
     fn binomial_tail_matches_direct_sum() {
         // P(X ≥ 3), n = 10, p = 0.2: 1 − Σ_{0..2} = 1 − (0.1073741824 + 0.268435456 + 0.301989888) = 0.3222004736
         close(binomial_sf(3, 10, 0.2), 0.322_200_473_6, 1e-12);
@@ -340,6 +442,20 @@ mod tests {
             let z = normal_quantile(p);
             let back = if z > 0.0 { 1.0 - normal_sf(z) } else { normal_cdf(z) };
             proptest::prop_assert!((back - p).abs() <= 1e-13 + 1e-10 * p);
+        }
+
+        #[test]
+        fn beta_symmetry_and_monotone(a in 0.1f64..60.0, b in 0.1f64..60.0, x in 0.0f64..1.0, dx in 0.0f64..0.2) {
+            let i = beta_inc(a, b, x);
+            proptest::prop_assert!((0.0..=1.0).contains(&i));
+            proptest::prop_assert!((i + beta_inc(b, a, 1.0 - x) - 1.0).abs() < 1e-10);
+            proptest::prop_assert!(beta_inc(a, b, (x + dx).min(1.0)) >= i - 1e-12);
+        }
+
+        #[test]
+        fn t_cdf_is_symmetric_and_tends_to_normal(t in -8f64..8.0) {
+            proptest::prop_assert!((student_t_cdf(t, 5.0) + student_t_cdf(-t, 5.0) - 1.0).abs() < 1e-12);
+            proptest::prop_assert!((student_t_cdf(t, 1e6) - normal_cdf(t)).abs() < 1e-5);
         }
 
         #[test]
