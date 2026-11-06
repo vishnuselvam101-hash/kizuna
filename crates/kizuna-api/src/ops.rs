@@ -31,7 +31,7 @@ pub async fn status(State(st): State<AppState>, p: Principal) -> ApiResult<Json<
     let sandbox = json!({
         "mode": st.cfg.extraction_sandbox,
         "seccomp": match (st.cfg.extraction_sandbox.as_str(), crate::seccomp::program_bytes()) {
-            ("bwrap", Ok(_)) => json!({ "status": "enabled", "policy": "deny-list (ADR 0016)", "denied_syscalls": crate::seccomp::denied().len() }),
+            ("bwrap", Ok(_)) => json!({ "status": "enabled", "policy": "allowlist (ADR 0016)", "allowed_syscalls": crate::seccomp::allowed().len(), "denied_syscalls": crate::seccomp::denied().len() }),
             ("bwrap", Err(e)) => json!({ "status": "unavailable", "detail": e, "effect": "extraction refused" }),
             _ => json!({ "status": "off", "detail": "development sandbox mode" }),
         },

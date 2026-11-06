@@ -1,6 +1,6 @@
 # ADR 0016: Seccomp filter for the extraction worker
 
-Status: accepted (2026-11-05)
+Status: accepted (2026-11-05); amended 2026-11-06 (allowlist)
 
 ## Context
 ADR 0012 isolates the extraction worker with bubblewrap namespaces, `--cap-drop ALL`, prlimit and a read-only
@@ -48,3 +48,32 @@ socket (none today) would need a policy change and a new ADR.
   cannot push the service cgroup into OOM-killing the server.
 A full default-deny allowlist (strace-derived) remains the long-term goal; the residual default-allow surface is
 documented here.
+
+## Amendment 2026-11-06: allowlist (default EPERM)
+- The policy is now an allowlist. `scripts/seccomp-profile.sh` records every distinct worker request the extraction
+  test suite builds (`KIZUNA_REQUEST_DUMP`, `services/extraction/tests/conftest.py`; 289 requests on 2026-11-06:
+  CSV, XLSX, PDF, scanned-PDF OCR via tesseract, images, DXF, hostile inputs), replays each through the real worker in
+  the real sandbox without the filter under `strace -f` (syscalls from the sandboxed `execve` of prlimit on, including
+  choom, Python and tesseract children), and writes `reports/seccomp/profile-<arch>.json`. 45 distinct syscalls were
+  observed on x86-64; all are allowlisted except `socket`/`connect`, which glibc attempts for an nscd passwd lookup
+  (no `/etc/nsswitch.conf` in the sandbox) and which stay denied as before.
+- A small, listed margin of runtime calls the corpus did not hit is also allowed (`seccomp::allowed`: signal
+  return, thread exit, `madvise`, timeouts, `kill`/`tgkill` inside the sandbox PID namespace, `statx`, `dup*`, ...).
+  Every other syscall, including every syscall a future kernel adds and the x32 ABI, returns EPERM.
+- `ioctl` is allowed only for TCGETS, TCGETS2, FIONREAD, FIONBIO, FIOCLEX, FIONCLEX (low 32 bits of the request);
+  `clone` only without `CLONE_NEW*` flags; `clone3` → ENOSYS (second filter). bubblewrap now installs the clone3
+  filter first and the allowlist last, because the allowlist refuses `prctl(PR_SET_SECCOMP)`.
+- The deny list stays as the set that must never be allowlisted (unit test) and is still invoked at runtime in the
+  sandbox (every entry → EPERM).
+
+Tests: `seccomp_blocks_socket_ptrace_mount_in_sandbox` additionally checks that an unlisted harmless syscall
+(`getcpu`) and an unlisted ioctl (`TIOCGWINSZ`) get EPERM, that FIONREAD and a Python thread still work, and the
+control run without the filter; `committed_profile_is_covered_by_the_allowlist`;
+`policy_compiles_and_never_allows_a_denied_syscall`; the ignored `seccomp_profile_corpus` (run by the script) replays
+the corpus a second time with the filter on and requires the identical answer for every request (289/289 on
+2026-11-06).
+
+Consequences: a Python, pypdf, Pillow or tesseract upgrade can need a syscall outside the list; the symptom is a
+worker error (EPERM inside the worker), never a wider sandbox. Re-run `scripts/seccomp-profile.sh` after such
+upgrades and on any new architecture (only x86-64 has been profiled and tested;
+aarch64 has not been built or profiled). The profile covers what the test corpus exercises, not every possible document.

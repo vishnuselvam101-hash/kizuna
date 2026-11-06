@@ -69,7 +69,8 @@ KIZUNA_AUDIT_SIGNING_KEY=...
 #   kizuna-admin rotate-data-key   (re-encrypts TOTP/WebAuthn secrets under the current key)
 ```
 Run the server as the dedicated non-root `kizuna` user: the extraction sandbox then also applies a process limit
-(`--nproc`), which is skipped when running as root. bubblewrap also installs a seccomp deny-list filter (ADR 0016).
+(`--nproc`), which is skipped when running as root. bubblewrap also installs a seccomp allowlist filter (default EPERM, ADR 0016; regenerate the profile with
+`scripts/seccomp-profile.sh` after upgrading Python, pypdf or tesseract).
 
 Incident response (M5) runs inside the server (60 s sweep + inline triggers); thresholds are static defaults.
 Emergency recovery if containment ever blocks administrators: `kizuna-admin emergency-unlock <tenant-slug>`

@@ -1,16 +1,17 @@
 //! Seccomp policy for the extraction worker (ADR 0016). The filter is compiled with `seccompiler` (rust-vmm /
-//! Firecracker) to classic BPF and handed to bubblewrap (`bwrap --add-seccomp-fd FD`, twice), which installs it right before it
-//! executes the worker, after its own namespace and mount setup. The policy is a deny list: syscalls the worker never
-//! needs that would widen its reach (network, tracing other processes, mounts and namespaces, kernel keyrings, BPF,
-//! io_uring, module and clock administration) return EPERM. Any non-native ABI (e.g. i386 `int 0x80`) kills the
-//! process (seccompiler's architecture check).
+//! Firecracker) to classic BPF and handed to bubblewrap (`bwrap --add-seccomp-fd FD`, twice), which installs it right
+//! before it executes the worker, after its own namespace and mount setup. The policy is an allowlist derived from
+//! `strace -f` of the worker over the extraction corpus (`scripts/seccomp-profile.sh`): every other syscall returns
+//! EPERM, including the explicit deny list below (kept for the runtime refusal test and the status output). Any
+//! non-native ABI (e.g. i386 `int 0x80`) kills the process (seccompiler's architecture check).
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use seccompiler::{BpfProgram, SeccompAction, SeccompFilter, TargetArch};
 
-/// Syscalls refused inside the sandbox, by name (for the ADR, status output and tests) and number.
+/// High-value syscalls that must stay refused (never allowlisted; checked at runtime in the sandbox), by name and
+/// number.
 pub fn denied() -> Vec<(&'static str, i64)> {
     macro_rules! sys {
         ($($n:ident),* $(,)?) => { vec![$((stringify!($n), libc::$n as i64)),*] };
@@ -112,6 +113,127 @@ pub fn denied() -> Vec<(&'static str, i64)> {
     v
 }
 
+/// Syscalls the worker may make: everything `scripts/seccomp-profile.sh` observed over the extraction corpus
+/// (`reports/seccomp/profile-<arch>.json`) except the denied ones, plus a small margin of runtime calls a CPython /
+/// glibc / tesseract process can make on paths the corpus did not hit (signal return, thread exit, allocator
+/// trimming, timeouts and killing its own tesseract child inside the sandbox's PID namespace). `ioctl` and `clone`
+/// are further restricted by argument filters in [`program`]; `clone3` is answered with ENOSYS by the second filter.
+/// Everything else (including every syscall a future kernel adds and the x32 ABI) returns EPERM.
+pub fn allowed() -> Vec<(&'static str, i64)> {
+    macro_rules! sys {
+        ($($n:ident),* $(,)?) => { vec![$((stringify!($n), libc::$n as i64)),*] };
+    }
+    let mut v = sys![
+        // observed over the corpus (reports/seccomp/profile-x86_64.json), generic names
+        SYS_read,
+        SYS_write,
+        SYS_pread64,
+        SYS_lseek,
+        SYS_openat,
+        SYS_close,
+        SYS_fstat,
+        SYS_newfstatat,
+        SYS_readlinkat,
+        SYS_getdents64,
+        SYS_fcntl,
+        SYS_ioctl, // argument filter: terminal/fd queries only (IOCTLS)
+        SYS_pipe2,
+        SYS_mmap,
+        SYS_mprotect,
+        SYS_munmap,
+        SYS_mremap,
+        SYS_brk,
+        SYS_futex,
+        SYS_rt_sigaction,
+        SYS_rt_sigprocmask,
+        SYS_execve,
+        SYS_wait4,
+        SYS_exit_group,
+        SYS_getpid,
+        SYS_gettid,
+        SYS_getuid,
+        SYS_getrandom,
+        SYS_prlimit64,
+        SYS_sched_getaffinity,
+        SYS_set_robust_list,
+        SYS_set_tid_address,
+        SYS_rseq,
+        SYS_clock_nanosleep,
+        SYS_epoll_create1,
+        // margin: runtime paths the corpus did not hit
+        SYS_rt_sigreturn,
+        SYS_restart_syscall,
+        SYS_sigaltstack,
+        SYS_exit,
+        SYS_clone,  // argument filter: no namespace flags
+        SYS_clone3, // the second filter turns it into ENOSYS (glibc then uses clone)
+        SYS_madvise,
+        SYS_sched_yield,
+        SYS_nanosleep,
+        SYS_clock_gettime,
+        SYS_clock_getres,
+        SYS_gettimeofday,
+        SYS_getppid,
+        SYS_geteuid,
+        SYS_getgid,
+        SYS_getegid,
+        SYS_uname,
+        SYS_sysinfo,
+        SYS_statx,
+        SYS_fstatfs,
+        SYS_getcwd,
+        SYS_faccessat,
+        SYS_faccessat2,
+        SYS_dup,
+        SYS_dup3,
+        SYS_ppoll,
+        SYS_pselect6,
+        SYS_epoll_ctl,
+        SYS_epoll_pwait,
+        SYS_waitid,
+        SYS_kill,   // only reaches processes in the sandbox's own PID namespace (timeout of tesseract)
+        SYS_tgkill, // abort()/raise() on itself
+    ];
+    #[cfg(target_arch = "x86_64")]
+    v.extend(sys![
+        // observed, legacy x86-64 entry points
+        SYS_arch_prctl,
+        SYS_access,
+        SYS_open,
+        SYS_stat,
+        SYS_lstat,
+        SYS_readlink,
+        SYS_poll,
+        SYS_vfork,
+        // margin
+        SYS_pipe,
+        SYS_dup2,
+        SYS_select,
+        SYS_epoll_wait,
+        SYS_time,
+    ]);
+    v
+}
+
+/// `ioctl` requests the worker may issue (compared on the low 32 bits): terminal attribute queries (`isatty`,
+/// observed: TCGETS2) and plain fd queries. Everything else, e.g. TIOCSTI or device ioctls, returns EPERM.
+pub const IOCTLS: [(&str, u64); 6] = [
+    ("TCGETS", 0x5401),
+    ("TCGETS2", 0x802C_542A),
+    ("FIONREAD", 0x541B),
+    ("FIONBIO", 0x5421),
+    ("FIOCLEX", 0x5451),
+    ("FIONCLEX", 0x5450),
+];
+
+/// Allowlisted syscall names without the `SYS_` prefix (as strace prints them).
+pub fn allowed_names() -> Vec<String> {
+    allowed()
+        .iter()
+        .map(|(n, _)| n.trim_start_matches("SYS_").to_string())
+        .collect()
+}
+
 fn arch() -> Result<TargetArch, String> {
     TargetArch::try_from(std::env::consts::ARCH).map_err(|e| e.to_string())
 }
@@ -128,23 +250,33 @@ pub const CLONE_NS_FLAGS: [u64; 8] = [
     0x80, // CLONE_NEWTIME
 ];
 
-/// Compiles the main policy for this host's architecture: the deny list (EPERM) plus `clone` with any namespace flag.
+/// Compiles the main policy for this host's architecture: default EPERM; the allowlist is allowed, `clone` only
+/// without namespace flags and `ioctl` only with an [`IOCTLS`] request. The deny list never overlaps the allowlist
+/// (unit test), so every denied syscall gets the default EPERM.
 pub fn program() -> Result<BpfProgram, String> {
     use seccompiler::{SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompRule};
-    let mut rules: BTreeMap<i64, Vec<SeccompRule>> = denied().into_iter().map(|(_, n)| (n, vec![])).collect();
-    let clone_rules = CLONE_NS_FLAGS
-        .iter()
-        .map(|f| {
-            SeccompCondition::new(0, SeccompCmpArgLen::Qword, SeccompCmpOp::MaskedEq(*f), *f)
-                .and_then(|c| SeccompRule::new(vec![c]))
-                .map_err(|e| e.to_string())
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    rules.insert(libc::SYS_clone, clone_rules);
+    let rule = |arg: u8, len: SeccompCmpArgLen, op: SeccompCmpOp, val: u64| {
+        SeccompCondition::new(arg, len, op, val)
+            .and_then(|c| SeccompRule::new(vec![c]))
+            .map_err(|e| e.to_string())
+    };
+    let mut rules: BTreeMap<i64, Vec<SeccompRule>> = allowed().into_iter().map(|(_, n)| (n, vec![])).collect();
+    let ns_mask = CLONE_NS_FLAGS.iter().fold(0, |m, f| m | f);
+    rules.insert(
+        libc::SYS_clone,
+        vec![rule(0, SeccompCmpArgLen::Qword, SeccompCmpOp::MaskedEq(ns_mask), 0)?],
+    );
+    rules.insert(
+        libc::SYS_ioctl,
+        IOCTLS
+            .iter()
+            .map(|(_, req)| rule(1, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, *req))
+            .collect::<Result<Vec<_>, _>>()?,
+    );
     let filter = SeccompFilter::new(
         rules,
-        SeccompAction::Allow,
         SeccompAction::Errno(libc::EPERM as u32),
+        SeccompAction::Allow,
         arch()?,
     )
     .map_err(|e| e.to_string())?;
@@ -209,27 +341,33 @@ pub fn program_bytes() -> Result<&'static [u8], String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[test]
-    fn policy_compiles_and_covers_required_syscalls() {
+    fn policy_compiles_and_never_allows_a_denied_syscall() {
         let b = program_bytes().unwrap();
         assert_eq!(b.len() % 8, 0);
         assert!(
-            b.len() / 8 > denied().len(),
-            "one jump per denied syscall plus prologue"
+            b.len() / 8 > allowed().len(),
+            "one jump per allowed syscall plus prologue"
         );
-        let names: Vec<&str> = denied().iter().map(|(n, _)| *n).collect();
+        let denied: BTreeSet<i64> = denied().iter().map(|(_, n)| *n).collect();
+        let allowed: Vec<(&str, i64)> = allowed();
+        let numbers: BTreeSet<i64> = allowed.iter().map(|(_, n)| *n).collect();
+        assert_eq!(numbers.len(), allowed.len(), "no duplicates in the allowlist");
+        for (n, nr) in &allowed {
+            assert!(!denied.contains(nr), "{n} is both allowed and denied");
+        }
         for n in [
             "SYS_socket",
+            "SYS_connect",
             "SYS_ptrace",
             "SYS_mount",
             "SYS_unshare",
             "SYS_bpf",
-            "SYS_io_uring_setup",
         ] {
-            assert!(names.contains(&n), "{n}");
+            assert!(super::denied().iter().any(|(d, _)| *d == n), "{n}");
         }
-        // Never deny what the worker needs to run.
         for n in [
             "SYS_read",
             "SYS_write",
@@ -237,8 +375,35 @@ mod tests {
             "SYS_mmap",
             "SYS_openat",
             "SYS_exit_group",
+            "SYS_rt_sigreturn",
         ] {
-            assert!(!names.contains(&n), "{n}");
+            assert!(allowed.iter().any(|(a, _)| *a == n), "{n}");
+        }
+    }
+
+    /// The committed profile (scripts/seccomp-profile.sh) is covered: every syscall the worker made over the corpus is
+    /// allowlisted unless it is on the deny list (the worker already runs with those refused, e.g. glibc's nscd
+    /// `socket`/`connect` probe), and every observed ioctl request is allowed.
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn committed_profile_is_covered_by_the_allowlist() {
+        let raw = include_str!("../../../reports/seccomp/profile-x86_64.json");
+        let profile: serde_json::Value = serde_json::from_str(raw).unwrap();
+        assert!(profile["failed"].as_array().unwrap().is_empty());
+        assert!(profile["requests"].as_u64().unwrap() > 100, "corpus too small");
+        let allowed: BTreeSet<String> = allowed_names().into_iter().collect();
+        let denied: BTreeSet<String> = denied()
+            .iter()
+            .map(|(n, _)| n.trim_start_matches("SYS_").to_string())
+            .collect();
+        for name in profile["syscalls"].as_object().unwrap().keys() {
+            assert!(
+                allowed.contains(name) || denied.contains(name),
+                "observed {name} is neither allowed nor denied"
+            );
+        }
+        for req in profile["ioctl_requests"].as_array().unwrap() {
+            assert!(IOCTLS.iter().any(|(n, _)| req == n), "ioctl {req} not allowed");
         }
     }
 }
