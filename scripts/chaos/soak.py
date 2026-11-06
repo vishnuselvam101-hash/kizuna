@@ -417,7 +417,7 @@ def main():
                 except Exception as e:  # noqa: BLE001 - sampler must not die
                     s["metrics_error"] = str(e)[:100]
             if a.psql_cmd:
-                out = subprocess.run(a.psql_cmd.split() + ["-c", "SELECT count(*) FROM pg_stat_activity WHERE "
+                out = subprocess.run(a.psql_cmd.split() + ["-qAt", "-c", "SELECT count(*) FROM pg_stat_activity WHERE "
                                      "datname = current_database() AND pid <> pg_backend_pid()"],
                                      capture_output=True, text=True).stdout.strip()
                 s["db_conns"] = int(out) if out.isdigit() else None
