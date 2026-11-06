@@ -113,6 +113,8 @@ pub fn migrator(roles: &Roles) -> sqlx::migrate::Migrator {
 }
 
 pub async fn connect(url: &str, max: u32) -> Result<PgPool, sqlx::Error> {
+    // Connections are tested before reuse only when idle for a while: a pool whose backends were terminated
+    // (failover, pg_terminate_backend) heals on the next acquire instead of failing one request per dead connection.
     PgPoolOptions::new()
         .max_connections(max)
         .acquire_timeout(std::time::Duration::from_secs(10))
@@ -134,10 +136,13 @@ pub async fn portal_tx(pool: &PgPool, tenant: Uuid, supplier: Uuid) -> Result<Tx
     let mut tx = pool.begin().await?;
     sqlx::query("SET TRANSACTION READ ONLY").execute(&mut *tx).await?;
     sqlx::query(
-        "SELECT set_config('kizuna.portal_tenant_id', $1, true), set_config('kizuna.portal_supplier_id', $2, true)",
+        "SELECT set_config('kizuna.portal_tenant_id', $1, true), set_config('kizuna.portal_supplier_id', $2, true), \
+         set_config('statement_timeout', coalesce($3, current_setting('statement_timeout')), true)",
     )
     .bind(tenant.to_string())
     .bind(supplier.to_string())
+    // Outside a request scope the session's setting stays.
+    .bind(crate::admission::current_statement_timeout_ms().map(|ms| ms.to_string()))
     .execute(&mut *tx)
     .await?;
     Ok(tx)
@@ -213,11 +218,24 @@ mod role_tests {
     }
 }
 
+/// Sets the transaction's RLS tenant and, inside a request or job scope, its route class's `statement_timeout`
+/// (one round trip either way).
 pub async fn set_tenant(tx: &mut Tx, tenant: Uuid) -> Result<(), sqlx::Error> {
-    sqlx::query("SELECT set_config('kizuna.tenant_id', $1, true)")
-        .bind(tenant.to_string())
-        .execute(&mut **tx)
-        .await?;
+    match crate::admission::current_statement_timeout_ms() {
+        Some(ms) => {
+            sqlx::query("SELECT set_config('kizuna.tenant_id', $1, true), set_config('statement_timeout', $2, true)")
+                .bind(tenant.to_string())
+                .bind(ms.to_string())
+                .execute(&mut **tx)
+                .await?;
+        }
+        None => {
+            sqlx::query("SELECT set_config('kizuna.tenant_id', $1, true)")
+                .bind(tenant.to_string())
+                .execute(&mut **tx)
+                .await?;
+        }
+    }
     Ok(())
 }
 

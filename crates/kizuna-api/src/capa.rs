@@ -702,7 +702,15 @@ pub async fn open(State(st): State<AppState>, p: Principal, ApiJson(r): ApiJson<
     .bind(&supplier)
     .bind(p.user_id)
     .execute(&mut *tx)
-    .await?;
+    .await
+    .map_err(|e| match &e {
+        // Two concurrent opens of the same source both pass the check above; the partial unique index decides
+        // (stability soak 2026-11-06: was a 500).
+        sqlx::Error::Database(d) if d.constraint() == Some("capa_cases_active_source") => {
+            ApiError::Conflict("case_already_open")
+        }
+        _ => ApiError::from(e),
+    })?;
     for d in Discipline::ALL {
         // D2 starts with the finding's evidence cited, so the problem description is anchored to it.
         let content = if d == Discipline::PROBLEM {

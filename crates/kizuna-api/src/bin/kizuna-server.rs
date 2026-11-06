@@ -18,10 +18,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "refusing to run as root: use a dedicated user (or KIZUNA_ALLOW_ROOT=1 for local development)".into(),
         );
     }
-    let pool = db::connect(cfg.database_url.expose(), 16).await?;
+    let pool = db::connect(cfg.database_url.expose(), cfg.stability.db_pool_size).await?;
+    // Background jobs get their own small pool: a job backlog never takes request connections.
+    let job_pool = db::connect(cfg.database_url.expose(), cfg.stability.job_pool_size).await?;
+    let metrics_bind = kizuna_api::metrics::metrics_bind(|k| std::env::var(k).ok())?;
     db::assert_runtime_role(&pool).await?;
     let bind = cfg.bind;
-    let sweep_pool = pool.clone();
+    let sweep_pool = job_pool.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
         loop {
@@ -31,11 +34,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
-    kizuna_api::review_batches::spawn_worker(pool.clone(), cfg.review_batch_chunk, std::time::Duration::from_secs(2));
+    let (review_chunk, job_workers, job_timeout) = (
+        cfg.review_batch_chunk,
+        cfg.stability.job_workers,
+        cfg.stability.statement_timeout(kizuna_api::admission::RouteClass::Job),
+    );
     let staging_max_age = std::time::Duration::from_secs(cfg.staging_max_age_secs);
     let mut state = AppState::new(pool.clone(), cfg);
     kizuna_api::storage::spawn_staging_sweeper(
-        pool.clone(),
+        job_pool.clone(),
         std::sync::Arc::clone(&state.store),
         staging_max_age,
         std::time::Duration::from_secs(600),
@@ -54,15 +61,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
     ));
     kizuna_api::capa::spawn_overdue_worker(
-        pool.clone(),
+        job_pool.clone(),
         std::sync::Arc::clone(&state.alerts),
         std::time::Duration::from_secs(300),
     );
-    kizuna_api::alerts::spawn_incident_poller(
-        pool,
-        std::sync::Arc::clone(&state.alerts),
-        std::time::Duration::from_secs(60),
+    // Review batches, verification runs, GC and alert delivery run as leased, retry-safe jobs (replaces the 2 s
+    // review-batch poller and the in-memory incident-alert cursor).
+    kizuna_api::jobs::spawn_workers(
+        kizuna_api::jobs::JobCtx {
+            pool: job_pool.clone(),
+            alerts: std::sync::Arc::clone(&state.alerts),
+            metrics: std::sync::Arc::clone(&state.metrics),
+            review_chunk,
+            statement_timeout_ms: job_timeout,
+            lease_secs: kizuna_api::jobs::LEASE_SECS,
+        },
+        job_workers,
+        std::time::Duration::from_millis(500),
     );
+    kizuna_api::jobs::spawn_scheduler(
+        job_pool.clone(),
+        state.alerts.enabled(),
+        std::time::Duration::from_secs(30),
+    );
+    drop(pool);
+    if let Some(addr) = metrics_bind {
+        let l = tokio::net::TcpListener::bind(addr).await?;
+        let mr = kizuna_api::metrics::router(state.clone(), Some(job_pool));
+        tracing::info!(%addr, "metrics listening (loopback only)");
+        tokio::spawn(async move {
+            if let Err(e) = axum::serve(l, mr).await {
+                tracing::error!(error = %e, "metrics listener failed");
+            }
+        });
+    }
+    let draining = std::sync::Arc::clone(&state.draining);
     let app = router(state);
     let limits = kizuna_api::serve::ServeLimits::from_lookup(|k| std::env::var(k).ok())?;
     let listener = tokio::net::TcpListener::bind(bind).await?;
@@ -70,7 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "kizuna-server listening");
     // Own accept loop: header-read deadline + connection cap (red-team 2026-11-05 F3); SIGTERM/Ctrl-C stop accepting
     // and drain in-flight requests (chaos C3).
-    kizuna_api::serve::serve(listener, app, limits, shutdown_signal()).await?;
+    let shutdown = async move {
+        shutdown_signal().await;
+        kizuna_api::metrics::set_draining(&draining);
+    };
+    kizuna_api::serve::serve(listener, app, limits, shutdown).await?;
     Ok(())
 }
 

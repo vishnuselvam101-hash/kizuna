@@ -135,8 +135,19 @@ async fn large_invalidation_commits_and_is_applied_by_a_resumable_batch() {
     };
     flagged(2).await;
 
-    // 5. Restart: a fresh worker run resumes and finishes; a second run is a no-op (idempotent).
-    assert!(run_pending(&c.st.pool, 2).await.unwrap() >= 3);
+    // 5. Restart: the batch's job (queued in the creating transaction: outbox) resumes and finishes it; a second
+    // run is a no-op (idempotent).
+    let jc = kizuna_api::jobs::JobCtx {
+        pool: c.st.pool.clone(),
+        alerts: std::sync::Arc::clone(&c.st.alerts),
+        metrics: std::sync::Arc::clone(&c.st.metrics),
+        review_chunk: 2,
+        statement_timeout_ms: 60_000,
+        lease_secs: 60,
+    };
+    let (_, out) = kizuna_api::jobs::run_one(&jc, t, "w").await.unwrap().unwrap();
+    assert_eq!(out, kizuna_api::jobs::Outcome::Done);
+    assert!(kizuna_api::jobs::run_one(&jc, t, "w").await.unwrap().is_none());
     assert_eq!(run_pending(&c.st.pool, 2).await.unwrap(), 0);
     flagged(7).await;
     let b = c.get(&format!("/api/v1/review-batches/{bid}"), &tok).await.body;

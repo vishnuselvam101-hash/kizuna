@@ -24,20 +24,21 @@ async fn slow_ai(sleep_ms: u64) -> String {
 }
 
 /// Session-level advisory locks held by any backend of this database for the extraction key of `artifact`.
-async fn extraction_locks(c: &Ctx, tenant: uuid::Uuid, artifact: &str) -> i64 {
-    sqlx::query_scalar(
-        "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted \
-         AND ((classid::bigint << 32) | objid::bigint) = hashtextextended($1, 19)",
-    )
-    .bind(format!("{tenant}:{artifact}"))
-    .fetch_one(&c.owner)
-    .await
-    .unwrap()
+/// Extraction leases held for `artifact` (the per-artifact extraction lock is a lease row since migration 0015).
+async fn extraction_leases(c: &Ctx, tenant: uuid::Uuid, artifact: &str) -> i64 {
+    let mut tx = kizuna_api::db::tenant_tx(&c.owner, tenant).await.unwrap();
+    let n = sqlx::query_scalar("SELECT count(*) FROM extraction_leases WHERE artifact_id = $1::uuid")
+        .bind(artifact)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    n
 }
 
 /// Chaos C1: a client that disconnects while its extraction is running (here: during a slow AI call) cancels the
-/// handler. The per-artifact extraction lock is a session-level advisory lock on a pooled connection; it must not
-/// survive the cancelled request, or the artifact answers `extraction_in_progress` until that connection dies.
+/// handler. The per-artifact extraction lease must not survive the cancelled request, or the artifact answers
+/// `extraction_in_progress` until the lease expires.
 #[tokio::test]
 async fn cancelled_extraction_releases_its_lock() {
     let base = slow_ai(4_000).await;
@@ -82,17 +83,76 @@ async fn cancelled_extraction_releases_its_lock() {
         "extraction finished before the client gave up: {:?}",
         cancelled.map(|r| r.body)
     );
-    let mut held = 1;
-    for _ in 0..40 {
-        held = extraction_locks(&c, t, &id).await;
-        if held == 0 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    assert_eq!(held, 0, "the cancelled request left the extraction lock held");
+    // An immediate retry must not see the cancelled request's lease (its release runs in a background task: the
+    // retry waits for it instead of answering 409 extraction_in_progress).
     let r = c.post(&path, Some(&tok), json!({})).await;
     assert_eq!(r.status, axum::http::StatusCode::OK, "{:?}", r.body);
+    assert_eq!(extraction_leases(&c, t, &id).await, 0, "lease released after the retry");
+}
+
+/// A lease whose holder died (crash, no Drop) blocks extraction only until it expires.
+#[tokio::test]
+async fn stuck_extraction_lease_expires() {
+    let c = ctx().await;
+    let (t, slug, _, _) = c.admin().await;
+    let (_, email) = c.user(t, "analyst").await;
+    let tok = c.token(&slug, &email).await;
+    let up = c
+        .upload(
+            &tok,
+            "a.csv",
+            b"Part Number,Material\nLD-1,SUS304\n",
+            Some("spec_document"),
+        )
+        .await;
+    let id = up.body["artifact"]["id"].as_str().unwrap().to_owned();
+    let path = format!("/api/v1/artifacts/{id}/extract");
+    let lease = |expiry: &'static str| {
+        let (c, id) = (&c, id.clone());
+        async move {
+            let mut tx = kizuna_api::db::tenant_tx(&c.owner, t).await.unwrap();
+            sqlx::query(&format!(
+                "INSERT INTO extraction_leases (tenant_id, artifact_id, holder, expires_at) VALUES ($1, $2::uuid, $3, {expiry}) \
+                 ON CONFLICT (tenant_id, artifact_id) DO UPDATE SET expires_at = EXCLUDED.expires_at"
+            ))
+            .bind(t)
+            .bind(&id)
+            .bind(uuid::Uuid::now_v7())
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+            tx.commit().await.unwrap();
+        }
+    };
+    lease("now() + interval '1 hour'").await;
+    let r = c.post(&path, Some(&tok), json!({})).await;
+    assert_eq!(r.status, axum::http::StatusCode::CONFLICT, "{:?}", r.body);
+    assert_eq!(r.body["error"], "extraction_in_progress");
+    // A lease being released (as a cancelled request's Drop does, from a background task) is waited for: the
+    // retry succeeds instead of answering 409. Deterministic form of the intermittent C1 race.
+    let (owner, id2) = (c.owner.clone(), id.clone());
+    let releaser = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let mut tx = kizuna_api::db::tenant_tx(&owner, t).await.unwrap();
+        sqlx::query("DELETE FROM extraction_leases WHERE artifact_id = $1::uuid")
+            .bind(&id2)
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+    });
+    let r = c.post(&path, Some(&tok), json!({})).await;
+    releaser.await.unwrap();
+    assert_eq!(r.status, axum::http::StatusCode::OK, "{:?}", r.body);
+    // Now extracted: the remaining checks go through re-extraction (same lease).
+    let re = format!("/api/v1/artifacts/{id}/reextract");
+    lease("now() + interval '1 hour'").await;
+    let r = c.post(&re, Some(&tok), json!({"reason": "lease test"})).await;
+    assert_eq!(r.body["error"], "extraction_in_progress", "{:?}", r.body);
+    lease("now() - interval '1 second'").await;
+    let r = c.post(&re, Some(&tok), json!({"reason": "lease test"})).await;
+    assert_eq!(r.status, axum::http::StatusCode::OK, "{:?}", r.body);
+    assert_eq!(extraction_leases(&c, t, &id).await, 0);
 }
 
 /// Chaos C2: systemd stops services with SIGTERM. The server must drain in-flight requests and exit 0 on SIGTERM,

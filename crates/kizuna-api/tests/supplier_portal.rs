@@ -501,7 +501,7 @@ async fn supplier_token_is_refused_on_every_tenant_route() {
     let w = world().await;
     let mut checked = 0;
     for path in routes() {
-        if path.starts_with("/portal/") || path == "/healthz" {
+        if path.starts_with("/portal/") || path == "/healthz" || path == "/readyz" {
             continue;
         }
         // Real identifiers of other rows, so a scope bug would surface as data.
@@ -756,4 +756,43 @@ async fn upload_status_follows_release_and_rejection() {
     )
     .await;
     assert_eq!(w.c.get(&list, &w.a.token).await.body[0]["status"], "not_accepted");
+}
+
+/// STABILITY_2026-11-06: Idempotency-Key works for supplier principals too, scoped per supplier user.
+#[tokio::test]
+async fn portal_upload_with_idempotency_key_is_stored_once() {
+    let w = world().await;
+    let send = |token: &str, key: &str| {
+        let boundary = "kizunaportalidem";
+        let mut body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"r.pdf\"\r\nContent-Type: application/pdf\r\n\r\n"
+        )
+        .into_bytes();
+        body.extend_from_slice(b"%PDF-1.7\n% idem\n%%EOF\n");
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        Request::builder()
+            .method(Method::POST)
+            .uri(format!("/api/v1/portal/requests/{}/uploads", w.a_open))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+            .header("idempotency-key", key)
+            .body(Body::from(body))
+            .unwrap()
+    };
+    let first = w.c.raw(send(&w.a.token, "p-1")).await;
+    assert_eq!(first.status, StatusCode::OK, "{:?}", first.body);
+    let again = w.c.raw(send(&w.a.token, "p-1")).await;
+    assert_eq!(again.body, first.body);
+    assert_eq!(again.headers["idempotent-replayed"], "true");
+    let r =
+        w.c.get(&format!("/api/v1/portal/requests/{}/uploads", w.a_open), &w.a.token)
+            .await;
+    assert_eq!(r.body.as_array().unwrap().len(), 1, "one upload, not two");
+    let mut tx = otx(&w.c, w.tenant).await;
+    let kind: String = sqlx::query_scalar("SELECT principal_kind FROM idempotency_keys WHERE key = 'p-1'")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(kind, "supplier");
 }
