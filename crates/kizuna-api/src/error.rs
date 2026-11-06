@@ -23,6 +23,15 @@ pub enum ApiError {
     UnsupportedMedia,
     #[error("too many requests")]
     TooManyRequests,
+    /// Backpressure: a bounded admission queue is full (uploads, extraction, heavy reports). Retry after N seconds.
+    #[error("server busy: {0}")]
+    Busy(&'static str, u64),
+    /// Well-formed but semantically refused (e.g. an Idempotency-Key reused with a different request).
+    #[error("unprocessable: {0}")]
+    Unprocessable(&'static str),
+    /// A statement ran past its route class's `statement_timeout`: retryable.
+    #[error("database timeout")]
+    DbTimeout,
     /// The database is restarting or unreachable (connection lost, pool exhausted): retryable.
     #[error("database unavailable: {0}")]
     DbUnavailable(String),
@@ -64,6 +73,12 @@ impl From<sqlx::Error> for ApiError {
         // Connection-level failures (PostgreSQL restarting, connections terminated, pool exhausted) are an outage the
         // client can retry, not an internal error (chaos C5). SQLSTATE class 08 = connection exception, 57P01-57P03 =
         // admin/crash shutdown, cannot connect now.
+        // 57014 query_canceled: the route class's statement_timeout fired (or an operator cancelled the query).
+        if let sqlx::Error::Database(d) = &e
+            && d.code().as_deref() == Some("57014")
+        {
+            return ApiError::DbTimeout;
+        }
         let outage = match &e {
             sqlx::Error::Io(_) | sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed | sqlx::Error::WorkerCrashed => {
                 true
@@ -124,6 +139,14 @@ impl IntoResponse for ApiError {
                 return r;
             }
             ApiError::StorageFull => (StatusCode::INSUFFICIENT_STORAGE, "storage_full"),
+            ApiError::Unprocessable(c) => (StatusCode::UNPROCESSABLE_ENTITY, *c),
+            ApiError::Busy(gate, secs) => {
+                return retry_after(StatusCode::TOO_MANY_REQUESTS, "server_busy", Some(gate), *secs);
+            }
+            ApiError::DbTimeout => {
+                tracing::warn!("statement timeout");
+                return retry_after(StatusCode::SERVICE_UNAVAILABLE, "database_timeout", None, 5);
+            }
             ApiError::Internal(msg) => {
                 tracing::error!(error = %msg, "internal error");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
@@ -131,6 +154,18 @@ impl IntoResponse for ApiError {
         };
         (status, Json(serde_json::json!({ "error": code }))).into_response()
     }
+}
+
+fn retry_after(status: StatusCode, code: &str, gate: Option<&str>, secs: u64) -> Response {
+    let body = match gate {
+        Some(g) => serde_json::json!({ "error": code, "gate": g }),
+        None => serde_json::json!({ "error": code }),
+    };
+    let mut r = (status, Json(body)).into_response();
+    if let Ok(v) = axum::http::HeaderValue::from_str(&secs.max(1).to_string()) {
+        r.headers_mut().insert(axum::http::header::RETRY_AFTER, v);
+    }
+    r
 }
 
 /// JSON body extractor whose rejections use [`ApiError`].
@@ -163,6 +198,19 @@ mod tests {
         }
         let r = ApiError::from(sqlx::Error::RowNotFound).into_response();
         assert_eq!(r.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    /// Backpressure answers 429 with Retry-After; a statement timeout is a retryable 503.
+    #[test]
+    fn busy_is_429_with_retry_after() {
+        let r = ApiError::Busy("upload", 3).into_response();
+        assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(r.headers()[axum::http::header::RETRY_AFTER], "3");
+        let r = ApiError::DbTimeout.into_response();
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(r.headers().contains_key(axum::http::header::RETRY_AFTER));
+        let r = ApiError::Unprocessable("idempotency_key_reused").into_response();
+        assert_eq!(r.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 
     /// Chaos C4: a full object store is reported as 507 `storage_full`, not as an anonymous internal error.

@@ -350,6 +350,21 @@ pub fn checkpoint_alert(label: &str, cp: &serde_json::Value) -> Alert {
 
 /// Alerts for incidents whose policy executed `notify_admins` after `since`. Returns the alerts and the new
 /// watermark. Only identifiers and categories leave the system (rule, severity, tenant slug, incident id).
+/// Operator alert for one incident (identifiers only; details stay in the UI).
+pub fn incident_alert(label: &str, slug: &str, id: Uuid, rule: &str, sev: &str) -> Alert {
+    Alert {
+        kind: "security_incident".into(),
+        severity: sanitize(sev, 16),
+        key: format!("incident:{id}"),
+        text: format!(
+            "{label}: security incident rule={} severity={} tenant={} incident={id}. Details only in the KIZUNA UI (Security > Incidents).",
+            sanitize(rule, 64),
+            sanitize(sev, 16),
+            sanitize(slug, 64)
+        ),
+    }
+}
+
 pub async fn incident_alerts(
     pool: &PgPool,
     label: &str,
@@ -373,17 +388,7 @@ pub async fn incident_alerts(
         tx.commit().await?;
         for (at, id, rule, sev) in rows {
             mark = mark.max(at);
-            out.push(Alert {
-                kind: "security_incident".into(),
-                severity: sanitize(&sev, 16),
-                key: format!("incident:{id}"),
-                text: format!(
-                    "{label}: security incident rule={} severity={} tenant={} incident={id}. Details only in the KIZUNA UI (Security > Incidents).",
-                    sanitize(&rule, 64),
-                    sanitize(&sev, 16),
-                    sanitize(&slug, 64)
-                ),
-            });
+            out.push(incident_alert(label, &slug, id, &rule, &sev));
         }
     }
     Ok((out, mark))

@@ -40,6 +40,12 @@ pub struct AppState {
     pub av: Arc<dyn crate::antivirus::MalwareScanner>,
     /// Operator alert channels (ADR 0017); disabled unless the server binary configures them.
     pub alerts: Arc<crate::alerts::Alerter>,
+    /// Request metrics (Prometheus text on the loopback metrics port).
+    pub metrics: Arc<crate::metrics::Metrics>,
+    /// Bounded admission queues for uploads, extraction and heavy routes.
+    pub gates: Arc<crate::admission::Gates>,
+    /// Set on SIGTERM: readiness fails while in-flight requests drain.
+    pub draining: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl AppState {
@@ -59,6 +65,9 @@ impl AppState {
             )),
             store,
             pool,
+            metrics: Arc::new(crate::metrics::Metrics::default()),
+            gates: Arc::new(crate::admission::Gates::new(&cfg.stability)),
+            draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             cfg: Arc::new(cfg),
             limiter: Arc::new(RateLimiter::new(Duration::from_secs(60))),
             policy: Arc::new(Policy::new().with_rule(verification::NoSelfReview)),
@@ -122,6 +131,10 @@ pub fn router(st: AppState) -> Router {
         .route("/artifacts/{id}/reextract", post(verification::reextract))
         .route("/claims/{id}/review", post(verification::review_claim))
         .route("/verification/run", post(verification::run_detection))
+        .route("/verification/jobs", post(crate::jobs::enqueue_verification))
+        .route("/jobs", get(crate::jobs::list))
+        .route("/jobs/{id}", get(crate::jobs::get))
+        .route("/jobs/{id}/requeue", post(crate::jobs::requeue))
         .route("/conflicts", get(verification::list_conflicts))
         .route("/conflicts/{id}", get(verification::get_conflict))
         .route("/conflicts/{id}/review", post(verification::review_conflict))
@@ -312,9 +325,14 @@ pub fn router(st: AppState) -> Router {
         .layer(DefaultBodyLimit::max(upload_limit))
         .layer(RequestBodyLimitLayer::new(upload_limit));
 
+    let api = upload_api.merge(json_api).layer(axum::middleware::from_fn_with_state(
+        st.clone(),
+        crate::idempotency::layer,
+    ));
     let mut app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
-        .nest("/api/v1", upload_api.merge(json_api))
+        .route("/readyz", get(crate::metrics::readyz))
+        .nest("/api/v1", api)
         .layer(TimeoutLayer::with_status_code(
             axum::http::StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(60),
@@ -328,6 +346,11 @@ pub fn router(st: AppState) -> Router {
     app.layer(SetResponseHeaderLayer::if_not_present(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
+    ))
+    // Outermost: classify, admit (bounded queues → 429), statement timeout scope, latency metrics.
+    .layer(axum::middleware::from_fn_with_state(
+        st.clone(),
+        crate::metrics::http_layer,
     ))
     .with_state(st)
 }

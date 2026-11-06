@@ -890,3 +890,36 @@ async fn tenant_isolation_permissions_and_force_rls() {
     .await;
     assert!(selfie.is_err());
 }
+
+/// Stability soak 2026-11-06: two concurrent opens of the same finding gave one 200 and one 500 (unique index
+/// violation). Now the loser gets 409 `case_already_open`.
+#[tokio::test]
+async fn concurrent_opens_of_one_finding_yield_one_case_and_a_conflict() {
+    let s = setup().await;
+    let a = claim(&s, "mfg.material.hardness", 30.0).await;
+    let b = claim(&s, "mfg.material.hardness", 45.0).await;
+    let cf = conflict(&s, &a, &b).await;
+    let body = json!({"source_kind":"conflict","source_id":cf});
+    for _ in 0..5 {
+        let rs = futures_join(&s, &body).await;
+        let ok = rs.iter().filter(|r| r.status == StatusCode::OK).count();
+        assert!(ok <= 1, "{:?}", rs.iter().map(|r| r.status).collect::<Vec<_>>());
+        for r in &rs {
+            assert!(
+                r.status == StatusCode::OK || r.body["error"] == "case_already_open",
+                "{}: {:?}",
+                r.status,
+                r.body
+            );
+        }
+    }
+}
+
+async fn futures_join(s: &S, body: &Value) -> Vec<Resp> {
+    let (x, y, z) = tokio::join!(
+        s.c.post("/api/v1/capa/cases", Some(&s.a), body.clone()),
+        s.c.post("/api/v1/capa/cases", Some(&s.b), body.clone()),
+        s.c.post("/api/v1/capa/cases", Some(&s.a), body.clone()),
+    );
+    vec![x, y, z]
+}

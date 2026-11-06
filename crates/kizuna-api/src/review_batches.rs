@@ -69,6 +69,8 @@ pub(crate) async fn enqueue(
         ),
     )
     .await?;
+    // Outbox: the job commits with the batch, so a crash cannot leave a batch nobody processes.
+    crate::jobs::enqueue(tx, tenant, crate::jobs::REVIEW_BATCH, "", json!({}), Some(actor)).await?;
     tracing::info!(batch = %id, limit = bound.limit, "invalidation exceeds the inline bound: review batch queued");
     Ok(id)
 }

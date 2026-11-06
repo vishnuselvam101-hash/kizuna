@@ -86,6 +86,8 @@ pub struct Config {
     pub audit_signing_keys_previous: Vec<Secret<[u8; 32]>>,
     /// External AI label mapping (OFF unless configured; tenants must still opt in). See ADR 0018.
     pub ai: Option<AiConfig>,
+    /// Pool sizing, per-route-class statement timeouts, admission queues, job workers (STABILITY_2026-11-06).
+    pub stability: crate::admission::StabilityConfig,
 }
 
 /// OpenAI-compatible chat-completions endpoint for AI-assisted extraction.
@@ -167,7 +169,9 @@ impl Config {
         crate::webauthn::build(&webauthn_rp_id, &webauthn_origin)
             .map_err(|_| ConfigError::Invalid("KIZUNA_WEBAUTHN_ORIGIN"))?;
         let here = std::env::current_dir().unwrap_or_default();
+        let stability = crate::admission::StabilityConfig::from_lookup(&get)?;
         Ok(Config {
+            stability,
             database_url: Secret::new(req("KIZUNA_DATABASE_URL")?),
             bind,
             data_keys: DataKeys::from_lookup(&get)?,

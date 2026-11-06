@@ -230,22 +230,16 @@ async fn extract_common(st: AppState, p: Principal, id: Uuid, re: Option<String>
     // I1: one extraction per artifact at a time. A lease row (not a session lock) so no pooled connection is held
     // while the worker and the AI step run; it expires by itself if the request is dropped.
     let holder = Uuid::now_v7();
-    let got: Option<i32> = {
-        let mut tx = db::tenant_tx(&st.pool, p.tenant_id).await?;
-        let r = sqlx::query_scalar(
-            "INSERT INTO extraction_leases (tenant_id, artifact_id, holder, expires_at) \
-             VALUES ($1, $2, $3, now() + interval '120 seconds') \
-             ON CONFLICT (tenant_id, artifact_id) DO UPDATE SET holder = EXCLUDED.holder, expires_at = EXCLUDED.expires_at \
-             WHERE extraction_leases.expires_at < now() RETURNING 1",
-        )
-        .bind(p.tenant_id)
-        .bind(id)
-        .bind(holder)
-        .fetch_optional(&mut *tx)
-        .await?;
-        tx.commit().await?;
-        r
-    };
+    // A cancelled request releases its lease from a background task (Drop cannot await): a retry that arrives
+    // before that task ran briefly waits for it instead of answering 409 (intermittent chaos C1 failure).
+    let mut got = None;
+    for attempt in 0..=LEASE_WAIT_STEPS {
+        got = try_lease(&st, p.tenant_id, id, holder).await?;
+        if got.is_some() || attempt == LEASE_WAIT_STEPS {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     if got.is_none() {
         return Err(ApiError::Conflict("extraction_in_progress"));
     }
@@ -259,6 +253,29 @@ async fn extract_common(st: AppState, p: Principal, id: Uuid, re: Option<String>
     let result = extract_locked(&st, &p, id, bytes, art, re).await;
     lease.release().await;
     result
+}
+
+/// How long (in 100 ms steps) a new extraction waits for a lease that is being released.
+const LEASE_WAIT_STEPS: u32 = 20;
+/// Lease lifetime: longer than the worker timeout plus the AI step; a holder that died stops blocking after it.
+pub const LEASE_SECS: i64 = 120;
+
+async fn try_lease(st: &AppState, tenant: Uuid, artifact: Uuid, holder: Uuid) -> ApiResult<Option<i32>> {
+    let mut tx = db::tenant_tx(&st.pool, tenant).await?;
+    let r = sqlx::query_scalar(
+        "INSERT INTO extraction_leases (tenant_id, artifact_id, holder, expires_at) \
+         VALUES ($1, $2, $3, now() + make_interval(secs => $4)) \
+         ON CONFLICT (tenant_id, artifact_id) DO UPDATE SET holder = EXCLUDED.holder, expires_at = EXCLUDED.expires_at \
+         WHERE extraction_leases.expires_at < now() RETURNING 1",
+    )
+    .bind(tenant)
+    .bind(artifact)
+    .bind(holder)
+    .bind(LEASE_SECS as f64)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(r)
 }
 
 /// Releases the extraction lease when the request finishes (or is dropped).

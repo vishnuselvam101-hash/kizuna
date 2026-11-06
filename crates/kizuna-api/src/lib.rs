@@ -1,5 +1,6 @@
 //! KIZUNA Verify API: HTTP layer, persistence and identity. Rules live in the engine crates.
 
+pub mod admission;
 pub mod ai;
 pub mod alerts;
 pub mod antivirus;
@@ -22,13 +23,16 @@ pub mod evidence_requests;
 pub mod extraction;
 pub mod grades;
 pub mod graph;
+pub mod idempotency;
 pub mod incidents;
 pub mod insights;
 pub mod integrity;
+pub mod jobs;
 pub mod keyring;
 pub mod label_synonyms;
 pub mod lang;
 pub mod matching;
+pub mod metrics;
 pub mod ops;
 pub mod portal;
 pub mod ratelimit;
