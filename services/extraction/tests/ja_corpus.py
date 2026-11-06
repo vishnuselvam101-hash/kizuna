@@ -495,13 +495,29 @@ def _hex(s: str, cid: dict[str, int]) -> str:
     return "".join(f"{cid[c]:04X}" for c in s)
 
 
-def cjk_pdf(pages: list[list[Item]], per_char: bool = False) -> bytes:
-    """Text PDF with an unembedded CJK Type0 font (Identity-H) and a ToUnicode CMap, like many JP exports."""
+def cjk_pdf(
+    pages: list[list[Item]],
+    per_char: bool = False,
+    rules: list[list[tuple[float, float, float, float]]] | None = None,
+    images: list[bytes] | None = None,
+    invisible: bool = False,
+) -> bytes:
+    """Text PDF with an unembedded CJK Type0 font (Identity-H) and a ToUnicode CMap, like many JP exports.
+
+    `rules`: per page, stroked line segments (x0, y0, x1, y1) such as table borders. `images`: per page, a
+    full-page JPEG drawn under the text; with `invisible` the text is render mode 3 (a scanner's hidden OCR
+    layer over the page image, a "sandwich" PDF)."""
     chars = sorted({c for p in pages for *_, t in p for c in t})
     cid = {c: i + 1 for i, c in enumerate(chars)}
     contents = []
-    for p in pages:
+    for pno, p in enumerate(pages):
         ops = []
+        if images is not None:
+            ops.append(f"q {PAGE_W:.0f} 0 0 {PAGE_H:.0f} 0 0 cm /Im1 Do Q")
+        for x0, y0, x1, y1 in rules[pno] if rules else []:
+            ops.append(f"0.5 w {x0:.2f} {y0:.2f} m {x1:.2f} {y1:.2f} l S")
+        if invisible:
+            ops.append("3 Tr")
         for x, y, size, t in p:
             if per_char:
                 cx = x
@@ -518,11 +534,13 @@ def cjk_pdf(pages: list[list[Item]], per_char: bool = False) -> bytes:
         f"<< /Type /Pages /Kids [{' '.join(f'{3 + 2 * i} 0 R' for i in range(n))}] /Count {n} >>".encode(),
     ]
     font = 3 + 2 * n
+    img0 = font + 4  # page images follow the font objects
     for i, body in enumerate(contents):
+        xo = f"/XObject << /Im1 {img0 + i} 0 R >> " if images is not None else ""
         objs.append(
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W:.0f} {PAGE_H:.0f}] "
             f"/Contents {4 + 2 * i} 0 R "
-            f"/Resources << /Font << /F1 {font} 0 R >> >> >>".encode()
+            f"/Resources << /Font << /F1 {font} 0 R >> {xo}>> >>".encode()
         )
         objs.append(f"<< /Length {len(body)} >>\nstream\n".encode() + body + b"\nendstream")
     half = " ".join(f"{cid[c]} [500]" for c in chars if not wide(c))
@@ -554,6 +572,14 @@ def cjk_pdf(pages: list[list[Item]], per_char: bool = False) -> bytes:
     cmap.append("endcmap CMapName currentdict /CMap defineresource pop end end")
     cm = "\n".join(cmap).encode()
     objs.append(f"<< /Length {len(cm)} >>\nstream\n".encode() + cm + b"\nendstream")
+    for jpg in images or []:
+        w, h = _jpeg_size(jpg)
+        objs.append(
+            f"<< /Type /XObject /Subtype /Image /Width {w} /Height {h} /ColorSpace /DeviceRGB "
+            f"/BitsPerComponent 8 /Filter /DCTDecode /Length {len(jpg)} >>\nstream\n".encode()
+            + jpg
+            + b"\nendstream"
+        )
     out = b"%PDF-1.4\n"
     offs = []
     for i, o in enumerate(objs, start=1):
@@ -564,6 +590,16 @@ def cjk_pdf(pages: list[list[Item]], per_char: bool = False) -> bytes:
     out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offs)
     out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{x}\n%%EOF\n".encode()
     return out
+
+
+def _jpeg_size(jpg: bytes) -> tuple[int, int]:
+    i = 2
+    while i < len(jpg):
+        marker, ln = jpg[i + 1], int.from_bytes(jpg[i + 2 : i + 4], "big")
+        if marker in (0xC0, 0xC1, 0xC2):
+            return int.from_bytes(jpg[i + 7 : i + 9], "big"), int.from_bytes(jpg[i + 5 : i + 7], "big")
+        i += 2 + ln
+    raise ValueError("no JPEG frame header")
 
 
 def magick_available() -> bool:

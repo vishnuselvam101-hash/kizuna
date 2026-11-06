@@ -1,0 +1,11054 @@
+{
+ "note": "ja-v3 2026-11-06; before = main 3c3df2a code, after = ja-v3; same scorer and corpus (tests/ja_eval.py --holdout)",
+ "before": {
+  "rust/strict/all": {
+   "micro": {
+    "tp": 1190,
+    "fp": 273,
+    "fn": 1248,
+    "precision": 0.813,
+    "recall": 0.488,
+    "f1": 0.61
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 8,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.889,
+     "recall": 0.381,
+     "f1": 0.533
+    },
+    "approval_status": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.429,
+     "f1": 0.6
+    },
+    "approved_by": {
+     "tp": 11,
+     "fp": 0,
+     "fn": 18,
+     "precision": 1.0,
+     "recall": 0.379,
+     "f1": 0.55
+    },
+    "approved_by!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 9,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.9,
+     "recall": 0.429,
+     "f1": 0.581
+    },
+    "checked_by!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "delivery_date": {
+     "tp": 33,
+     "fp": 0,
+     "fn": 20,
+     "precision": 1.0,
+     "recall": 0.623,
+     "f1": 0.767
+    },
+    "dimension.height": {
+     "tp": 10,
+     "fp": 6,
+     "fn": 25,
+     "precision": 0.625,
+     "recall": 0.286,
+     "f1": 0.392
+    },
+    "dimension.inner_diameter": {
+     "tp": 11,
+     "fp": 1,
+     "fn": 18,
+     "precision": 0.917,
+     "recall": 0.379,
+     "f1": 0.537
+    },
+    "dimension.length": {
+     "tp": 24,
+     "fp": 2,
+     "fn": 32,
+     "precision": 0.923,
+     "recall": 0.429,
+     "f1": 0.585
+    },
+    "dimension.outer_diameter": {
+     "tp": 21,
+     "fp": 1,
+     "fn": 29,
+     "precision": 0.955,
+     "recall": 0.42,
+     "f1": 0.583
+    },
+    "dimension.thickness": {
+     "tp": 22,
+     "fp": 4,
+     "fn": 32,
+     "precision": 0.846,
+     "recall": 0.407,
+     "f1": 0.55
+    },
+    "dimension.width": {
+     "tp": 19,
+     "fp": 4,
+     "fn": 25,
+     "precision": 0.826,
+     "recall": 0.432,
+     "f1": 0.567
+    },
+    "drawing_number": {
+     "tp": 26,
+     "fp": 0,
+     "fn": 24,
+     "precision": 1.0,
+     "recall": 0.52,
+     "f1": 0.684
+    },
+    "drawing_number!subject": {
+     "tp": 0,
+     "fp": 5,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 11,
+     "fp": 0,
+     "fn": 18,
+     "precision": 1.0,
+     "recall": 0.379,
+     "f1": 0.55
+    },
+    "drawn_by!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 10,
+     "precision": 1.0,
+     "recall": 0.231,
+     "f1": 0.375
+    },
+    "fax.sender": {
+     "tp": 3,
+     "fp": 1,
+     "fn": 10,
+     "precision": 0.75,
+     "recall": 0.231,
+     "f1": 0.353
+    },
+    "fax.sent_at": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 9,
+     "precision": 1.0,
+     "recall": 0.308,
+     "f1": 0.471
+    },
+    "inspection_date": {
+     "tp": 23,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.657,
+     "f1": 0.793
+    },
+    "inspection_date!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 31,
+     "fp": 0,
+     "fn": 52,
+     "precision": 1.0,
+     "recall": 0.373,
+     "f1": 0.544
+    },
+    "issue_date!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 33,
+     "fp": 18,
+     "fn": 53,
+     "precision": 0.647,
+     "recall": 0.384,
+     "f1": 0.482
+    },
+    "material!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.height": {
+     "tp": 27,
+     "fp": 14,
+     "fn": 34,
+     "precision": 0.659,
+     "recall": 0.443,
+     "f1": 0.529
+    },
+    "measured.height!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 21,
+     "fp": 8,
+     "fn": 36,
+     "precision": 0.724,
+     "recall": 0.368,
+     "f1": 0.488
+    },
+    "measured.inner_diameter!subject": {
+     "tp": 0,
+     "fp": 5,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 33,
+     "fp": 26,
+     "fn": 32,
+     "precision": 0.559,
+     "recall": 0.508,
+     "f1": 0.532
+    },
+    "measured.length!subject": {
+     "tp": 0,
+     "fp": 6,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 18,
+     "fp": 24,
+     "fn": 38,
+     "precision": 0.429,
+     "recall": 0.321,
+     "f1": 0.367
+    },
+    "measured.outer_diameter!subject": {
+     "tp": 0,
+     "fp": 6,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 36,
+     "fp": 22,
+     "fn": 48,
+     "precision": 0.621,
+     "recall": 0.429,
+     "f1": 0.507
+    },
+    "measured.thickness!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 27,
+     "fp": 13,
+     "fn": 36,
+     "precision": 0.675,
+     "recall": 0.429,
+     "f1": 0.524
+    },
+    "measured.width!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 102,
+     "fp": 10,
+     "fn": 72,
+     "precision": 0.911,
+     "recall": 0.586,
+     "f1": 0.713
+    },
+    "part_name!subject": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "property.chem_c!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "property.chem_mn!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.633,
+     "f1": 0.776
+    },
+    "property.chem_p!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_s": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "property.chem_s!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.633,
+     "f1": 0.776
+    },
+    "property.chem_si!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.elongation": {
+     "tp": 17,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.567,
+     "f1": 0.723
+    },
+    "property.hardness": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.556,
+     "f1": 0.714
+    },
+    "property.surface_roughness": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.381,
+     "f1": 0.552
+    },
+    "property.tensile_strength": {
+     "tp": 16,
+     "fp": 1,
+     "fn": 14,
+     "precision": 0.941,
+     "recall": 0.533,
+     "f1": 0.681
+    },
+    "property.yield_strength": {
+     "tp": 17,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.944,
+     "recall": 0.567,
+     "f1": 0.708
+    },
+    "quantity": {
+     "tp": 56,
+     "fp": 1,
+     "fn": 18,
+     "precision": 0.982,
+     "recall": 0.757,
+     "f1": 0.855
+    },
+    "result": {
+     "tp": 78,
+     "fp": 4,
+     "fn": 64,
+     "precision": 0.951,
+     "recall": 0.549,
+     "f1": 0.696
+    },
+    "result!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 33,
+     "fp": 0,
+     "fn": 38,
+     "precision": 1.0,
+     "recall": 0.465,
+     "f1": 0.635
+    },
+    "revision!subject": {
+     "tp": 0,
+     "fp": 9,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "scale": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.476,
+     "f1": 0.645
+    },
+    "scale!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 10,
+     "fp": 1,
+     "fn": 11,
+     "precision": 0.909,
+     "recall": 0.476,
+     "f1": 0.625
+    },
+    "stamp.approved!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 8,
+     "fp": 2,
+     "fn": 5,
+     "precision": 0.8,
+     "recall": 0.615,
+     "f1": 0.696
+    },
+    "stamp.drawn": {
+     "tp": 10,
+     "fp": 1,
+     "fn": 11,
+     "precision": 0.909,
+     "recall": 0.476,
+     "f1": 0.625
+    },
+    "stamp.drawn!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 7,
+     "fp": 6,
+     "fn": 19,
+     "precision": 0.538,
+     "recall": 0.269,
+     "f1": 0.359
+    },
+    "standard!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "supplier": {
+     "tp": 64,
+     "fp": 0,
+     "fn": 45,
+     "precision": 1.0,
+     "recall": 0.587,
+     "f1": 0.74
+    },
+    "supplier!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "surface_treatment": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 26,
+     "precision": 1.0,
+     "recall": 0.458,
+     "f1": 0.629
+    },
+    "tolerance": {
+     "tp": 107,
+     "fp": 18,
+     "fn": 149,
+     "precision": 0.856,
+     "recall": 0.418,
+     "f1": 0.562
+    },
+    "unit_price": {
+     "tp": 45,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.978,
+     "recall": 0.849,
+     "f1": 0.909
+    }
+   }
+  },
+  "rust/strict/dev": {
+   "micro": {
+    "tp": 315,
+    "fp": 212,
+    "fn": 358,
+    "precision": 0.598,
+    "recall": 0.468,
+    "f1": 0.525
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approval_status": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approved_by": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.4,
+     "f1": 0.571
+    },
+    "approved_by!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "delivery_date": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.height": {
+     "tp": 2,
+     "fp": 6,
+     "fn": 13,
+     "precision": 0.25,
+     "recall": 0.133,
+     "f1": 0.174
+    },
+    "dimension.inner_diameter": {
+     "tp": 5,
+     "fp": 1,
+     "fn": 6,
+     "precision": 0.833,
+     "recall": 0.455,
+     "f1": 0.588
+    },
+    "dimension.length": {
+     "tp": 7,
+     "fp": 2,
+     "fn": 14,
+     "precision": 0.778,
+     "recall": 0.333,
+     "f1": 0.467
+    },
+    "dimension.outer_diameter": {
+     "tp": 5,
+     "fp": 1,
+     "fn": 10,
+     "precision": 0.833,
+     "recall": 0.333,
+     "f1": 0.476
+    },
+    "dimension.thickness": {
+     "tp": 8,
+     "fp": 4,
+     "fn": 14,
+     "precision": 0.667,
+     "recall": 0.364,
+     "f1": 0.471
+    },
+    "dimension.width": {
+     "tp": 6,
+     "fp": 4,
+     "fn": 11,
+     "precision": 0.6,
+     "recall": 0.353,
+     "f1": 0.444
+    },
+    "drawing_number": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.833,
+     "f1": 0.909
+    },
+    "drawing_number!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.4,
+     "f1": 0.571
+    },
+    "drawn_by!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "inspection_date": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.875,
+     "f1": 0.933
+    },
+    "inspection_date!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 13,
+     "fp": 0,
+     "fn": 15,
+     "precision": 1.0,
+     "recall": 0.464,
+     "f1": 0.634
+    },
+    "material": {
+     "tp": 15,
+     "fp": 13,
+     "fn": 14,
+     "precision": 0.536,
+     "recall": 0.517,
+     "f1": 0.526
+    },
+    "material!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.height": {
+     "tp": 3,
+     "fp": 14,
+     "fn": 13,
+     "precision": 0.176,
+     "recall": 0.188,
+     "f1": 0.182
+    },
+    "measured.height!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 3,
+     "fp": 8,
+     "fn": 6,
+     "precision": 0.273,
+     "recall": 0.333,
+     "f1": 0.3
+    },
+    "measured.inner_diameter!subject": {
+     "tp": 0,
+     "fp": 5,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 9,
+     "fp": 26,
+     "fn": 21,
+     "precision": 0.257,
+     "recall": 0.3,
+     "f1": 0.277
+    },
+    "measured.length!subject": {
+     "tp": 0,
+     "fp": 6,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 3,
+     "fp": 24,
+     "fn": 18,
+     "precision": 0.111,
+     "recall": 0.143,
+     "f1": 0.125
+    },
+    "measured.outer_diameter!subject": {
+     "tp": 0,
+     "fp": 6,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 12,
+     "fp": 22,
+     "fn": 18,
+     "precision": 0.353,
+     "recall": 0.4,
+     "f1": 0.375
+    },
+    "measured.thickness!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 3,
+     "fp": 13,
+     "fn": 12,
+     "precision": 0.188,
+     "recall": 0.2,
+     "f1": 0.194
+    },
+    "measured.width!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 35,
+     "fp": 9,
+     "fn": 15,
+     "precision": 0.795,
+     "recall": 0.7,
+     "f1": 0.745
+    },
+    "part_name!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_mn": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_p": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_s": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_si": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.elongation": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.hardness": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.surface_roughness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.tensile_strength": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.yield_strength": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "quantity": {
+     "tp": 7,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 21,
+     "fp": 0,
+     "fn": 35,
+     "precision": 1.0,
+     "recall": 0.375,
+     "f1": 0.545
+    },
+    "result!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 7,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "revision!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "scale": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.approved": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.4,
+     "f1": 0.571
+    },
+    "stamp.approved!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.drawn": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.4,
+     "f1": 0.571
+    },
+    "stamp.drawn!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.286,
+     "f1": 0.444
+    },
+    "standard!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "supplier": {
+     "tp": 20,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.625,
+     "f1": 0.769
+    },
+    "supplier!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "surface_treatment": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.8,
+     "f1": 0.889
+    },
+    "tolerance": {
+     "tp": 33,
+     "fp": 18,
+     "fn": 68,
+     "precision": 0.647,
+     "recall": 0.327,
+     "f1": 0.434
+    },
+    "unit_price": {
+     "tp": 4,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.8,
+     "recall": 0.8,
+     "f1": 0.8
+    }
+   }
+  },
+  "rust/strict/dev_scan": {
+   "micro": {
+    "tp": 106,
+    "fp": 5,
+    "fn": 94,
+    "precision": 0.955,
+    "recall": 0.53,
+    "f1": 0.682
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approved_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "dimension.outer_diameter": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "dimension.thickness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "dimension.width": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "drawing_number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "drawn_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "fax.sender": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "fax.sent_at": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "inspection_date": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "issue_date": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "material": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.167,
+     "f1": 0.286
+    },
+    "measured.height": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.outer_diameter": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.width": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_name": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.625,
+     "f1": 0.769
+    },
+    "property.chem_c": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.chem_mn": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.chem_p": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.chem_s": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.chem_si": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.elongation": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.hardness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.667,
+     "f1": 0.8
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.yield_strength": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "quantity": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 12,
+     "fp": 4,
+     "fn": 4,
+     "precision": 0.75,
+     "recall": 0.75,
+     "f1": 0.75
+    },
+    "revision": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "supplier": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "surface_treatment": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "tolerance": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.476,
+     "f1": 0.645
+    }
+   }
+  },
+  "rust/strict/holdout": {
+   "micro": {
+    "tp": 117,
+    "fp": 48,
+    "fn": 555,
+    "precision": 0.709,
+    "recall": 0.174,
+    "f1": 0.28
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approved_by": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "approved_by!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 7,
+     "precision": 0.5,
+     "recall": 0.125,
+     "f1": 0.2
+    },
+    "checked_by!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "delivery_date": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 20,
+     "precision": 1.0,
+     "recall": 0.31,
+     "f1": 0.474
+    },
+    "dimension.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 11,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 13,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 12,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 9,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 14,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "drawing_number!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "drawn_by!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "inspection_date": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "inspection_date!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 24,
+     "precision": 1.0,
+     "recall": 0.2,
+     "f1": 0.333
+    },
+    "issue_date!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 2,
+     "fp": 3,
+     "fn": 22,
+     "precision": 0.4,
+     "recall": 0.083,
+     "f1": 0.138
+    },
+    "material!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 18,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 21,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 17,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 20,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 14,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 39,
+     "precision": 1.0,
+     "recall": 0.361,
+     "f1": 0.53
+    },
+    "part_name!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_c!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_mn!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_p!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_s": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_s!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_si!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.elongation": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.hardness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.yield_strength": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "quantity": {
+     "tp": 22,
+     "fp": 1,
+     "fn": 15,
+     "precision": 0.957,
+     "recall": 0.595,
+     "f1": 0.733
+    },
+    "result": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 15,
+     "precision": 1.0,
+     "recall": 0.062,
+     "f1": 0.118
+    },
+    "result!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 21,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "revision!subject": {
+     "tp": 0,
+     "fp": 7,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "scale": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "scale!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 1,
+     "fp": 5,
+     "fn": 7,
+     "precision": 0.167,
+     "recall": 0.125,
+     "f1": 0.143
+    },
+    "supplier": {
+     "tp": 13,
+     "fp": 0,
+     "fn": 23,
+     "precision": 1.0,
+     "recall": 0.361,
+     "f1": 0.531
+    },
+    "surface_treatment": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 15,
+     "precision": 1.0,
+     "recall": 0.062,
+     "f1": 0.118
+    },
+    "tolerance": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 51,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "unit_price": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.759,
+     "f1": 0.863
+    }
+   }
+  },
+  "rust/strict/holdout_scan": {
+   "micro": {
+    "tp": 13,
+    "fp": 8,
+    "fn": 214,
+    "precision": 0.619,
+    "recall": 0.057,
+    "f1": 0.105
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "approved_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 4,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 4,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 8,
+     "precision": 1.0,
+     "recall": 0.111,
+     "f1": 0.2
+    },
+    "fax.sender": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.5,
+     "recall": 0.111,
+     "f1": 0.182
+    },
+    "fax.sent_at": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.222,
+     "f1": 0.364
+    },
+    "inspection_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.167,
+     "f1": 0.286
+    },
+    "material": {
+     "tp": 1,
+     "fp": 2,
+     "fn": 8,
+     "precision": 0.333,
+     "recall": 0.111,
+     "f1": 0.167
+    },
+    "measured.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 10,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 10,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 11,
+     "precision": 0.5,
+     "recall": 0.083,
+     "f1": 0.143
+    },
+    "property.chem_c": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "property.chem_s": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "property.elongation": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.hardness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.yield_strength": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 2,
+     "precision": 0.5,
+     "recall": 0.333,
+     "f1": 0.4
+    },
+    "quantity": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "result": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.222,
+     "f1": 0.364
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "supplier": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "surface_treatment": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 19,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    }
+   }
+  },
+  "rust/strict/train": {
+   "micro": {
+    "tp": 639,
+    "fp": 0,
+    "fn": 27,
+    "precision": 1.0,
+    "recall": 0.959,
+    "f1": 0.979
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approval_status": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approved_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "checked_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "delivery_date": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.height": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.length": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.thickness": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.width": {
+     "tp": 11,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawing_number": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawn_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "inspection_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "issue_date": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.533,
+     "f1": 0.696
+    },
+    "material": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.778,
+     "f1": 0.875
+    },
+    "measured.height": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.length": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.outer_diameter": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.width": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_name": {
+     "tp": 39,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.907,
+     "f1": 0.951
+    },
+    "property.chem_c": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_mn": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_p": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_s": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_si": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.elongation": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.hardness": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.surface_roughness": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.tensile_strength": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.yield_strength": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "quantity": {
+     "tp": 25,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 44,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.917,
+     "f1": 0.957
+    },
+    "revision": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "scale": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.approved": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.checked": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.drawn": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "supplier": {
+     "tp": 27,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.871,
+     "f1": 0.931
+    },
+    "surface_treatment": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "tolerance": {
+     "tp": 64,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "unit_price": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    }
+   }
+  },
+  "worker/strict/all": {
+   "micro": {
+    "tp": 1421,
+    "fp": 444,
+    "fn": 1291,
+    "precision": 0.762,
+    "recall": 0.524,
+    "f1": 0.621
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.381,
+     "f1": 0.552
+    },
+    "approval_status": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.429,
+     "f1": 0.6
+    },
+    "approved_by": {
+     "tp": 18,
+     "fp": 4,
+     "fn": 11,
+     "precision": 0.818,
+     "recall": 0.621,
+     "f1": 0.706
+    },
+    "checked_by": {
+     "tp": 10,
+     "fp": 4,
+     "fn": 11,
+     "precision": 0.714,
+     "recall": 0.476,
+     "f1": 0.571
+    },
+    "delivery_date": {
+     "tp": 26,
+     "fp": 0,
+     "fn": 27,
+     "precision": 1.0,
+     "recall": 0.491,
+     "f1": 0.658
+    },
+    "dimension.height": {
+     "tp": 16,
+     "fp": 29,
+     "fn": 19,
+     "precision": 0.356,
+     "recall": 0.457,
+     "f1": 0.4
+    },
+    "dimension.inner_diameter": {
+     "tp": 12,
+     "fp": 23,
+     "fn": 17,
+     "precision": 0.343,
+     "recall": 0.414,
+     "f1": 0.375
+    },
+    "dimension.length": {
+     "tp": 26,
+     "fp": 54,
+     "fn": 30,
+     "precision": 0.325,
+     "recall": 0.464,
+     "f1": 0.382
+    },
+    "dimension.outer_diameter": {
+     "tp": 22,
+     "fp": 48,
+     "fn": 28,
+     "precision": 0.314,
+     "recall": 0.44,
+     "f1": 0.367
+    },
+    "dimension.thickness": {
+     "tp": 26,
+     "fp": 41,
+     "fn": 28,
+     "precision": 0.388,
+     "recall": 0.481,
+     "f1": 0.43
+    },
+    "dimension.width": {
+     "tp": 23,
+     "fp": 29,
+     "fn": 21,
+     "precision": 0.442,
+     "recall": 0.523,
+     "f1": 0.479
+    },
+    "drawing_number": {
+     "tp": 22,
+     "fp": 5,
+     "fn": 28,
+     "precision": 0.815,
+     "recall": 0.44,
+     "f1": 0.571
+    },
+    "drawn_by": {
+     "tp": 20,
+     "fp": 1,
+     "fn": 9,
+     "precision": 0.952,
+     "recall": 0.69,
+     "f1": 0.8
+    },
+    "fax.number": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.462,
+     "f1": 0.632
+    },
+    "fax.sender": {
+     "tp": 4,
+     "fp": 4,
+     "fn": 9,
+     "precision": 0.5,
+     "recall": 0.308,
+     "f1": 0.381
+    },
+    "fax.sent_at": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.615,
+     "f1": 0.762
+    },
+    "heat_number": {
+     "tp": 18,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.947,
+     "recall": 0.6,
+     "f1": 0.735
+    },
+    "inspection_date": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.629,
+     "f1": 0.772
+    },
+    "issue_date": {
+     "tp": 37,
+     "fp": 8,
+     "fn": 46,
+     "precision": 0.822,
+     "recall": 0.446,
+     "f1": 0.578
+    },
+    "lot": {
+     "tp": 9,
+     "fp": 8,
+     "fn": 12,
+     "precision": 0.529,
+     "recall": 0.429,
+     "f1": 0.474
+    },
+    "material": {
+     "tp": 48,
+     "fp": 34,
+     "fn": 38,
+     "precision": 0.585,
+     "recall": 0.558,
+     "f1": 0.571
+    },
+    "measured.height": {
+     "tp": 27,
+     "fp": 0,
+     "fn": 34,
+     "precision": 1.0,
+     "recall": 0.443,
+     "f1": 0.614
+    },
+    "measured.inner_diameter": {
+     "tp": 21,
+     "fp": 0,
+     "fn": 36,
+     "precision": 1.0,
+     "recall": 0.368,
+     "f1": 0.538
+    },
+    "measured.length": {
+     "tp": 33,
+     "fp": 0,
+     "fn": 32,
+     "precision": 1.0,
+     "recall": 0.508,
+     "f1": 0.673
+    },
+    "measured.outer_diameter": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 38,
+     "precision": 1.0,
+     "recall": 0.321,
+     "f1": 0.486
+    },
+    "measured.thickness": {
+     "tp": 36,
+     "fp": 0,
+     "fn": 48,
+     "precision": 1.0,
+     "recall": 0.429,
+     "f1": 0.6
+    },
+    "measured.width": {
+     "tp": 27,
+     "fp": 0,
+     "fn": 36,
+     "precision": 1.0,
+     "recall": 0.429,
+     "f1": 0.6
+    },
+    "part_name": {
+     "tp": 82,
+     "fp": 7,
+     "fn": 92,
+     "precision": 0.921,
+     "recall": 0.471,
+     "f1": 0.624
+    },
+    "part_number": {
+     "tp": 82,
+     "fp": 12,
+     "fn": 50,
+     "precision": 0.872,
+     "recall": 0.621,
+     "f1": 0.726
+    },
+    "po_line": {
+     "tp": 40,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.976,
+     "recall": 0.755,
+     "f1": 0.851
+    },
+    "po_number": {
+     "tp": 30,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.968,
+     "recall": 0.789,
+     "f1": 0.87
+    },
+    "property.chem_c": {
+     "tp": 16,
+     "fp": 9,
+     "fn": 14,
+     "precision": 0.64,
+     "recall": 0.533,
+     "f1": 0.582
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 16,
+     "fp": 9,
+     "fn": 14,
+     "precision": 0.64,
+     "recall": 0.533,
+     "f1": 0.582
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_ni": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 16,
+     "fp": 10,
+     "fn": 14,
+     "precision": 0.615,
+     "recall": 0.533,
+     "f1": 0.571
+    },
+    "property.chem_s": {
+     "tp": 16,
+     "fp": 9,
+     "fn": 14,
+     "precision": 0.64,
+     "recall": 0.533,
+     "f1": 0.582
+    },
+    "property.chem_si": {
+     "tp": 16,
+     "fp": 10,
+     "fn": 14,
+     "precision": 0.615,
+     "recall": 0.533,
+     "f1": 0.571
+    },
+    "property.elongation": {
+     "tp": 21,
+     "fp": 0,
+     "fn": 9,
+     "precision": 1.0,
+     "recall": 0.7,
+     "f1": 0.824
+    },
+    "property.hardness": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.556,
+     "f1": 0.714
+    },
+    "property.surface_roughness": {
+     "tp": 9,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.9,
+     "recall": 0.429,
+     "f1": 0.581
+    },
+    "property.tensile_strength": {
+     "tp": 17,
+     "fp": 2,
+     "fn": 13,
+     "precision": 0.895,
+     "recall": 0.567,
+     "f1": 0.694
+    },
+    "property.yield_strength": {
+     "tp": 17,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.944,
+     "recall": 0.567,
+     "f1": 0.708
+    },
+    "quantity": {
+     "tp": 37,
+     "fp": 1,
+     "fn": 37,
+     "precision": 0.974,
+     "recall": 0.5,
+     "f1": 0.661
+    },
+    "result": {
+     "tp": 83,
+     "fp": 5,
+     "fn": 59,
+     "precision": 0.943,
+     "recall": 0.585,
+     "f1": 0.722
+    },
+    "revision": {
+     "tp": 33,
+     "fp": 14,
+     "fn": 38,
+     "precision": 0.702,
+     "recall": 0.465,
+     "f1": 0.559
+    },
+    "scale": {
+     "tp": 10,
+     "fp": 1,
+     "fn": 11,
+     "precision": 0.909,
+     "recall": 0.476,
+     "f1": 0.625
+    },
+    "stamp.approved": {
+     "tp": 16,
+     "fp": 2,
+     "fn": 5,
+     "precision": 0.889,
+     "recall": 0.762,
+     "f1": 0.821
+    },
+    "stamp.checked": {
+     "tp": 8,
+     "fp": 4,
+     "fn": 5,
+     "precision": 0.667,
+     "recall": 0.615,
+     "f1": 0.64
+    },
+    "stamp.drawn": {
+     "tp": 16,
+     "fp": 5,
+     "fn": 5,
+     "precision": 0.762,
+     "recall": 0.762,
+     "f1": 0.762
+    },
+    "stamp.unassigned": {
+     "tp": 0,
+     "fp": 14,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.577,
+     "f1": 0.732
+    },
+    "supplier": {
+     "tp": 62,
+     "fp": 1,
+     "fn": 47,
+     "precision": 0.984,
+     "recall": 0.569,
+     "f1": 0.721
+    },
+    "surface_treatment": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 26,
+     "precision": 1.0,
+     "recall": 0.458,
+     "f1": 0.629
+    },
+    "title": {
+     "tp": 0,
+     "fp": 5,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 133,
+     "fp": 15,
+     "fn": 123,
+     "precision": 0.899,
+     "recall": 0.52,
+     "f1": 0.658
+    },
+    "unit_price": {
+     "tp": 41,
+     "fp": 3,
+     "fn": 12,
+     "precision": 0.932,
+     "recall": 0.774,
+     "f1": 0.845
+    }
+   }
+  },
+  "worker/strict/dev": {
+   "micro": {
+    "tp": 375,
+    "fp": 239,
+    "fn": 359,
+    "precision": 0.611,
+    "recall": 0.511,
+    "f1": 0.556
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approval_status": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approved_by": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "checked_by": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "delivery_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 8,
+     "fp": 29,
+     "fn": 7,
+     "precision": 0.216,
+     "recall": 0.533,
+     "f1": 0.308
+    },
+    "dimension.inner_diameter": {
+     "tp": 6,
+     "fp": 23,
+     "fn": 5,
+     "precision": 0.207,
+     "recall": 0.545,
+     "f1": 0.3
+    },
+    "dimension.length": {
+     "tp": 9,
+     "fp": 54,
+     "fn": 12,
+     "precision": 0.143,
+     "recall": 0.429,
+     "f1": 0.214
+    },
+    "dimension.outer_diameter": {
+     "tp": 6,
+     "fp": 48,
+     "fn": 9,
+     "precision": 0.111,
+     "recall": 0.4,
+     "f1": 0.174
+    },
+    "dimension.thickness": {
+     "tp": 12,
+     "fp": 41,
+     "fn": 10,
+     "precision": 0.226,
+     "recall": 0.545,
+     "f1": 0.32
+    },
+    "dimension.width": {
+     "tp": 10,
+     "fp": 28,
+     "fn": 7,
+     "precision": 0.263,
+     "recall": 0.588,
+     "f1": 0.364
+    },
+    "drawing_number": {
+     "tp": 5,
+     "fp": 3,
+     "fn": 7,
+     "precision": 0.625,
+     "recall": 0.417,
+     "f1": 0.5
+    },
+    "drawn_by": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "heat_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "inspection_date": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.875,
+     "f1": 0.933
+    },
+    "issue_date": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 16,
+     "precision": 1.0,
+     "recall": 0.429,
+     "f1": 0.6
+    },
+    "lot": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 22,
+     "fp": 7,
+     "fn": 7,
+     "precision": 0.759,
+     "recall": 0.759,
+     "f1": 0.759
+    },
+    "measured.height": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.188,
+     "f1": 0.316
+    },
+    "measured.inner_diameter": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "measured.length": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 21,
+     "precision": 1.0,
+     "recall": 0.3,
+     "f1": 0.462
+    },
+    "measured.outer_diameter": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 18,
+     "precision": 1.0,
+     "recall": 0.143,
+     "f1": 0.25
+    },
+    "measured.thickness": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 18,
+     "precision": 1.0,
+     "recall": 0.4,
+     "f1": 0.571
+    },
+    "measured.width": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.2,
+     "f1": 0.333
+    },
+    "part_name": {
+     "tp": 23,
+     "fp": 0,
+     "fn": 27,
+     "precision": 1.0,
+     "recall": 0.46,
+     "f1": 0.63
+    },
+    "part_number": {
+     "tp": 25,
+     "fp": 4,
+     "fn": 21,
+     "precision": 0.862,
+     "recall": 0.543,
+     "f1": 0.667
+    },
+    "po_line": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "po_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_mn": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_p": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_s": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_si": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.elongation": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.hardness": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.surface_roughness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.tensile_strength": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.yield_strength": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "quantity": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 7,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "result": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 34,
+     "precision": 1.0,
+     "recall": 0.393,
+     "f1": 0.564
+    },
+    "revision": {
+     "tp": 6,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.857,
+     "recall": 0.429,
+     "f1": 0.571
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.checked": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.drawn": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "standard": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.714,
+     "f1": 0.833
+    },
+    "supplier": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 18,
+     "precision": 1.0,
+     "recall": 0.438,
+     "f1": 0.609
+    },
+    "surface_treatment": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "tolerance": {
+     "tp": 51,
+     "fp": 0,
+     "fn": 50,
+     "precision": 1.0,
+     "recall": 0.505,
+     "f1": 0.671
+    },
+    "unit_price": {
+     "tp": 4,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.8,
+     "recall": 0.8,
+     "f1": 0.8
+    }
+   }
+  },
+  "worker/strict/dev_scan": {
+   "micro": {
+    "tp": 103,
+    "fp": 28,
+    "fn": 107,
+    "precision": 0.786,
+    "recall": 0.49,
+    "f1": 0.604
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approved_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "dimension.outer_diameter": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "dimension.thickness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "dimension.width": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "drawing_number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "drawn_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "fax.sender": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "fax.sent_at": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "heat_number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "inspection_date": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "issue_date": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "lot": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "material": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.167,
+     "f1": 0.286
+    },
+    "measured.height": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.outer_diameter": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.width": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_name": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.625,
+     "f1": 0.769
+    },
+    "part_number": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "property.chem_c": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.chem_mn": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.chem_p": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.chem_s": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.chem_si": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.elongation": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.hardness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.667,
+     "f1": 0.8
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.yield_strength": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "quantity": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 12,
+     "fp": 4,
+     "fn": 4,
+     "precision": 0.75,
+     "recall": 0.75,
+     "f1": 0.75
+    },
+    "revision": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.unassigned": {
+     "tp": 0,
+     "fp": 6,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "supplier": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "surface_treatment": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "title": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 2,
+     "fp": 8,
+     "fn": 19,
+     "precision": 0.2,
+     "recall": 0.095,
+     "f1": 0.129
+    }
+   }
+  },
+  "worker/strict/holdout": {
+   "micro": {
+    "tp": 171,
+    "fp": 150,
+    "fn": 605,
+    "precision": 0.533,
+    "recall": 0.22,
+    "f1": 0.312
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approved_by": {
+     "tp": 2,
+     "fp": 3,
+     "fn": 6,
+     "precision": 0.4,
+     "recall": 0.25,
+     "f1": 0.308
+    },
+    "checked_by": {
+     "tp": 2,
+     "fp": 4,
+     "fn": 6,
+     "precision": 0.333,
+     "recall": 0.25,
+     "f1": 0.286
+    },
+    "delivery_date": {
+     "tp": 7,
+     "fp": 0,
+     "fn": 22,
+     "precision": 1.0,
+     "recall": 0.241,
+     "f1": 0.389
+    },
+    "dimension.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 11,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 13,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 12,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 9,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 3,
+     "fp": 2,
+     "fn": 13,
+     "precision": 0.6,
+     "recall": 0.188,
+     "f1": 0.286
+    },
+    "drawn_by": {
+     "tp": 4,
+     "fp": 1,
+     "fn": 4,
+     "precision": 0.8,
+     "recall": 0.5,
+     "f1": 0.615
+    },
+    "heat_number": {
+     "tp": 3,
+     "fp": 1,
+     "fn": 5,
+     "precision": 0.75,
+     "recall": 0.375,
+     "f1": 0.5
+    },
+    "inspection_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 6,
+     "fp": 7,
+     "fn": 24,
+     "precision": 0.462,
+     "recall": 0.2,
+     "f1": 0.279
+    },
+    "lot": {
+     "tp": 1,
+     "fp": 8,
+     "fn": 7,
+     "precision": 0.111,
+     "recall": 0.125,
+     "f1": 0.118
+    },
+    "material": {
+     "tp": 6,
+     "fp": 21,
+     "fn": 18,
+     "precision": 0.222,
+     "recall": 0.25,
+     "f1": 0.235
+    },
+    "measured.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 18,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 21,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 17,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 20,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 14,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 10,
+     "fp": 6,
+     "fn": 51,
+     "precision": 0.625,
+     "recall": 0.164,
+     "f1": 0.26
+    },
+    "part_number": {
+     "tp": 23,
+     "fp": 8,
+     "fn": 22,
+     "precision": 0.742,
+     "recall": 0.511,
+     "f1": 0.605
+    },
+    "po_line": {
+     "tp": 16,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.941,
+     "recall": 0.552,
+     "f1": 0.696
+    },
+    "po_number": {
+     "tp": 11,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.917,
+     "recall": 0.786,
+     "f1": 0.846
+    },
+    "property.chem_c": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_ni": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_s": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.elongation": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "property.hardness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "property.surface_roughness": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 7,
+     "precision": 0.5,
+     "recall": 0.125,
+     "f1": 0.2
+    },
+    "property.tensile_strength": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.yield_strength": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "quantity": {
+     "tp": 10,
+     "fp": 1,
+     "fn": 27,
+     "precision": 0.909,
+     "recall": 0.27,
+     "f1": 0.417
+    },
+    "result": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 15,
+     "precision": 0.5,
+     "recall": 0.062,
+     "f1": 0.111
+    },
+    "revision": {
+     "tp": 4,
+     "fp": 13,
+     "fn": 20,
+     "precision": 0.235,
+     "recall": 0.167,
+     "f1": 0.195
+    },
+    "scale": {
+     "tp": 4,
+     "fp": 1,
+     "fn": 4,
+     "precision": 0.8,
+     "recall": 0.5,
+     "f1": 0.615
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 5,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "supplier": {
+     "tp": 13,
+     "fp": 1,
+     "fn": 23,
+     "precision": 0.929,
+     "recall": 0.361,
+     "f1": 0.52
+    },
+    "surface_treatment": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.188,
+     "f1": 0.316
+    },
+    "title": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 16,
+     "fp": 7,
+     "fn": 35,
+     "precision": 0.696,
+     "recall": 0.314,
+     "f1": 0.432
+    },
+    "unit_price": {
+     "tp": 18,
+     "fp": 2,
+     "fn": 11,
+     "precision": 0.9,
+     "recall": 0.621,
+     "f1": 0.735
+    }
+   }
+  },
+  "worker/strict/holdout_scan": {
+   "micro": {
+    "tp": 19,
+    "fp": 27,
+    "fn": 220,
+    "precision": 0.413,
+    "recall": 0.079,
+    "f1": 0.133
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "approved_by": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 4,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 4,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "fax.sender": {
+     "tp": 1,
+     "fp": 4,
+     "fn": 8,
+     "precision": 0.2,
+     "recall": 0.111,
+     "f1": 0.143
+    },
+    "fax.sent_at": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.556,
+     "f1": 0.714
+    },
+    "heat_number": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "inspection_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 5,
+     "precision": 0.5,
+     "recall": 0.167,
+     "f1": 0.25
+    },
+    "lot": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 1,
+     "fp": 6,
+     "fn": 8,
+     "precision": 0.143,
+     "recall": 0.111,
+     "f1": 0.125
+    },
+    "measured.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 10,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 10,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 11,
+     "precision": 0.5,
+     "recall": 0.083,
+     "f1": 0.143
+    },
+    "part_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_s": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.elongation": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.667,
+     "f1": 0.8
+    },
+    "property.hardness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.yield_strength": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 2,
+     "precision": 0.5,
+     "recall": 0.333,
+     "f1": 0.4
+    },
+    "quantity": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "result": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.222,
+     "f1": 0.364
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.unassigned": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "supplier": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "surface_treatment": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 19,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    }
+   }
+  },
+  "worker/strict/train": {
+   "micro": {
+    "tp": 753,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approval_status": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approved_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "checked_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "delivery_date": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.height": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.length": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.thickness": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.width": {
+     "tp": 11,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawing_number": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawn_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "heat_number": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "inspection_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "issue_date": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "lot": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "material": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.height": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.length": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.outer_diameter": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.width": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_name": {
+     "tp": 43,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_number": {
+     "tp": 31,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "po_line": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "po_number": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_c": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_mn": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_p": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_s": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_si": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.elongation": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.hardness": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.surface_roughness": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.tensile_strength": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.yield_strength": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "quantity": {
+     "tp": 25,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 48,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "revision": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "scale": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.approved": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.checked": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.drawn": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "standard": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "supplier": {
+     "tp": 31,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "surface_treatment": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "tolerance": {
+     "tp": 64,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "unit_price": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    }
+   }
+  }
+ },
+ "after": {
+  "rust/strict/all": {
+   "micro": {
+    "tp": 1481,
+    "fp": 115,
+    "fn": 957,
+    "precision": 0.928,
+    "recall": 0.607,
+    "f1": 0.734
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 8,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.889,
+     "recall": 0.381,
+     "f1": 0.533
+    },
+    "approval_status": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.429,
+     "f1": 0.6
+    },
+    "approved_by": {
+     "tp": 16,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.552,
+     "f1": 0.711
+    },
+    "approved_by!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 9,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.9,
+     "recall": 0.429,
+     "f1": 0.581
+    },
+    "checked_by!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "delivery_date": {
+     "tp": 33,
+     "fp": 0,
+     "fn": 20,
+     "precision": 1.0,
+     "recall": 0.623,
+     "f1": 0.767
+    },
+    "dimension.height": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.629,
+     "f1": 0.772
+    },
+    "dimension.height!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 16,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.552,
+     "f1": 0.711
+    },
+    "dimension.inner_diameter!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 36,
+     "fp": 0,
+     "fn": 20,
+     "precision": 1.0,
+     "recall": 0.643,
+     "f1": 0.783
+    },
+    "dimension.length!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 29,
+     "fp": 0,
+     "fn": 21,
+     "precision": 1.0,
+     "recall": 0.58,
+     "f1": 0.734
+    },
+    "dimension.outer_diameter!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 35,
+     "fp": 0,
+     "fn": 19,
+     "precision": 1.0,
+     "recall": 0.648,
+     "f1": 0.787
+    },
+    "dimension.thickness!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 29,
+     "fp": 0,
+     "fn": 15,
+     "precision": 1.0,
+     "recall": 0.659,
+     "f1": 0.795
+    },
+    "dimension.width!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 28,
+     "fp": 0,
+     "fn": 22,
+     "precision": 1.0,
+     "recall": 0.56,
+     "f1": 0.718
+    },
+    "drawing_number!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 16,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.552,
+     "f1": 0.711
+    },
+    "drawn_by!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 10,
+     "precision": 1.0,
+     "recall": 0.231,
+     "f1": 0.375
+    },
+    "fax.sender": {
+     "tp": 3,
+     "fp": 1,
+     "fn": 10,
+     "precision": 0.75,
+     "recall": 0.231,
+     "f1": 0.353
+    },
+    "fax.sent_at": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 9,
+     "precision": 1.0,
+     "recall": 0.308,
+     "f1": 0.471
+    },
+    "inspection_date": {
+     "tp": 23,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.657,
+     "f1": 0.793
+    },
+    "inspection_date!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 43,
+     "fp": 0,
+     "fn": 40,
+     "precision": 1.0,
+     "recall": 0.518,
+     "f1": 0.683
+    },
+    "issue_date!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 46,
+     "fp": 6,
+     "fn": 40,
+     "precision": 0.885,
+     "recall": 0.535,
+     "f1": 0.667
+    },
+    "material!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.height": {
+     "tp": 38,
+     "fp": 0,
+     "fn": 23,
+     "precision": 1.0,
+     "recall": 0.623,
+     "f1": 0.768
+    },
+    "measured.height!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 25,
+     "fp": 0,
+     "fn": 32,
+     "precision": 1.0,
+     "recall": 0.439,
+     "f1": 0.61
+    },
+    "measured.inner_diameter!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 50,
+     "fp": 0,
+     "fn": 15,
+     "precision": 1.0,
+     "recall": 0.769,
+     "f1": 0.87
+    },
+    "measured.length!subject": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 32,
+     "fp": 0,
+     "fn": 24,
+     "precision": 1.0,
+     "recall": 0.571,
+     "f1": 0.727
+    },
+    "measured.outer_diameter!subject": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 52,
+     "fp": 0,
+     "fn": 32,
+     "precision": 1.0,
+     "recall": 0.619,
+     "f1": 0.765
+    },
+    "measured.thickness!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 37,
+     "fp": 0,
+     "fn": 26,
+     "precision": 1.0,
+     "recall": 0.587,
+     "f1": 0.74
+    },
+    "measured.width!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 113,
+     "fp": 3,
+     "fn": 61,
+     "precision": 0.974,
+     "recall": 0.649,
+     "f1": 0.779
+    },
+    "part_name!subject": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "property.chem_c!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "property.chem_mn!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.633,
+     "f1": 0.776
+    },
+    "property.chem_p!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_s": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "property.chem_s!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.633,
+     "f1": 0.776
+    },
+    "property.chem_si!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.elongation": {
+     "tp": 17,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.567,
+     "f1": 0.723
+    },
+    "property.hardness": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.556,
+     "f1": 0.714
+    },
+    "property.surface_roughness": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.381,
+     "f1": 0.552
+    },
+    "property.tensile_strength": {
+     "tp": 16,
+     "fp": 1,
+     "fn": 14,
+     "precision": 0.941,
+     "recall": 0.533,
+     "f1": 0.681
+    },
+    "property.yield_strength": {
+     "tp": 17,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.944,
+     "recall": 0.567,
+     "f1": 0.708
+    },
+    "quantity": {
+     "tp": 56,
+     "fp": 1,
+     "fn": 18,
+     "precision": 0.982,
+     "recall": 0.757,
+     "f1": 0.855
+    },
+    "result": {
+     "tp": 103,
+     "fp": 7,
+     "fn": 39,
+     "precision": 0.936,
+     "recall": 0.725,
+     "f1": 0.817
+    },
+    "result!subject": {
+     "tp": 0,
+     "fp": 11,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 36,
+     "fp": 0,
+     "fn": 35,
+     "precision": 1.0,
+     "recall": 0.507,
+     "f1": 0.673
+    },
+    "revision!subject": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "scale": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.476,
+     "f1": 0.645
+    },
+    "scale!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 15,
+     "fp": 1,
+     "fn": 6,
+     "precision": 0.938,
+     "recall": 0.714,
+     "f1": 0.811
+    },
+    "stamp.approved!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 8,
+     "fp": 2,
+     "fn": 5,
+     "precision": 0.8,
+     "recall": 0.615,
+     "f1": 0.696
+    },
+    "stamp.drawn": {
+     "tp": 15,
+     "fp": 1,
+     "fn": 6,
+     "precision": 0.938,
+     "recall": 0.714,
+     "f1": 0.811
+    },
+    "stamp.drawn!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 10,
+     "fp": 6,
+     "fn": 16,
+     "precision": 0.625,
+     "recall": 0.385,
+     "f1": 0.476
+    },
+    "supplier": {
+     "tp": 74,
+     "fp": 2,
+     "fn": 35,
+     "precision": 0.974,
+     "recall": 0.679,
+     "f1": 0.8
+    },
+    "supplier!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "surface_treatment": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 26,
+     "precision": 1.0,
+     "recall": 0.458,
+     "f1": 0.629
+    },
+    "surface_treatment!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 167,
+     "fp": 0,
+     "fn": 89,
+     "precision": 1.0,
+     "recall": 0.652,
+     "f1": 0.79
+    },
+    "tolerance!subject": {
+     "tp": 0,
+     "fp": 6,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "unit_price": {
+     "tp": 45,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.978,
+     "recall": 0.849,
+     "f1": 0.909
+    }
+   }
+  },
+  "rust/strict/dev": {
+   "micro": {
+    "tp": 605,
+    "fp": 50,
+    "fn": 68,
+    "precision": 0.924,
+    "recall": 0.899,
+    "f1": 0.911
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approval_status": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approved_by": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.9,
+     "f1": 0.947
+    },
+    "checked_by": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "delivery_date": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.height": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.933,
+     "f1": 0.966
+    },
+    "dimension.height!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.909,
+     "f1": 0.952
+    },
+    "dimension.inner_diameter!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.905,
+     "f1": 0.95
+    },
+    "dimension.length!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 13,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.867,
+     "f1": 0.929
+    },
+    "dimension.outer_diameter!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 21,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.955,
+     "f1": 0.977
+    },
+    "dimension.thickness!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 16,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.941,
+     "f1": 0.97
+    },
+    "dimension.width!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawn_by": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.9,
+     "f1": 0.947
+    },
+    "inspection_date": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.875,
+     "f1": 0.933
+    },
+    "inspection_date!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 26,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.929,
+     "f1": 0.963
+    },
+    "material": {
+     "tp": 27,
+     "fp": 1,
+     "fn": 2,
+     "precision": 0.964,
+     "recall": 0.931,
+     "f1": 0.947
+    },
+    "measured.height": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.875,
+     "f1": 0.933
+    },
+    "measured.height!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 7,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.778,
+     "f1": 0.875
+    },
+    "measured.inner_diameter!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 26,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.867,
+     "f1": 0.929
+    },
+    "measured.length!subject": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 17,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.81,
+     "f1": 0.895
+    },
+    "measured.outer_diameter!subject": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 28,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.933,
+     "f1": 0.966
+    },
+    "measured.thickness!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 13,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.867,
+     "f1": 0.929
+    },
+    "measured.width!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 46,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.92,
+     "f1": 0.958
+    },
+    "part_name!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_mn": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_p": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_s": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_si": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.elongation": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.hardness": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.surface_roughness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.tensile_strength": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.yield_strength": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "quantity": {
+     "tp": 7,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 45,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.804,
+     "f1": 0.891
+    },
+    "result!subject": {
+     "tp": 0,
+     "fp": 10,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 11,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.786,
+     "f1": 0.88
+    },
+    "revision!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "scale": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.approved": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.9,
+     "f1": 0.947
+    },
+    "stamp.checked": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.drawn": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.9,
+     "f1": 0.947
+    },
+    "standard": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.714,
+     "f1": 0.833
+    },
+    "supplier": {
+     "tp": 29,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.906,
+     "f1": 0.951
+    },
+    "supplier!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "surface_treatment": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.8,
+     "f1": 0.889
+    },
+    "tolerance": {
+     "tp": 93,
+     "fp": 0,
+     "fn": 8,
+     "precision": 1.0,
+     "recall": 0.921,
+     "f1": 0.959
+    },
+    "tolerance!subject": {
+     "tp": 0,
+     "fp": 6,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "unit_price": {
+     "tp": 4,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.8,
+     "recall": 0.8,
+     "f1": 0.8
+    }
+   }
+  },
+  "rust/strict/dev_scan": {
+   "micro": {
+    "tp": 106,
+    "fp": 5,
+    "fn": 94,
+    "precision": 0.955,
+    "recall": 0.53,
+    "f1": 0.682
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approved_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "dimension.outer_diameter": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "dimension.thickness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "dimension.width": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "drawing_number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "drawn_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "fax.sender": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "fax.sent_at": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "inspection_date": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "issue_date": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "material": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.167,
+     "f1": 0.286
+    },
+    "measured.height": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.outer_diameter": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.width": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_name": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.625,
+     "f1": 0.769
+    },
+    "property.chem_c": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.chem_mn": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.chem_p": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.chem_s": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.chem_si": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.elongation": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.hardness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.667,
+     "f1": 0.8
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.yield_strength": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "quantity": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 12,
+     "fp": 4,
+     "fn": 4,
+     "precision": 0.75,
+     "recall": 0.75,
+     "f1": 0.75
+    },
+    "revision": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "supplier": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "surface_treatment": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "tolerance": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.476,
+     "f1": 0.645
+    }
+   }
+  },
+  "rust/strict/holdout": {
+   "micro": {
+    "tp": 121,
+    "fp": 52,
+    "fn": 551,
+    "precision": 0.699,
+    "recall": 0.18,
+    "f1": 0.286
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approved_by": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "approved_by!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 7,
+     "precision": 0.5,
+     "recall": 0.125,
+     "f1": 0.2
+    },
+    "checked_by!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "delivery_date": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 20,
+     "precision": 1.0,
+     "recall": 0.31,
+     "f1": 0.474
+    },
+    "dimension.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 11,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 13,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 12,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 9,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 14,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "drawing_number!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "drawn_by!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "inspection_date": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "inspection_date!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 24,
+     "precision": 1.0,
+     "recall": 0.2,
+     "f1": 0.333
+    },
+    "issue_date!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 3,
+     "fp": 3,
+     "fn": 21,
+     "precision": 0.5,
+     "recall": 0.125,
+     "f1": 0.2
+    },
+    "material!subject": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 18,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 21,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 17,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 20,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 14,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 23,
+     "fp": 2,
+     "fn": 38,
+     "precision": 0.92,
+     "recall": 0.377,
+     "f1": 0.535
+    },
+    "part_name!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_c!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_mn!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_p!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_s": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_s!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.chem_si!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.elongation": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.hardness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.yield_strength": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "quantity": {
+     "tp": 22,
+     "fp": 1,
+     "fn": 15,
+     "precision": 0.957,
+     "recall": 0.595,
+     "f1": 0.733
+    },
+    "result": {
+     "tp": 2,
+     "fp": 3,
+     "fn": 14,
+     "precision": 0.4,
+     "recall": 0.125,
+     "f1": 0.19
+    },
+    "result!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 21,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "revision!subject": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "scale": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "scale!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 1,
+     "fp": 5,
+     "fn": 7,
+     "precision": 0.167,
+     "recall": 0.125,
+     "f1": 0.143
+    },
+    "supplier": {
+     "tp": 14,
+     "fp": 2,
+     "fn": 22,
+     "precision": 0.875,
+     "recall": 0.389,
+     "f1": 0.538
+    },
+    "surface_treatment": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 15,
+     "precision": 1.0,
+     "recall": 0.062,
+     "f1": 0.118
+    },
+    "surface_treatment!subject": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 51,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "unit_price": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.759,
+     "f1": 0.863
+    }
+   }
+  },
+  "rust/strict/holdout_scan": {
+   "micro": {
+    "tp": 10,
+    "fp": 8,
+    "fn": 217,
+    "precision": 0.556,
+    "recall": 0.044,
+    "f1": 0.082
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "approved_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 4,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 4,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 8,
+     "precision": 1.0,
+     "recall": 0.111,
+     "f1": 0.2
+    },
+    "fax.sender": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.5,
+     "recall": 0.111,
+     "f1": 0.182
+    },
+    "fax.sent_at": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.222,
+     "f1": 0.364
+    },
+    "inspection_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 1,
+     "fp": 2,
+     "fn": 8,
+     "precision": 0.333,
+     "recall": 0.111,
+     "f1": 0.167
+    },
+    "measured.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 10,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 10,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "property.chem_s": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "property.elongation": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.hardness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.yield_strength": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 2,
+     "precision": 0.5,
+     "recall": 0.333,
+     "f1": 0.4
+    },
+    "quantity": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "result": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 8,
+     "precision": 1.0,
+     "recall": 0.111,
+     "f1": 0.2
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "supplier": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "surface_treatment": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 19,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    }
+   }
+  },
+  "rust/strict/train": {
+   "micro": {
+    "tp": 639,
+    "fp": 0,
+    "fn": 27,
+    "precision": 1.0,
+    "recall": 0.959,
+    "f1": 0.979
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approval_status": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approved_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "checked_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "delivery_date": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.height": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.length": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.thickness": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.width": {
+     "tp": 11,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawing_number": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawn_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "inspection_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "issue_date": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.533,
+     "f1": 0.696
+    },
+    "material": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.778,
+     "f1": 0.875
+    },
+    "measured.height": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.length": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.outer_diameter": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.width": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_name": {
+     "tp": 39,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.907,
+     "f1": 0.951
+    },
+    "property.chem_c": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_mn": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_p": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_s": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_si": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.elongation": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.hardness": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.surface_roughness": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.tensile_strength": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.yield_strength": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "quantity": {
+     "tp": 25,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 44,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.917,
+     "f1": 0.957
+    },
+    "revision": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "scale": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.approved": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.checked": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.drawn": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "supplier": {
+     "tp": 27,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.871,
+     "f1": 0.931
+    },
+    "surface_treatment": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "tolerance": {
+     "tp": 64,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "unit_price": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    }
+   }
+  },
+  "worker/strict/all": {
+   "micro": {
+    "tp": 1641,
+    "fp": 221,
+    "fn": 1071,
+    "precision": 0.881,
+    "recall": 0.605,
+    "f1": 0.718
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 9,
+     "fp": 2,
+     "fn": 12,
+     "precision": 0.818,
+     "recall": 0.429,
+     "f1": 0.562
+    },
+    "approval_status": {
+     "tp": 9,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.429,
+     "f1": 0.6
+    },
+    "approved_by": {
+     "tp": 18,
+     "fp": 4,
+     "fn": 11,
+     "precision": 0.818,
+     "recall": 0.621,
+     "f1": 0.706
+    },
+    "checked_by": {
+     "tp": 10,
+     "fp": 4,
+     "fn": 11,
+     "precision": 0.714,
+     "recall": 0.476,
+     "f1": 0.571
+    },
+    "delivery_date": {
+     "tp": 26,
+     "fp": 0,
+     "fn": 27,
+     "precision": 1.0,
+     "recall": 0.491,
+     "f1": 0.658
+    },
+    "dimension.height": {
+     "tp": 23,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.657,
+     "f1": 0.793
+    },
+    "dimension.inner_diameter": {
+     "tp": 17,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.586,
+     "f1": 0.739
+    },
+    "dimension.length": {
+     "tp": 37,
+     "fp": 1,
+     "fn": 19,
+     "precision": 0.974,
+     "recall": 0.661,
+     "f1": 0.787
+    },
+    "dimension.outer_diameter": {
+     "tp": 31,
+     "fp": 0,
+     "fn": 19,
+     "precision": 1.0,
+     "recall": 0.62,
+     "f1": 0.765
+    },
+    "dimension.thickness": {
+     "tp": 35,
+     "fp": 1,
+     "fn": 19,
+     "precision": 0.972,
+     "recall": 0.648,
+     "f1": 0.778
+    },
+    "dimension.width": {
+     "tp": 29,
+     "fp": 2,
+     "fn": 15,
+     "precision": 0.935,
+     "recall": 0.659,
+     "f1": 0.773
+    },
+    "drawing_number": {
+     "tp": 24,
+     "fp": 2,
+     "fn": 26,
+     "precision": 0.923,
+     "recall": 0.48,
+     "f1": 0.632
+    },
+    "drawn_by": {
+     "tp": 20,
+     "fp": 1,
+     "fn": 9,
+     "precision": 0.952,
+     "recall": 0.69,
+     "f1": 0.8
+    },
+    "fax.number": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.462,
+     "f1": 0.632
+    },
+    "fax.sender": {
+     "tp": 4,
+     "fp": 4,
+     "fn": 9,
+     "precision": 0.5,
+     "recall": 0.308,
+     "f1": 0.381
+    },
+    "fax.sent_at": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.615,
+     "f1": 0.762
+    },
+    "heat_number": {
+     "tp": 18,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.947,
+     "recall": 0.6,
+     "f1": 0.735
+    },
+    "inspection_date": {
+     "tp": 22,
+     "fp": 0,
+     "fn": 13,
+     "precision": 1.0,
+     "recall": 0.629,
+     "f1": 0.772
+    },
+    "issue_date": {
+     "tp": 38,
+     "fp": 7,
+     "fn": 45,
+     "precision": 0.844,
+     "recall": 0.458,
+     "f1": 0.594
+    },
+    "lot": {
+     "tp": 10,
+     "fp": 8,
+     "fn": 11,
+     "precision": 0.556,
+     "recall": 0.476,
+     "f1": 0.513
+    },
+    "material": {
+     "tp": 50,
+     "fp": 28,
+     "fn": 36,
+     "precision": 0.641,
+     "recall": 0.581,
+     "f1": 0.61
+    },
+    "measured.height": {
+     "tp": 40,
+     "fp": 0,
+     "fn": 21,
+     "precision": 1.0,
+     "recall": 0.656,
+     "f1": 0.792
+    },
+    "measured.inner_diameter": {
+     "tp": 26,
+     "fp": 1,
+     "fn": 31,
+     "precision": 0.963,
+     "recall": 0.456,
+     "f1": 0.619
+    },
+    "measured.length": {
+     "tp": 53,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.981,
+     "recall": 0.815,
+     "f1": 0.891
+    },
+    "measured.outer_diameter": {
+     "tp": 36,
+     "fp": 0,
+     "fn": 20,
+     "precision": 1.0,
+     "recall": 0.643,
+     "f1": 0.783
+    },
+    "measured.thickness": {
+     "tp": 53,
+     "fp": 1,
+     "fn": 31,
+     "precision": 0.981,
+     "recall": 0.631,
+     "f1": 0.768
+    },
+    "measured.width": {
+     "tp": 38,
+     "fp": 1,
+     "fn": 25,
+     "precision": 0.974,
+     "recall": 0.603,
+     "f1": 0.745
+    },
+    "part_name": {
+     "tp": 82,
+     "fp": 7,
+     "fn": 92,
+     "precision": 0.921,
+     "recall": 0.471,
+     "f1": 0.624
+    },
+    "part_number": {
+     "tp": 83,
+     "fp": 7,
+     "fn": 49,
+     "precision": 0.922,
+     "recall": 0.629,
+     "f1": 0.748
+    },
+    "po_line": {
+     "tp": 40,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.976,
+     "recall": 0.755,
+     "f1": 0.851
+    },
+    "po_number": {
+     "tp": 30,
+     "fp": 1,
+     "fn": 8,
+     "precision": 0.968,
+     "recall": 0.789,
+     "f1": 0.87
+    },
+    "property.chem_c": {
+     "tp": 16,
+     "fp": 9,
+     "fn": 14,
+     "precision": 0.64,
+     "recall": 0.533,
+     "f1": 0.582
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 16,
+     "fp": 9,
+     "fn": 14,
+     "precision": 0.64,
+     "recall": 0.533,
+     "f1": 0.582
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 3,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_ni": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 16,
+     "fp": 10,
+     "fn": 14,
+     "precision": 0.615,
+     "recall": 0.533,
+     "f1": 0.571
+    },
+    "property.chem_s": {
+     "tp": 16,
+     "fp": 9,
+     "fn": 14,
+     "precision": 0.64,
+     "recall": 0.533,
+     "f1": 0.582
+    },
+    "property.chem_si": {
+     "tp": 16,
+     "fp": 10,
+     "fn": 14,
+     "precision": 0.615,
+     "recall": 0.533,
+     "f1": 0.571
+    },
+    "property.elongation": {
+     "tp": 21,
+     "fp": 0,
+     "fn": 9,
+     "precision": 1.0,
+     "recall": 0.7,
+     "f1": 0.824
+    },
+    "property.hardness": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 12,
+     "precision": 1.0,
+     "recall": 0.556,
+     "f1": 0.714
+    },
+    "property.surface_roughness": {
+     "tp": 9,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.9,
+     "recall": 0.429,
+     "f1": 0.581
+    },
+    "property.tensile_strength": {
+     "tp": 17,
+     "fp": 2,
+     "fn": 13,
+     "precision": 0.895,
+     "recall": 0.567,
+     "f1": 0.694
+    },
+    "property.yield_strength": {
+     "tp": 17,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.944,
+     "recall": 0.567,
+     "f1": 0.708
+    },
+    "quantity": {
+     "tp": 37,
+     "fp": 1,
+     "fn": 37,
+     "precision": 0.974,
+     "recall": 0.5,
+     "f1": 0.661
+    },
+    "result": {
+     "tp": 116,
+     "fp": 11,
+     "fn": 26,
+     "precision": 0.913,
+     "recall": 0.817,
+     "f1": 0.862
+    },
+    "revision": {
+     "tp": 34,
+     "fp": 8,
+     "fn": 37,
+     "precision": 0.81,
+     "recall": 0.479,
+     "f1": 0.602
+    },
+    "scale": {
+     "tp": 10,
+     "fp": 1,
+     "fn": 11,
+     "precision": 0.909,
+     "recall": 0.476,
+     "f1": 0.625
+    },
+    "stamp.approved": {
+     "tp": 16,
+     "fp": 2,
+     "fn": 5,
+     "precision": 0.889,
+     "recall": 0.762,
+     "f1": 0.821
+    },
+    "stamp.checked": {
+     "tp": 8,
+     "fp": 4,
+     "fn": 5,
+     "precision": 0.667,
+     "recall": 0.615,
+     "f1": 0.64
+    },
+    "stamp.drawn": {
+     "tp": 16,
+     "fp": 5,
+     "fn": 5,
+     "precision": 0.762,
+     "recall": 0.762,
+     "f1": 0.762
+    },
+    "stamp.unassigned": {
+     "tp": 0,
+     "fp": 14,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 11,
+     "precision": 1.0,
+     "recall": 0.577,
+     "f1": 0.732
+    },
+    "supplier": {
+     "tp": 63,
+     "fp": 3,
+     "fn": 46,
+     "precision": 0.955,
+     "recall": 0.578,
+     "f1": 0.72
+    },
+    "surface_treatment": {
+     "tp": 22,
+     "fp": 1,
+     "fn": 26,
+     "precision": 0.957,
+     "recall": 0.458,
+     "f1": 0.62
+    },
+    "title": {
+     "tp": 0,
+     "fp": 5,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 179,
+     "fp": 18,
+     "fn": 77,
+     "precision": 0.909,
+     "recall": 0.699,
+     "f1": 0.79
+    },
+    "unit_price": {
+     "tp": 41,
+     "fp": 3,
+     "fn": 12,
+     "precision": 0.932,
+     "recall": 0.774,
+     "f1": 0.845
+    }
+   }
+  },
+  "worker/strict/dev": {
+   "micro": {
+    "tp": 594,
+    "fp": 15,
+    "fn": 140,
+    "precision": 0.975,
+    "recall": 0.809,
+    "f1": 0.885
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approval_status": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approved_by": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "checked_by": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "delivery_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 11,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.length": {
+     "tp": 20,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.952,
+     "recall": 0.952,
+     "f1": 0.952
+    },
+    "dimension.outer_diameter": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.thickness": {
+     "tp": 21,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.955,
+     "recall": 0.955,
+     "f1": 0.955
+    },
+    "dimension.width": {
+     "tp": 16,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.941,
+     "recall": 0.941,
+     "f1": 0.941
+    },
+    "drawing_number": {
+     "tp": 7,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.583,
+     "f1": 0.737
+    },
+    "drawn_by": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "heat_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "inspection_date": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.875,
+     "f1": 0.933
+    },
+    "issue_date": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 14,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "lot": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 24,
+     "fp": 1,
+     "fn": 5,
+     "precision": 0.96,
+     "recall": 0.828,
+     "f1": 0.889
+    },
+    "measured.height": {
+     "tp": 16,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 8,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.889,
+     "recall": 0.889,
+     "f1": 0.889
+    },
+    "measured.length": {
+     "tp": 29,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.967,
+     "recall": 0.967,
+     "f1": 0.967
+    },
+    "measured.outer_diameter": {
+     "tp": 21,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 29,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.967,
+     "recall": 0.967,
+     "f1": 0.967
+    },
+    "measured.width": {
+     "tp": 14,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.933,
+     "recall": 0.933,
+     "f1": 0.933
+    },
+    "part_name": {
+     "tp": 24,
+     "fp": 0,
+     "fn": 26,
+     "precision": 1.0,
+     "recall": 0.48,
+     "f1": 0.649
+    },
+    "part_number": {
+     "tp": 26,
+     "fp": 3,
+     "fn": 20,
+     "precision": 0.897,
+     "recall": 0.565,
+     "f1": 0.693
+    },
+    "po_line": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "po_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_mn": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_p": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_s": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_si": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.elongation": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.hardness": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.surface_roughness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.tensile_strength": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.yield_strength": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "quantity": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 7,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "result": {
+     "tp": 54,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.964,
+     "f1": 0.982
+    },
+    "revision": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.571,
+     "f1": 0.727
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.checked": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.drawn": {
+     "tp": 10,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "standard": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.714,
+     "f1": 0.833
+    },
+    "supplier": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 18,
+     "precision": 1.0,
+     "recall": 0.438,
+     "f1": 0.609
+    },
+    "surface_treatment": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "tolerance": {
+     "tp": 97,
+     "fp": 3,
+     "fn": 4,
+     "precision": 0.97,
+     "recall": 0.96,
+     "f1": 0.965
+    },
+    "unit_price": {
+     "tp": 4,
+     "fp": 1,
+     "fn": 1,
+     "precision": 0.8,
+     "recall": 0.8,
+     "f1": 0.8
+    }
+   }
+  },
+  "worker/strict/dev_scan": {
+   "micro": {
+    "tp": 103,
+    "fp": 28,
+    "fn": 107,
+    "precision": 0.786,
+    "recall": 0.49,
+    "f1": 0.604
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approved_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75
+    },
+    "dimension.outer_diameter": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "dimension.thickness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "dimension.width": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "drawing_number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "drawn_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "fax.sender": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "fax.sent_at": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "heat_number": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "inspection_date": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "issue_date": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "lot": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "material": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 5,
+     "precision": 1.0,
+     "recall": 0.167,
+     "f1": 0.286
+    },
+    "measured.height": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.outer_diameter": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.width": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_name": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.625,
+     "f1": 0.769
+    },
+    "part_number": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857
+    },
+    "property.chem_c": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.chem_mn": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.chem_p": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.chem_s": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.chem_si": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.elongation": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "property.hardness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.667,
+     "f1": 0.8
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.5,
+     "recall": 0.25,
+     "f1": 0.333
+    },
+    "property.yield_strength": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "quantity": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 12,
+     "fp": 4,
+     "fn": 4,
+     "precision": 0.75,
+     "recall": 0.75,
+     "f1": 0.75
+    },
+    "revision": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.5,
+     "f1": 0.667
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.unassigned": {
+     "tp": 0,
+     "fp": 6,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "supplier": {
+     "tp": 4,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "surface_treatment": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 3,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "title": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 2,
+     "fp": 8,
+     "fn": 19,
+     "precision": 0.2,
+     "recall": 0.095,
+     "f1": 0.129
+    }
+   }
+  },
+  "worker/strict/holdout": {
+   "micro": {
+    "tp": 175,
+    "fp": 152,
+    "fn": 601,
+    "precision": 0.535,
+    "recall": 0.226,
+    "f1": 0.317
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 1,
+     "fp": 2,
+     "fn": 7,
+     "precision": 0.333,
+     "recall": 0.125,
+     "f1": 0.182
+    },
+    "approval_status": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approved_by": {
+     "tp": 2,
+     "fp": 3,
+     "fn": 6,
+     "precision": 0.4,
+     "recall": 0.25,
+     "f1": 0.308
+    },
+    "checked_by": {
+     "tp": 2,
+     "fp": 4,
+     "fn": 6,
+     "precision": 0.333,
+     "recall": 0.25,
+     "f1": 0.286
+    },
+    "delivery_date": {
+     "tp": 7,
+     "fp": 0,
+     "fn": 22,
+     "precision": 1.0,
+     "recall": 0.241,
+     "f1": 0.389
+    },
+    "dimension.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 11,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 13,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 12,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 9,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 3,
+     "fp": 2,
+     "fn": 13,
+     "precision": 0.6,
+     "recall": 0.188,
+     "f1": 0.286
+    },
+    "drawn_by": {
+     "tp": 4,
+     "fp": 1,
+     "fn": 4,
+     "precision": 0.8,
+     "recall": 0.5,
+     "f1": 0.615
+    },
+    "heat_number": {
+     "tp": 3,
+     "fp": 1,
+     "fn": 5,
+     "precision": 0.75,
+     "recall": 0.375,
+     "f1": 0.5
+    },
+    "inspection_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 6,
+     "fp": 7,
+     "fn": 24,
+     "precision": 0.462,
+     "recall": 0.2,
+     "f1": 0.279
+    },
+    "lot": {
+     "tp": 2,
+     "fp": 8,
+     "fn": 6,
+     "precision": 0.2,
+     "recall": 0.25,
+     "f1": 0.222
+    },
+    "material": {
+     "tp": 6,
+     "fp": 21,
+     "fn": 18,
+     "precision": 0.222,
+     "recall": 0.25,
+     "f1": 0.235
+    },
+    "measured.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 18,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 21,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 17,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 20,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 14,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 10,
+     "fp": 6,
+     "fn": 51,
+     "precision": 0.625,
+     "recall": 0.164,
+     "f1": 0.26
+    },
+    "part_number": {
+     "tp": 23,
+     "fp": 4,
+     "fn": 22,
+     "precision": 0.852,
+     "recall": 0.511,
+     "f1": 0.639
+    },
+    "po_line": {
+     "tp": 16,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.941,
+     "recall": 0.552,
+     "f1": 0.696
+    },
+    "po_number": {
+     "tp": 11,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.917,
+     "recall": 0.786,
+     "f1": 0.846
+    },
+    "property.chem_c": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cu": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_ni": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_s": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.elongation": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "property.hardness": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "property.surface_roughness": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 7,
+     "precision": 0.5,
+     "recall": 0.125,
+     "f1": 0.2
+    },
+    "property.tensile_strength": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 7,
+     "precision": 1.0,
+     "recall": 0.125,
+     "f1": 0.222
+    },
+    "property.yield_strength": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 8,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "quantity": {
+     "tp": 10,
+     "fp": 1,
+     "fn": 27,
+     "precision": 0.909,
+     "recall": 0.27,
+     "f1": 0.417
+    },
+    "result": {
+     "tp": 2,
+     "fp": 7,
+     "fn": 14,
+     "precision": 0.222,
+     "recall": 0.125,
+     "f1": 0.16
+    },
+    "revision": {
+     "tp": 4,
+     "fp": 8,
+     "fn": 20,
+     "precision": 0.333,
+     "recall": 0.167,
+     "f1": 0.222
+    },
+    "scale": {
+     "tp": 4,
+     "fp": 1,
+     "fn": 4,
+     "precision": 0.8,
+     "recall": 0.5,
+     "f1": 0.615
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 2,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 4,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 5,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.25,
+     "f1": 0.4
+    },
+    "supplier": {
+     "tp": 14,
+     "fp": 3,
+     "fn": 22,
+     "precision": 0.824,
+     "recall": 0.389,
+     "f1": 0.528
+    },
+    "surface_treatment": {
+     "tp": 3,
+     "fp": 1,
+     "fn": 13,
+     "precision": 0.75,
+     "recall": 0.188,
+     "f1": 0.3
+    },
+    "title": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 16,
+     "fp": 7,
+     "fn": 35,
+     "precision": 0.696,
+     "recall": 0.314,
+     "f1": 0.432
+    },
+    "unit_price": {
+     "tp": 18,
+     "fp": 2,
+     "fn": 11,
+     "precision": 0.9,
+     "recall": 0.621,
+     "f1": 0.735
+    }
+   }
+  },
+  "worker/strict/holdout_scan": {
+   "micro": {
+    "tp": 16,
+    "fp": 26,
+    "fn": 223,
+    "precision": 0.381,
+    "recall": 0.067,
+    "f1": 0.114
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "approval_status": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "approved_by": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "checked_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 4,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 4,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "dimension.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawing_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "drawn_by": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "fax.number": {
+     "tp": 3,
+     "fp": 0,
+     "fn": 6,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "fax.sender": {
+     "tp": 1,
+     "fp": 4,
+     "fn": 8,
+     "precision": 0.2,
+     "recall": 0.111,
+     "f1": 0.143
+    },
+    "fax.sent_at": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 4,
+     "precision": 1.0,
+     "recall": 0.556,
+     "f1": 0.714
+    },
+    "heat_number": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 2,
+     "precision": 1.0,
+     "recall": 0.333,
+     "f1": 0.5
+    },
+    "inspection_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "issue_date": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "lot": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "material": {
+     "tp": 1,
+     "fp": 6,
+     "fn": 8,
+     "precision": 0.143,
+     "recall": 0.111,
+     "f1": 0.125
+    },
+    "measured.height": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.inner_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.length": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.outer_diameter": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.thickness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 10,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "measured.width": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 10,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_name": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 12,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "part_number": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_c": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_cr": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_mo": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_p": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_s": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.chem_si": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.elongation": {
+     "tp": 2,
+     "fp": 0,
+     "fn": 1,
+     "precision": 1.0,
+     "recall": 0.667,
+     "f1": 0.8
+    },
+    "property.hardness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 5,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.surface_roughness": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.tensile_strength": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "property.yield_strength": {
+     "tp": 1,
+     "fp": 1,
+     "fn": 2,
+     "precision": 0.5,
+     "recall": 0.333,
+     "f1": 0.4
+    },
+    "quantity": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "result": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "revision": {
+     "tp": 1,
+     "fp": 0,
+     "fn": 8,
+     "precision": 1.0,
+     "recall": 0.111,
+     "f1": 0.2
+    },
+    "scale": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.approved": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.checked": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.drawn": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "stamp.unassigned": {
+     "tp": 0,
+     "fp": 8,
+     "fn": 0,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "standard": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 3,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "supplier": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "surface_treatment": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 6,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    },
+    "tolerance": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 19,
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0
+    }
+   }
+  },
+  "worker/strict/train": {
+   "micro": {
+    "tp": 753,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+   },
+   "fields": {
+    "approval_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approval_status": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "approved_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "checked_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "delivery_date": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.height": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.inner_diameter": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.length": {
+     "tp": 14,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.outer_diameter": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.thickness": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "dimension.width": {
+     "tp": 11,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawing_number": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "drawn_by": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "heat_number": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "inspection_date": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "issue_date": {
+     "tp": 15,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "lot": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "material": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.height": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.inner_diameter": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.length": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.outer_diameter": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.thickness": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "measured.width": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_name": {
+     "tp": 43,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "part_number": {
+     "tp": 31,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "po_line": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "po_number": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_c": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_mn": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_p": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_s": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.chem_si": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.elongation": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.hardness": {
+     "tp": 8,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.surface_roughness": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.tensile_strength": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "property.yield_strength": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "quantity": {
+     "tp": 25,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "result": {
+     "tp": 48,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "revision": {
+     "tp": 18,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "scale": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.approved": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.checked": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "stamp.drawn": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "standard": {
+     "tp": 6,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "supplier": {
+     "tp": 31,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "surface_treatment": {
+     "tp": 12,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "tolerance": {
+     "tp": 64,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    },
+    "unit_price": {
+     "tp": 19,
+     "fp": 0,
+     "fn": 0,
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0
+    }
+   }
+  }
+ },
+ "docs": {
+  "dev": 38,
+  "dev_scan": 8,
+  "holdout": 40,
+  "holdout_scan": 12,
+  "train": 30
+ }
+}

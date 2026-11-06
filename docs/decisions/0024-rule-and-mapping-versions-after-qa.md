@@ -24,3 +24,20 @@ Version tags change whenever behaviour changes; reviews should reject rule/vocab
 ## Addendum: `mfg-map@5` (ja-v2)
 The ja-v2 lane also used `mfg-map@4` on its branch for its fallback label inference (`infer.rs`) and tenant label
 synonyms (migration 0025 on main). Merged after the QA bump, it becomes `mfg-map@5`.
+
+## Addendum: `mfg-map@6`, `cal@2` and worker extractors `@3` (ja-v3, 2026-11-06)
+Report: `docs/testing/JA_EXTRACTION_V3_2026-11-06.md`.
+- Worker `pdf@3`, `ocr-tesseract@3` (worker 0.4.0). New layout readers (`geometry.py`) read horizontal
+  measurement tables, label/value strips (label above or below its value) and, in title blocks, any vocabulary label
+  with its value to the right, below or above. Ruling lines split cells. Pages whose only text is invisible over an
+  image (a scanner's hidden OCR layer) are checked against our own OCR of the page. Each value gets an
+  `ocr_confidence`, below the review floor when the two readings differ. Records carry `location.layout`.
+- Worker `csv@3`, `xlsx@3`: preamble rows with several `label,value` pairs are read.
+- `mfg-map@6`: part sections. When the `label: value` fields name two or more different parts, each positioned value
+  is about the nearest part header above it. Header fields before the first part are about every part. Each claim
+  records `section`. An OCR-read subject's confidence (`subject_conf_bps`) bounds its values' calibration and flags
+  them below the review floor.
+- `cal@2`: groups also split by layout (`/geom` for strips, title blocks and horizontal tables). The fit set
+  includes dev documents with deliberate wrong values in a hidden text layer.
+- Location keys `subject_conf_bps` (derived; documents cannot set it) and `layout` (set by the worker) were added to
+  `evidence_core::claim::LOCATION_KEYS`.

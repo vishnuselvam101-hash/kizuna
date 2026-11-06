@@ -88,6 +88,7 @@ def test_pdf_drawing_claims_exact():
         "row": 1,
         "col": 2,
         "bbox": by[("property.hardness", "58")]["location"]["bbox"],
+        "layout": "table",  # which layout reader produced it (calibration group, pdf@3)
     }
     assert by[("title", "Bracket main")]["location"] == {"metadata": "/Title"}
 
