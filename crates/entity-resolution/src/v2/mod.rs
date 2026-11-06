@@ -5,6 +5,7 @@
 //! Nothing here merges anything. `Match` means "strong evidence, confirm"; only `safe` pairs (identical after
 //! identity-preserving normalisation) may be treated as the same key without a human, exactly as in v1.
 
+pub mod active;
 pub mod block;
 pub mod context;
 pub mod em;
