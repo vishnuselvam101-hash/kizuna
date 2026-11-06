@@ -126,39 +126,10 @@ pub fn analyze(links: &[Link], assembly: &Spec, opts: &StackOptions) -> TolResul
     let (mut mid, mut sum_t2, mut mu, mut var) = (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64);
     let mut variances = Vec::with_capacity(links.len());
     for l in links {
-        let (Some(lo), Some(hi)) = (l.spec.lower, l.spec.upper) else {
-            return invalid(format!("link {:?} needs two limits", l.name));
-        };
-        if l.spec.dimension != Dimension::Length {
-            return invalid(format!("link {:?} is not a length", l.name));
-        }
-        let (lo, hi) = (lo.value, hi.value);
+        let (lo, hi, mean_i, sigma_i) = link_model(l, opts.default_cp)?;
         let n = l.spec.nominal.unwrap_or((lo + hi) / Decimal::TWO);
         let m = (lo + hi) / Decimal::TWO;
         let t = f(hi - lo) / 2.0;
-        let (mean_i, sigma_i) = match l.process {
-            None => (f(m), t / (3.0 * opts.default_cp)),
-            Some(Process::Sigma { mean, sigma }) => {
-                if !(sigma.is_finite() && sigma >= 0.0) {
-                    return invalid(format!("link {:?}: σ must be finite and ≥ 0", l.name));
-                }
-                (f(mean.unwrap_or(m)), sigma)
-            }
-            Some(Process::Cpk { mean, cpk }) => {
-                if !(cpk.is_finite() && cpk > 0.0) {
-                    return invalid(format!(
-                        "link {:?}: Cpk must be > 0 (a process centred outside its limits has no σ from Cpk)",
-                        l.name
-                    ));
-                }
-                let mu_i = mean.unwrap_or(m);
-                let dist = (hi - mu_i).min(mu_i - lo);
-                if dist <= Decimal::ZERO {
-                    return invalid(format!("link {:?}: mean {mu_i} is not inside its limits", l.name));
-                }
-                (f(mu_i), f(dist) / (3.0 * cpk))
-            }
-        };
         let s = match l.direction {
             Direction::Plus => 1.0,
             Direction::Minus => -1.0,
@@ -239,6 +210,44 @@ pub fn analyze(links: &[Link], assembly: &Spec, opts: &StackOptions) -> TolResul
         contributions,
         findings,
     })
+}
+
+/// The normal model [`analyze`] assumes for one link: `(lower, upper, mean, σ)` in canonical mm. Without process
+/// data the link is centred with σ = T/(6·Cp) (T = upper − lower); with `Sigma` / `Cpk` as documented on [`Process`].
+pub(crate) fn link_model(l: &Link, default_cp: f64) -> TolResult<(Decimal, Decimal, f64, f64)> {
+    let (Some(lo), Some(hi)) = (l.spec.lower, l.spec.upper) else {
+        return invalid(format!("link {:?} needs two limits", l.name));
+    };
+    if l.spec.dimension != Dimension::Length {
+        return invalid(format!("link {:?} is not a length", l.name));
+    }
+    let (lo, hi) = (lo.value, hi.value);
+    let m = (lo + hi) / Decimal::TWO;
+    let t = f(hi - lo) / 2.0;
+    let (mean_i, sigma_i) = match l.process {
+        None => (f(m), t / (3.0 * default_cp)),
+        Some(Process::Sigma { mean, sigma }) => {
+            if !(sigma.is_finite() && sigma >= 0.0) {
+                return invalid(format!("link {:?}: σ must be finite and ≥ 0", l.name));
+            }
+            (f(mean.unwrap_or(m)), sigma)
+        }
+        Some(Process::Cpk { mean, cpk }) => {
+            if !(cpk.is_finite() && cpk > 0.0) {
+                return invalid(format!(
+                    "link {:?}: Cpk must be > 0 (a process centred outside its limits has no σ from Cpk)",
+                    l.name
+                ));
+            }
+            let mu_i = mean.unwrap_or(m);
+            let dist = (hi - mu_i).min(mu_i - lo);
+            if dist <= Decimal::ZERO {
+                return invalid(format!("link {:?}: mean {mu_i} is not inside its limits", l.name));
+            }
+            (f(mu_i), f(dist) / (3.0 * cpk))
+        }
+    };
+    Ok((lo, hi, mean_i, sigma_i))
 }
 
 fn tail_below(l: f64, mu: f64, sigma: f64) -> f64 {
