@@ -5,6 +5,7 @@ pub mod ai;
 pub mod ai_guard;
 pub mod calibration;
 pub mod capa;
+pub mod grades;
 pub mod infer;
 mod ja;
 pub mod mapping;

@@ -1,0 +1,13 @@
+# EXAMPLE ONLY - FICTIONAL GRADES FOR TESTS. NOT STANDARDS CONTENT, NOT ENGINEERING GUIDANCE.
+# The grade names below (XQ..., ZR..., K9...) do not exist in any standard. KIZUNA ships no equivalence data:
+# each tenant curates its own table, and every row becomes a proposal a second person must approve.
+# Every row is shown as "unverified — check against the standard" until the tenant records, per entry, that it
+# checked it against the standard document. Even then it is the tenant's statement, not the standard.
+# Format: a_standard,a_grade,b_standard,b_grade,equivalence,conditions,reference
+#   equivalence = identical | acceptable_with_conditions | not_equivalent
+#   conditions  = required for acceptable_with_conditions
+#   reference   = the tenant's own note on where the statement comes from
+a_standard,a_grade,b_standard,b_grade,equivalence,conditions,reference
+JIS,XQ101,ASTM,ZR-9901,identical,,Example memo QA-000 (fictional)
+JIS,XQ202,IS,K9 220,acceptable_with_conditions,"Only with supplementary impact test at -20 C; mill certificate type 3.1 or higher",Example memo QA-001 (fictional)
+JIS,XQ303,ASTM,ZR-9933,not_equivalent,,Example memo QA-002 (fictional)

@@ -526,5 +526,29 @@
  "withdraw.superseded_by_ai": {
   "en": "superseded by an unreviewed AI suggestion on re-extraction",
   "ja": "再抽出で未レビューの AI 提案に置き換えられました"
+ },
+ "match.substitution_requires_decision": {
+  "en": "certificate states {certified}, which may be another standard's grade, but {required} is required; using it as a substitute needs a recorded decision",
+  "ja": "成績書の材質 {certified} は指定 {required} と別規格の可能性があります。代替材として使うには判断の記録が必要です"
+ },
+ "match.substitution_conditional": {
+  "en": "certificate states {certified} for required {required}; the tenant table allows it only under conditions ({conditions}): record a substitution decision",
+  "ja": "成績書の材質 {certified}（指定 {required}）は自社の同等材表で条件付き（{conditions}）です。代替の判断を記録してください"
+ },
+ "match.material_not_equivalent": {
+  "en": "certificate states {certified} but {required} is required; the tenant table marks them not equivalent",
+  "ja": "成績書の材質は {certified} ですが、指定は {required} です。自社の同等材表では同等ではありません"
+ },
+ "match.grade_property_out_of_limits": {
+  "en": "certificate states {certified} {property}; the tenant's limit for {grade} is {bound} {limit} ({verification})",
+  "ja": "成績書の {property} は {certified} ですが、自社登録の {grade} の限度は {bound} {limit} です（{verification}）"
+ },
+ "invalidation.grade_equivalence_changed": {
+  "en": "grade equivalence {equivalence} was changed or retired by the tenant",
+  "ja": "材質同等表の項目 {equivalence} が変更または廃止されました"
+ },
+ "invalidation.verb.grade_equivalence_changed": {
+  "en": "rests on a grade equivalence that was changed or retired",
+  "ja": "が変更または廃止された材質同等表の項目に依拠しています"
  }
 }

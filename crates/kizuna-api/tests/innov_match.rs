@@ -235,7 +235,7 @@ async fn three_way_match_cites_all_sides_and_gates_acceptance() {
         "{:?}",
         lines[0]
     );
-    assert_eq!(r.body["rule_version"], "mfg-match@1");
+    assert_eq!(r.body["rule_version"], "mfg-match@2");
 
     let l1 = line(&s, "1").await;
     assert!(kinds(&l1).is_empty(), "{:?}", l1["match"]["findings"]);

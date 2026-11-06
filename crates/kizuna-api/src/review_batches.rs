@@ -216,7 +216,7 @@ pub async fn step(tx: &mut Tx, tenant: Uuid, chunk: usize) -> ApiResult<Step> {
         })
         .collect::<ApiResult<Vec<_>>>()?;
     let n = impacts.len();
-    let flagged = apply_impacts(tx, tenant, b.created_by, impacts, b.cause_claim, b.cause_decision).await?;
+    let flagged = apply_impacts(tx, tenant, b.created_by, impacts, b.cause_claim, b.cause_decision, None).await?;
     sqlx::query("UPDATE review_batch_items SET applied = true WHERE batch_id = $1 AND seq = ANY($2)")
         .bind(b.id)
         .bind(&seqs)

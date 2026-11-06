@@ -19,6 +19,22 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | I2/I3 | done (synthetic eval only) | certificate integrity signals (9 kinds) + revision drift radar, ADR 0019, migration 0016, `/integrity/*` API, "Integrity signals" and "Revision drift" views; eval docs/testing/INTEGRITY_SIGNALS_EVAL.md |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
+## Innovation I9: cross-standard grade guard (2026-11-06, branch `inn-grade`, ADR 0028, migration 0032)
+`mfg-grade@1` + `mfg-match@2`: tenant-curated, four-eyes, versioned grade-equivalence and grade-limit tables (no
+shipped standards content; every entry labelled "unverified — check against the standard" unless the tenant records a
+check against the standard document); `substitution_requires_decision`, `material_substitution` decisions,
+`grade_property_out_of_limits`; equivalence edits/retirements flag dependent decisions. API: `/grades/equivalences`
+(+ `/import`, `/{id}/approve|reject`), `/grades/limits` (+ approve/reject), `/match/line/substitution`.
+
+| Command | Result |
+|---|---|
+| `cargo test --workspace` (private throwaway DB) | **564 passed**, 0 failed, 2 ignored; incl. `tests/innov_grade.rs` (2, real PostgreSQL + extraction) and 17 new domain unit tests (grades + three-way grade guard/limits) |
+| `cargo clippy --all-targets -D warnings`, `cargo fmt --check` | pass |
+| web `tsc` + vitest | pass, 111 tests |
+
+Gaps: no UI screen; limit changes do not invalidate earlier acceptances; real-world grade notation untested (fictional
+grades only); no e2e generator case yet.
+
 ## Integration results (2026-11-05 late, main 5009a60)
 Further merged: feat-evidence-pack (mig 0022, ADR 0023), feat-whatif (0023), qa (ADR 0024: mfg-rules@2, mfg-map@4,
 ai-map@3), er-tuning (0024), ja-v2 (0025, mfg-map@5), perf-verify (0026), feat-supplier-portal (0027, ADR 0025),

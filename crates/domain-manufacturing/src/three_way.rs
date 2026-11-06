@@ -1,4 +1,4 @@
-//! Quality three-way match (`mfg-match@1`): purchase-order line ↔ drawing/specification ↔ supplier certificates
+//! Quality three-way match (`mfg-match@2`; @2 adds the cross-standard grade guard, `grades.rs`): purchase-order line ↔ drawing/specification ↔ supplier certificates
 //! (mill sheets, inspection reports). Deterministic and explainable: every finding cites the claims it rests on, on
 //! each of the three sides, so a reviewer can open the exact source location of every value.
 //!
@@ -15,9 +15,10 @@ use rust_decimal::Decimal;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use crate::grades::{GradeCtx, GradeVerdict, judge, parse_grade, same_grade};
 use crate::rules::in_unit;
 
-pub const MATCH_RULE_VERSION: &str = "mfg-match@1";
+pub const MATCH_RULE_VERSION: &str = "mfg-match@2";
 
 /// How much a finding matters for accepting the PO line. Critical and major findings block an `approved` outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -41,7 +42,7 @@ impl Severity {
     }
 }
 
-/// Fixed severity per finding kind (the materiality table of `mfg-match@1`).
+/// Fixed severity per finding kind (the materiality table of `mfg-match@2`).
 pub const KINDS: &[(&str, Severity)] = &[
     ("drawing_missing", Severity::Critical),
     ("po_revision_unknown", Severity::Critical),
@@ -51,6 +52,7 @@ pub const KINDS: &[(&str, Severity)] = &[
     ("certificate_revision_mismatch", Severity::Critical),
     ("po_drawing_material_mismatch", Severity::Critical),
     ("certificate_material_mismatch", Severity::Critical),
+    ("substitution_requires_decision", Severity::Critical),
     ("certificate_type_insufficient", Severity::Critical),
     ("measurement_out_of_tolerance", Severity::Critical),
     ("property_out_of_spec", Severity::Critical),
@@ -62,6 +64,7 @@ pub const KINDS: &[(&str, Severity)] = &[
     ("measurement_missing", Severity::Major),
     ("measurement_unit_incompatible", Severity::Major),
     ("property_missing", Severity::Major),
+    ("grade_property_out_of_limits", Severity::Major),
     ("traceability_missing", Severity::Major),
     ("certificate_revision_missing", Severity::Minor),
 ];
@@ -183,6 +186,22 @@ pub struct MatchSet {
     pub po_claims: Vec<String>,
     pub drawing_claims: Vec<String>,
     pub certificate_claims: Vec<String>,
+    /// Certificate grades accepted through the tenant's equivalence table (`mfg-grade@1`): what each rests on.
+    pub material_basis: Vec<MaterialBasis>,
+}
+
+/// A certificate grade that differs by notation from the required grade but is accepted: through an approved
+/// `identical` equivalence, or a valid substitution decision under a conditional one.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct MaterialBasis {
+    pub certificate_claim: String,
+    pub reference_claim: String,
+    pub equivalence: String,
+    pub equivalence_entry: String,
+    pub equivalence_kind: &'static str,
+    pub substitution_decision: Option<String>,
+    /// `unverified` until the tenant records that it checked the entry against the standard.
+    pub verification: &'static str,
 }
 
 impl MatchSet {
@@ -279,7 +298,22 @@ fn fmt_dec(d: Decimal) -> String {
 }
 
 /// Evaluates one PO line against the current facts of its part. `doc_of` maps claim id → source document id.
+/// No tenant equivalence table: every cross-standard grade is a substitution to decide.
 pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>) -> MatchSet {
+    evaluate_with(line, facts, doc_of, &GradeCtx::default())
+}
+
+fn grade_json(s: &str) -> Value {
+    let g = parse_grade(s);
+    json!({ "value": s, "standard": g.standard, "document": g.document, "key": g.key })
+}
+
+fn equivalence_json(e: Option<&crate::grades::Equivalence>) -> Value {
+    e.map_or(Value::Null, crate::grades::Equivalence::to_json)
+}
+
+/// [`evaluate`] with the tenant's approved grade-equivalence table and valid substitution decisions.
+pub fn evaluate_with(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>, grades: &GradeCtx) -> MatchSet {
     let mut part: Vec<&Fact> = facts.iter().filter(|f| f.subject == line.part).collect();
     part.sort_by(|a, b| a.id.cmp(&b.id));
     let po_key = safe_normalize(&line.purchase_order);
@@ -572,7 +606,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
     let dw_m = pick(&dw, "mfg.material");
     let mut mat_status = "match";
     if let (Some(a), Some(b)) = (po_m.first(), dw_m.first())
-        && grade_key(&a.display_value()) != grade_key(&b.display_value())
+        && !same_grade(&parse_grade(&a.display_value()), &parse_grade(&b.display_value()))
     {
         mat_status = "mismatch";
         c.find(
@@ -590,6 +624,9 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
     }
     let reference: Option<&Fact> = dw_m.first().or(po_m.first()).copied();
     let cert_m = pick(&cert_all, "qa.material");
+    let mut basis: Vec<MaterialBasis> = Vec::new();
+    // Certificates whose stated grade is not accepted as the required one (their values are not held to its limits).
+    let mut not_accepted: BTreeSet<&str> = BTreeSet::new();
     match reference {
         None => mat_status = if cert_m.is_empty() { "not_required" } else { "missing" },
         Some(_) if !has_cert => mat_status = "not_evaluated",
@@ -609,20 +646,77 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
         Some(r) => {
             for (doc, fs) in &certs {
                 for m in pick(fs, "qa.material") {
-                    if grade_key(&m.display_value()) != grade_key(&r.display_value()) {
-                        mat_status = "mismatch";
-                        c.find(
-                            "certificate_material_mismatch",
-                            "material",
-                            &po_m,
-                            &dw_m,
-                            &[m],
-                            Some(doc),
-                            Msg::new("match.certificate_material_mismatch")
-                                .with("certified", m.display_value())
-                                .with("required", r.display_value()),
-                            json!({ "certificate": m.text, "required": r.text }),
-                        );
+                    let (req, got) = (r.display_value(), m.display_value());
+                    let detail = |e: Option<&crate::grades::Equivalence>| {
+                        json!({ "certificate": m.text, "required": r.text, "rule": crate::grades::GRADE_RULE_VERSION,
+                                "certificate_grade": grade_json(&got), "required_grade": grade_json(&req),
+                                "certificate_claim": m.id, "reference_claim": r.id, "equivalence": equivalence_json(e) })
+                    };
+                    match judge(grades, &req, &got, &r.id, &m.id) {
+                        GradeVerdict::Same => {}
+                        GradeVerdict::Equivalent(e) => basis.push(MaterialBasis {
+                            certificate_claim: m.id.clone(),
+                            reference_claim: r.id.clone(),
+                            equivalence: e.id.clone(),
+                            equivalence_entry: e.entry.clone(),
+                            equivalence_kind: e.kind.as_str(),
+                            substitution_decision: None,
+                            verification: e.verification(),
+                        }),
+                        GradeVerdict::Substituted(e, s) => basis.push(MaterialBasis {
+                            certificate_claim: m.id.clone(),
+                            reference_claim: r.id.clone(),
+                            equivalence: e.id.clone(),
+                            equivalence_entry: e.entry.clone(),
+                            equivalence_kind: e.kind.as_str(),
+                            substitution_decision: Some(s.decision.clone()),
+                            verification: e.verification(),
+                        }),
+                        GradeVerdict::NeedsDecision(e) => {
+                            mat_status = "mismatch";
+                            not_accepted.insert(doc.as_str());
+                            let msg = match e {
+                                Some(e) => Msg::new("match.substitution_conditional")
+                                    .with("certified", got.as_str())
+                                    .with("required", req.as_str())
+                                    .with("conditions", e.conditions.as_deref().unwrap_or("")),
+                                None => Msg::new("match.substitution_requires_decision")
+                                    .with("certified", got.as_str())
+                                    .with("required", req.as_str()),
+                            };
+                            c.find(
+                                "substitution_requires_decision",
+                                "material",
+                                &po_m,
+                                &dw_m,
+                                &[m],
+                                Some(doc),
+                                msg,
+                                detail(e),
+                            );
+                        }
+                        GradeVerdict::Mismatch(e) => {
+                            mat_status = "mismatch";
+                            not_accepted.insert(doc.as_str());
+                            let msg = match e {
+                                Some(_) => Msg::new("match.material_not_equivalent")
+                                    .with("certified", got.as_str())
+                                    .with("required", req.as_str()),
+                                None => Msg::new("match.certificate_material_mismatch")
+                                    .with("certified", got.as_str())
+                                    .with("required", req.as_str()),
+                            };
+                            c.find(
+                                "certificate_material_mismatch",
+                                "material",
+                                &po_m,
+                                &dw_m,
+                                &[m],
+                                Some(doc),
+                                msg,
+                                detail(e),
+                            );
+                        }
                     }
                 }
             }
@@ -893,6 +987,98 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
         );
     }
 
+    // --- Tenant grade limits (`mfg-grade@1`): values on certificates whose grade is accepted as the required grade
+    // are held to the limits the tenant recorded for that grade. The drawing governs: a property it limits itself is
+    // not checked twice, and a value the certificate does not report is not a finding here.
+    if let Some(r) = reference {
+        let drawn: BTreeSet<&str> = dw
+            .iter()
+            .filter_map(|f| f.predicate.strip_prefix("mfg.property."))
+            .filter_map(|p| p.strip_suffix(".min").or_else(|| p.strip_suffix(".max")))
+            .collect();
+        let req_grade = parse_grade(&r.display_value());
+        let limits: Vec<&crate::grades::GradeLimit> = grades
+            .limits_for(&req_grade)
+            .into_iter()
+            .filter(|l| !drawn.contains(l.property.as_str()))
+            .collect();
+        let mut props: Vec<&str> = limits.iter().map(|l| l.property.as_str()).collect();
+        props.dedup();
+        for pr in props {
+            let check = format!("grade_limit.{pr}");
+            let mine: Vec<&&crate::grades::GradeLimit> = limits.iter().filter(|l| l.property == pr).collect();
+            let spec = mine
+                .iter()
+                .map(|l| {
+                    let u = l.unit.as_deref().map(|u| format!(" {u}")).unwrap_or_default();
+                    match (l.min, l.max) {
+                        (Some(a), Some(b)) => format!("{}–{}{u}", fmt_dec(a), fmt_dec(b)),
+                        (Some(a), None) => format!("≥ {}{u}", fmt_dec(a)),
+                        (None, Some(b)) => format!("≤ {}{u}", fmt_dec(b)),
+                        (None, None) => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let got: Vec<&Fact> = certs
+                .iter()
+                .filter(|(d, _)| !not_accepted.contains(d.as_str()))
+                .flat_map(|(_, fs)| pick(fs, &format!("qa.property.{pr}")))
+                .collect();
+            let status = if !has_cert || got.is_empty() {
+                "not_evaluated"
+            } else {
+                let mut st = "match";
+                for x in &got {
+                    let doc = doc_of.get(&x.id).map(String::as_str);
+                    for l in &mine {
+                        let Some(v) = x.num.and_then(|v| in_unit(v, x.unit.as_deref(), l.unit.as_deref())) else {
+                            st = "mismatch";
+                            c.find(
+                                "measurement_unit_incompatible",
+                                &check,
+                                &[],
+                                &[r],
+                                &[x],
+                                doc,
+                                Msg::new("match.property_unit_incompatible")
+                                    .with("certified", x.display_value())
+                                    .with("limit", spec.as_str()),
+                                json!({ "units": [x.unit, l.unit], "limit": l.to_json() }),
+                            );
+                            continue;
+                        };
+                        let below = l.min.filter(|m| v < *m).map(|m| ("min", "≥", m));
+                        let above = l.max.filter(|m| v > *m).map(|m| ("max", "≤", m));
+                        if let Some((bound, sym, lim)) = below.or(above) {
+                            st = "mismatch";
+                            c.find(
+                                "grade_property_out_of_limits",
+                                &check,
+                                &[],
+                                &[r],
+                                &[x],
+                                doc,
+                                Msg::new("match.grade_property_out_of_limits")
+                                    .with("certified", x.display_value())
+                                    .with("property", pr)
+                                    .with("grade", r.display_value())
+                                    .with("bound", sym)
+                                    .with("limit", fmt_dec(lim))
+                                    .with("verification", l.verification()),
+                                json!({ "value": fmt_dec(v), "limit_value": fmt_dec(lim), "bound": bound,
+                                        "rule": crate::grades::GRADE_RULE_VERSION, "required_grade": grade_json(&r.display_value()),
+                                        "limit": l.to_json() }),
+                            );
+                        }
+                    }
+                }
+                st
+            };
+            c.row(&check, status, Cell::default(), Cell::text(spec, &[r]), Cell::of(&got));
+        }
+    }
+
     // --- Traceability: every certificate must identify the material lot or heat. ---
     let mut cert_docs = Vec::new();
     let mut trace_bad = false;
@@ -975,6 +1161,7 @@ pub fn evaluate(line: &PoLine, facts: &[Fact], doc_of: &BTreeMap<String, String>
         po_claims: ids(&po),
         drawing_claims: ids(&dw),
         certificate_claims: ids(&cert_all),
+        material_basis: basis,
     }
 }
 

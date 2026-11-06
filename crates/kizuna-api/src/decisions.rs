@@ -190,7 +190,7 @@ pub(crate) async fn subject_of(tx: &mut Tx, cause: &Cause) -> ApiResult<(String,
 /// background job (the change itself still commits with the caller's transaction).
 pub(crate) async fn invalidate(tx: &mut Tx, tenant: Uuid, actor: Uuid, cause: Cause) -> ApiResult<usize> {
     match impacts_of(tx, &cause, INLINE_LIMIT.load(Ordering::Relaxed)).await? {
-        Ok(c) => apply_impacts(tx, tenant, actor, c.impacts, c.cause_claim, c.cause_decision).await,
+        Ok(c) => apply_impacts(tx, tenant, actor, c.impacts, c.cause_claim, c.cause_decision, None).await,
         Err(e) => {
             crate::review_batches::enqueue(tx, tenant, actor, &cause, &e).await?;
             Ok(0)
@@ -205,6 +205,7 @@ pub(crate) async fn apply_impacts(
     impacts: Vec<Impact>,
     cause_claim: Option<Uuid>,
     cause_decision: Option<Uuid>,
+    cause_equivalence: Option<Uuid>,
 ) -> ApiResult<usize> {
     let mut flagged = 0;
     for i in impacts {
@@ -220,7 +221,8 @@ pub(crate) async fn apply_impacts(
         };
         sqlx::query(
             "INSERT INTO invalidation_events (id, tenant_id, decision_id, cause_claim, cause_decision, cause_kind, semantic_change, \
-             material, reason, path, previous_status, new_status, reason_msg) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+             material, reason, path, previous_status, new_status, reason_msg, cause_equivalence) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
         )
         .bind(Uuid::now_v7())
         .bind(tenant)
@@ -235,6 +237,7 @@ pub(crate) async fn apply_impacts(
         .bind(&prev)
         .bind(new)
         .bind(i.reason_msg.to_value())
+        .bind(cause_equivalence)
         .execute(&mut **tx)
         .await?;
         if new != prev {
@@ -260,6 +263,60 @@ pub(crate) async fn apply_impacts(
         }
     }
     Ok(flagged)
+}
+
+/// Hook: an approved grade-equivalence version stopped being effective (an edit or a retirement was approved).
+/// Every decision that rests on that version (a PO-line acceptance through an `identical` entry, a substitution
+/// decision under a conditional one) is flagged, and the flag propagates along decision→decision edges.
+pub(crate) async fn on_equivalence_change(tx: &mut Tx, tenant: Uuid, actor: Uuid, old: Uuid) -> ApiResult<usize> {
+    let direct: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT DISTINCT d.decision_id FROM decision_dependencies d JOIN decisions x ON x.id = d.decision_id \
+         WHERE x.status IN ('valid', 'potentially_affected') AND d.depends_on_equivalence = $1 ORDER BY 1",
+    )
+    .bind(old)
+    .fetch_all(&mut **tx)
+    .await?;
+    if direct.is_empty() {
+        return Ok(0);
+    }
+    let deps = load_deps(tx, None, None).await?;
+    let limit = INLINE_LIMIT.load(Ordering::Relaxed);
+    let mut impacts: BTreeMap<String, Impact> = BTreeMap::new();
+    for d in direct {
+        let ds = d.to_string();
+        let first = Impact {
+            decision: ds.clone(),
+            material: true,
+            cause_kind: "grade_equivalence_changed",
+            reason_msg: kizuna_messages::Msg::new("invalidation.grade_equivalence_changed")
+                .with("equivalence", old.to_string()),
+            reason: String::new(),
+            path: vec![old.to_string(), ds.clone()],
+            semantic_change: json!({ "grade_equivalence": old }),
+        }
+        .worded();
+        let verb = kizuna_messages::Msg::new("invalidation.verb.grade_equivalence_changed");
+        let down = upstream_withdrawn_bounded(&deps, &ds, &verb, limit)
+            .map_err(|_| ApiError::Conflict("too_many_affected_decisions"))?;
+        for i in std::iter::once(first).chain(down) {
+            match impacts.get(&i.decision) {
+                Some(prev) if prev.material || !i.material => {}
+                _ => {
+                    impacts.insert(i.decision.clone(), i);
+                }
+            }
+        }
+    }
+    apply_impacts(
+        tx,
+        tenant,
+        actor,
+        impacts.into_values().collect(),
+        None,
+        None,
+        Some(old),
+    )
+    .await
 }
 
 /// Hook: evidence changed. Runs in the caller's transaction so the flag commits with the change.
@@ -586,6 +643,32 @@ pub(crate) async fn insert_decision(
     Ok(id)
 }
 
+/// Typed dependencies of a decision on approved grade-equivalence versions (the database refuses any other).
+pub(crate) async fn add_equivalence_deps(
+    tx: &mut Tx,
+    tenant: Uuid,
+    decision: Uuid,
+    eqs: &[(Uuid, String)],
+) -> ApiResult<()> {
+    for (e, role) in eqs {
+        sqlx::query(
+            "INSERT INTO decision_dependencies (id, tenant_id, decision_id, depends_on_equivalence, role, subject_key, materiality, snapshot) \
+             SELECT $1, $2, $3, g.id, $5, g.pair_key, $6, json_build_object('entry_id', g.entry_id, 'version', g.version, \
+                    'equivalence', g.equivalence, 'source_checked', g.source_checked) \
+             FROM grade_equivalences g WHERE g.id = $4",
+        )
+        .bind(Uuid::now_v7())
+        .bind(tenant)
+        .bind(decision)
+        .bind(e)
+        .bind(role)
+        .bind(json!(Materiality::AnyChange))
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
 pub(crate) async fn artifact_sha(tx: &mut Tx, c: &ClaimOut) -> ApiResult<Option<String>> {
     match c.artifact_id {
         Some(a) => Ok(
@@ -854,6 +937,17 @@ pub async fn build_trace(tx: &mut Tx, id: Uuid) -> ApiResult<Value> {
             _ => {}
         }
     }
+    let eqs: Vec<Value> = sqlx::query_scalar(
+        "SELECT json_build_object('grade_equivalence', g.id, 'entry_id', g.entry_id, 'version', g.version, \
+                'equivalence', g.equivalence, 'current_status', g.status, 'source_checked', g.source_checked, \
+                'changed', g.status <> 'approved') \
+         FROM decision_dependencies dd JOIN grade_equivalences g ON g.id = dd.depends_on_equivalence \
+         WHERE dd.decision_id = $1 ORDER BY g.id",
+    )
+    .bind(id)
+    .fetch_all(&mut **tx)
+    .await?;
+    evidence.extend(eqs);
     known.dedup();
     changed.dedup();
     Ok(json!({
@@ -935,15 +1029,32 @@ pub async fn reconfirm(
     if locked != "potentially_affected" {
         return Err(ApiError::Conflict("decision_not_affected"));
     }
-    let deps: Vec<(Option<Uuid>, Option<Uuid>, String, Value)> =
-        sqlx::query_as("SELECT depends_on_claim, depends_on_decision, role, materiality FROM decision_dependencies WHERE decision_id = $1")
-            .bind(id)
-            .fetch_all(&mut *tx)
-            .await?;
+    type DepRow5 = (Option<Uuid>, Option<Uuid>, String, Value, Option<Uuid>);
+    let deps: Vec<DepRow5> = sqlx::query_as(
+        "SELECT depends_on_claim, depends_on_decision, role, materiality, depends_on_equivalence FROM decision_dependencies WHERE decision_id = $1",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await?;
     let mut evidence = Vec::new();
     let mut upstream = Vec::new();
+    let mut equivalences = Vec::new();
     let mut notes = vec![format!("reconfirmation of {id}: {comment}")];
-    for (claim, up, role, materiality) in deps {
+    for (claim, up, role, materiality, eqv) in deps {
+        if let Some(e) = eqv {
+            // A grade equivalence that is no longer the approved version cannot be carried over: the line has to
+            // be re-evaluated against the tenant's current table and accepted again.
+            let st: Option<String> = sqlx::query_scalar("SELECT status FROM grade_equivalences WHERE id = $1")
+                .bind(e)
+                .fetch_optional(&mut *tx)
+                .await?;
+            if st.as_deref() != Some("approved") {
+                return Err(ApiError::Conflict("grade_equivalence_changed"));
+            }
+            notes.push(format!("grade_equivalence:{e}"));
+            equivalences.push((e, role));
+            continue;
+        }
         if let Some(cid) = claim {
             let cur = current_version(&mut tx, cid).await?;
             if cur.review_status == "rejected" {
@@ -1001,6 +1112,7 @@ pub async fn reconfirm(
         notes,
     )
     .await?;
+    add_equivalence_deps(&mut tx, p.tenant_id, new_id, &equivalences).await?;
     sqlx::query("UPDATE decisions SET status = 'superseded' WHERE id = $1")
         .bind(id)
         .execute(&mut *tx)
