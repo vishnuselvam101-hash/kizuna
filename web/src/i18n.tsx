@@ -1,5 +1,6 @@
 import { capaEn, capaJa } from "./i18n-capa";
 import { integrityEn, integrityJa } from "./i18n-integrity";
+import { debtEn, debtJa } from "./i18n-debt";
 import { whatifEn, whatifJa } from "./i18n-whatif";
 import { portalEn, portalJa } from "./i18n-portal";
 import { renderMsg } from "./msg";
@@ -842,6 +843,7 @@ export const en = {
   "err.ambiguous_po_line": "This PO line names more than one part.",
   "err.claim_changed_retry": "Evidence changed while recording. Reload and try again.",
   ...integrityEn,
+  ...debtEn,
   ...whatifEn,
   ...graphEn,
   ...portalEn,
@@ -1863,6 +1865,7 @@ export const ja: Record<Key, string> = {
   "err.ambiguous_po_line": "この発注明細には複数の品番があります。",
   "err.claim_changed_retry": "記録中に証拠が変更されました。再読み込みしてやり直してください。",
   ...integrityJa,
+  ...debtJa,
   ...whatifJa,
   ...graphJa,
   ...portalJa,

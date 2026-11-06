@@ -13,6 +13,7 @@ pub mod clock;
 pub mod config;
 pub mod crypto;
 pub mod db;
+pub mod debt;
 pub mod decisions;
 pub mod error;
 pub mod evidence_pack;
