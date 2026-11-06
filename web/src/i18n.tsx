@@ -3,6 +3,7 @@ import { integrityEn, integrityJa } from "./i18n-integrity";
 import { whatifEn, whatifJa } from "./i18n-whatif";
 import { portalEn, portalJa } from "./i18n-portal";
 import { renderMsg } from "./msg";
+import { graphEn, graphJa } from "./i18n-graph";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 // All user-visible UI text lives here. `ja` is typed against `en`, so a missing translation
@@ -842,6 +843,7 @@ export const en = {
   "err.claim_changed_retry": "Evidence changed while recording. Reload and try again.",
   ...integrityEn,
   ...whatifEn,
+  ...graphEn,
   ...portalEn,
   ...capaEn,
   "nav.account": "Account security",
@@ -1862,6 +1864,7 @@ export const ja: Record<Key, string> = {
   "err.claim_changed_retry": "記録中に証拠が変更されました。再読み込みしてやり直してください。",
   ...integrityJa,
   ...whatifJa,
+  ...graphJa,
   ...portalJa,
   ...capaJa,
   "nav.account": "アカウントのセキュリティ",

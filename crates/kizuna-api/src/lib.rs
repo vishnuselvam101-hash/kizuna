@@ -18,6 +18,7 @@ pub mod error;
 pub mod evidence_pack;
 pub mod evidence_requests;
 pub mod extraction;
+pub mod graph;
 pub mod incidents;
 pub mod insights;
 pub mod integrity;
