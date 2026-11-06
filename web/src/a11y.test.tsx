@@ -20,6 +20,7 @@ const { api } = fakeApi({
   "GET /claims": [claim("c-a", "S355")],
   "GET /conflicts?status=open": [conflict],
   "GET /dashboard/summary": dashboardSummary,
+  "GET /graph/overview": { nodes: [{ id: "doc:a-1", kind: "document", label: "spec.pdf", tone: "base" }], edges: [], next: null, claims_total: 0 },
   "GET /subjects": subjects,
   "GET /evidence/part/BRK-100": { predicates: [] },
   "GET /decisions": [decision],

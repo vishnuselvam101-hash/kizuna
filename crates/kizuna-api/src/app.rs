@@ -222,6 +222,7 @@ pub fn router(st: AppState) -> Router {
         .route("/security/summary", get(incidents::summary))
         .route("/security/status", get(crate::ops::status))
         .route("/dashboard/summary", get(insights::dashboard))
+        .route("/graph/overview", get(crate::graph::overview))
         .route("/subjects", get(insights::subjects))
         .route("/reports", post(insights::org_report))
         .route(

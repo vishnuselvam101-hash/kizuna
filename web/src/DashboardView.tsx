@@ -1,55 +1,19 @@
-import { useMemo } from "react";
-import { GraphScene, type GNode, type Graph } from "./graph";
+import { useCallback } from "react";
+import { GraphScene } from "./graph";
+import type { GraphModel, GraphPage, PageFetcher } from "./graphmodel";
 import { useI18n } from "./i18n";
 import { useSession } from "./session";
-import type { Artifact, ChainStatus, Claim, Conflict, DashboardSummary, Decision } from "./types";
+import type { ChainStatus, Conflict, DashboardSummary, Decision } from "./types";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
 import type { View } from "./nav";
 
-const MAX_CLAIMS = 300;
-
-export function orgGraph(s: Pick<Summary, "artifacts" | "claims" | "decisions" | "open">): Graph {
-  const nodes: GNode[] = [];
-  const edges: Graph["edges"] = [];
-  const seen = new Set<string>();
-  const add = (n: GNode) => !seen.has(n.id) && (seen.add(n.id), nodes.push(n));
-  s.artifacts.forEach((a) => add({ id: `doc:${a.id}`, kind: "document", label: a.display_name, tone: a.status === "accepted" ? "base" : "warn" }));
-  const subjectTone = new Map<string, GNode["tone"]>();
-  s.open.forEach((c) => subjectTone.set(c.subject_key, "crit"));
-  s.claims
-    .filter((c) => !c.superseded_at)
-    .slice(0, MAX_CLAIMS)
-    .forEach((c) => {
-      const cid = `claim:${c.id}`;
-      const sid = `subj:${c.subject_type}:${c.subject_key}`;
-      add({ id: cid, kind: "claim", label: `${c.subject_key} ${c.predicate}`, tone: c.review_status === "rejected" ? "crit" : c.review_status === "accepted" ? "ok" : "base" });
-      add({ id: sid, kind: "subject", label: c.subject_key, tone: subjectTone.get(c.subject_key) ?? "info" });
-      if (c.artifact_id && seen.has(`doc:${c.artifact_id}`)) edges.push([`doc:${c.artifact_id}`, cid]);
-      edges.push([cid, sid]);
-    });
-  const subj = (key: string) => nodes.find((n) => n.kind === "subject" && n.label === key)?.id;
-  s.decisions.forEach((d) => {
-    add({ id: `dec:${d.id}`, kind: "decision", label: d.title, tone: d.status === "valid" ? "ok" : d.status === "potentially_affected" ? "crit" : "base" });
-    // Exact links: the claims the decision cited (evidence_claim_ids); subject link only as a fallback.
-    const cited = (d.evidence_claim_ids ?? []).filter((id) => seen.has(`claim:${id}`));
-    cited.forEach((id) => edges.push([`claim:${id}`, `dec:${d.id}`]));
-    const sid = cited.length ? undefined : subj(d.subject_key);
-    if (sid) edges.push([sid, `dec:${d.id}`]);
-  });
-  s.open.forEach((c) => {
-    add({ id: `fnd:${c.id}`, kind: "finding", label: c.subject_key, tone: "crit" });
-    const sid = subj(c.subject_key);
-    if (sid) edges.push([sid, `fnd:${c.id}`]);
-  });
-  return { nodes, edges };
-}
+/** Claims per graph page; the scene streams pages until the server reports no `next`. */
+const GRAPH_PAGE = 5000;
 
 const PICK: Record<string, View> = { doc: "documents", claim: "records", subj: "records", dec: "decisions", fnd: "findings" };
 
 interface Summary {
   counts: DashboardSummary;
-  claims: Claim[];
-  artifacts: Artifact[];
   open: Conflict[];
   decisions: Decision[];
   chain: ChainStatus | null;
@@ -62,20 +26,23 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void })
   const { t, fmtNum } = useI18n();
   const { data, error, loading } = useLoad<Summary>(async () => {
     // Counts come from the server summary; the lists below only feed the graph and attention panels.
-    const [counts, claims, artifacts, open, decisions, chain] = await Promise.all([
+    const [counts, open, decisions, chain] = await Promise.all([
       api.request<DashboardSummary>("GET", "/dashboard/summary"),
-      api.request<Claim[]>("GET", `/claims?limit=${MAX_CLAIMS + 1}`),
-      api.request<Artifact[]>("GET", "/artifacts"),
       api.request<Conflict[]>("GET", "/conflicts?status=open"),
       api.request<Decision[]>("GET", "/decisions"),
       can("audit_verify") ? api.request<ChainStatus>("GET", "/audit/verify") : Promise.resolve(null),
     ]);
-    return { counts, claims, artifacts, open, decisions, chain };
+    return { counts, open, decisions, chain };
   }, []);
 
   const s = data;
-  const graph = useMemo(() => (s ? orgGraph(s) : null), [s]);
-  const count = (k: GNode["kind"]) => graph?.nodes.filter((n) => n.kind === k).length ?? 0;
+  // Streamed from the paged graph endpoint (documents, decisions and findings on the first page).
+  const pages = useCallback<PageFetcher>(
+    (after) => api.request<GraphPage>("GET", `/graph/overview?limit=${GRAPH_PAGE}${after ? `&after=${encodeURIComponent(after)}` : ""}`),
+    [api],
+  );
+  const graphLabel = (m: GraphModel) =>
+    t("dash.graphLabel", { docs: m.count("document"), claims: m.count("claim"), subjects: m.count("subject"), decisions: m.count("decision"), findings: m.count("finding") });
   const affected = s?.decisions.filter((d) => d.status === "potentially_affected") ?? [];
   const c = s?.counts;
   const docs = sum(c?.artifacts);
@@ -118,18 +85,12 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: View) => void })
               </li>
             )}
           </ul>
-          {graph && graph.nodes.length > 0 && (
+          {(c?.claims && sum(c.claims) > 0) || docs > 0 ? (
             <Panel title={t("dash.graph")} id="dash-g">
-              <p className="muted">
-                {t("dash.graphLead")} {s.claims.length > MAX_CLAIMS && t("dash.graphCapped", { n: MAX_CLAIMS })}
-              </p>
-              <GraphScene
-                g={graph}
-                label={t("dash.graphLabel", { docs: count("document"), claims: count("claim"), subjects: count("subject"), decisions: count("decision"), findings: count("finding") })}
-                onPick={(id) => onNavigate(PICK[id.split(":")[0]] ?? "dashboard")}
-              />
+              <p className="muted">{t("dash.graphLead")}</p>
+              <GraphScene pages={pages} label={graphLabel} onPick={(id) => onNavigate(PICK[id.split(":")[0]] ?? "dashboard")} />
             </Panel>
-          )}
+          ) : null}
           <div className="grid2">
             <Panel title={t("dash.attentionFindings")} id="dash-f">
               {s.open.length === 0 ? (

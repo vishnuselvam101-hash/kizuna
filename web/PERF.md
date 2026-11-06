@@ -49,6 +49,8 @@ off-screen; device pixel ratio is capped at 1.5; motion is transform-only.
   seven screens: 0 violations.
 - Screens screenshot-reviewed at 1440 and 390 px in dark and light (44 screenshots).
 
+Scalable graph (100k nodes, paged loading, worker layout, LOD): see PERF_GRAPH.md.
+
 ## Not measured
 
 - Lighthouse score (not installed in this environment).

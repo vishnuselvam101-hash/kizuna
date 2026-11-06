@@ -73,6 +73,15 @@ function respond(path) {
   if (base === "/auth/me") return { user_id: "u1", tenant_id: "t", email: users[0].email, display_name: "Aiko Admin", role: "tenant_admin", mfa_enabled: true, session_mfa_verified: true };
   if (base === "/artifacts") return artifacts;
   if (base === "/dashboard/summary") return { artifacts: { accepted: 4, quarantined: 1 }, claims: { unreviewed: 20, accepted: 5 }, conflicts: { open: 3, resolved: 2 }, conflict_kinds_open: { value_mismatch: 1, revision_mismatch: 1, missing_approval: 1 }, decisions: { valid: 1, potentially_affected: 1 }, subjects: { part: 4, supplier: 1 } };
+  if (base === "/graph/overview") {
+    const nodes = [...artifacts.map((a) => ({ id: `doc:${a.id}`, kind: "document", label: a.display_name, tone: a.status === "accepted" ? "base" : "warn" })), ...decisions.map((d) => ({ id: `dec:${d.id}`, kind: "decision", label: d.title, tone: d.status === "valid" ? "ok" : "crit" })), ...conflicts.map((c) => ({ id: `fnd:${c.id}`, kind: "finding", label: c.subject_key, tone: "crit" }))];
+    const edges = [...decisions.map((d) => [`subj:part:${d.subject_key}`, `dec:${d.id}`]), ...conflicts.map((c) => [`subj:part:${c.subject_key}`, `fnd:${c.id}`])];
+    for (const c of claims) {
+      nodes.push({ id: `claim:${c.id}`, kind: "claim", label: `${c.subject_key} ${c.predicate}`, tone: c.review_status === "accepted" ? "ok" : "base" }, { id: `subj:${c.subject_type}:${c.subject_key}`, kind: "subject", label: c.subject_key, tone: conflicts.some((f) => f.subject_key === c.subject_key) ? "crit" : "info" });
+      edges.push([`doc:${c.artifact_id}`, `claim:${c.id}`], [`claim:${c.id}`, `subj:${c.subject_type}:${c.subject_key}`]);
+    }
+    return { nodes, edges, next: null, claims_total: claims.length };
+  }
   if (base === "/subjects") {
     const type = new URLSearchParams(q).get("type");
     return [...new Set(claims.filter((c) => c.subject_type === type).map((c) => c.subject_key))].map((k) => ({ subject_type: type, subject_key: k, claims: 5, predicates: 5 }));
