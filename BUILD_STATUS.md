@@ -1,6 +1,6 @@
 # Build status
 
-Updated: 2026-11-05 (M7 on `main`). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local),
+Updated: 2026-11-06 (innovation batch I6/I7/I9/I10 + stability, seccomp, e2e-fix, math-v2 on `main`). Environment: Linux, 8 CPU, Rust 1.95.0, PostgreSQL 18.6 (local),
 Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI workflow written but never executed.
 
 **Not production-ready.** Synthetic data only; pilot-readiness needs the founder decisions below.
@@ -18,6 +18,23 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | M7 | done | opt-in AI-assisted label mapping with free models (ADR 0018), saved import settings consumed by the worker, per-tenant + adaptive detection thresholds (ADR 0015), web API gaps 2–8 switched to real endpoints, WebAuthn-optional decision recorded (ADR 0006) |
 | I2/I3 | done (synthetic eval only) | certificate integrity signals (9 kinds) + revision drift radar, ADR 0019, migration 0016, `/integrity/*` API, "Integrity signals" and "Revision drift" views; eval docs/testing/INTEGRITY_SIGNALS_EVAL.md |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
+
+## Integration results (2026-11-06, main after d9c4b1d + math-v2)
+Merged in order: inn-reglist (I6, migration 0031, ADR 0028), inn-debt (I10, no migration), inn-receipts (I7, migration
+renumbered 0031 → **0032**), inn-grade (I9, migration 0032 → **0033**, ADR 0028 → **0029**), stability (migration
+0031 → **0034**), seccomp-allowlist (ADR 0016 updated), e2e-fix, math-v2 (library only; its algorithms are not the
+default, report items (b) and (f) not ready). Conflicts: `domain-manufacturing/src/lib.rs` (both modules kept),
+`kizuna-api/src/decisions.rs` (reglist `invalidate_seeded` + grade `on_equivalence_change` kept; reglist call updated
+to grade's extra `apply_impacts` equivalence argument). Migrations 0001–0034 apply cleanly from scratch and on top of
+a database at 0030 (main 89ef324), checked with throwaway databases.
+Fix: `whatif::hundred_thousand_edges` failed 503 `database_timeout` (also alone): the bulk-loaded tables had no
+planner statistics, so the dependency join sometimes planned as a nested loop past the 55 s heavy-class statement
+timeout. The test now runs `ANALYZE` after its bulk load (5/5 passes alone, ~2 s per simulation).
+
+| Command | Result |
+|---|---|
+| `scripts/ci-local.sh` (throwaway DB, includes `scripts/check.sh`) | **green in 505 s** on 4a8dabe: **687 Rust tests** (0 failed, 3 ignored), clippy/fmt clean, cargo audit/deny ok, pnpm audit + pip-audit 0, ruff + **132 pytest**, tsc + **118 vitest**, shellcheck, ops tests, gitleaks 0 |
+| `scripts/e2e-browser.sh` (Playwright, own throwaway DB) | **65 passed, 1 skipped** (deliberate), 0 failed, 26.1 min |
 
 ## Innovation I7: sealed delivery receipts (2026-11-06, branch `inn-receipts`)
 Portal upload that is stored → `delivery_receipt.issued` audit event + `delivery_receipts` row in the capture
