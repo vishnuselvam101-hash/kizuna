@@ -82,6 +82,27 @@ declaration. No shipped list content; tests use invented substances. API: `/reg-
 | `scripts/check.sh` (own DB `kizuna_test_match`) | **pass**: fmt, clippy `-D warnings`, 241 Rust tests incl. `tests/innov_match.rs` (3, real PostgreSQL + sandboxed extraction), audits 0, 62 pytest, 57 vitest (+7 match/re-request UI incl. axe EN/JA) |
 | `scripts/e2e.sh --seed 7` / `--seed 11 --parts 48` | pass. Match case: 30 PO lines, 22 injected mismatches (11 kinds × 2): precision 1.00, recall 1.00 (tp 22, fp 0, fn 0) on both seeds. Re-request: 4 evidence changes → 3 documents requested (all expected) vs 6 under "resend everything"; the approval change asks the supplier for nothing. SYNTHETIC: generator and rules were built together, so this shows the pipeline works on known layouts, not accuracy on real documents. `dirty: true` in provenance = the untracked research note only |
 
+## Innovation I10: evidence debt ledger (2026-11-06, branch `inn-debt`)
+Read-only `mfg-debt@1`: per accepted decision, the evidence it rests on that is missing (per release requirement),
+unconfirmed, low-confidence, rejected, superseded (claim `superseded_at`), pending re-request (claim
+`request_evidence` review until approve/reject; supplier re-requests until cancelled), expiring/expired, plus open
+integrity signals, drift, match findings, conflicts and 8D cases. Components stay separate (no single score); every
+value is computed "as known on" a transaction time (property test: later history never changes a past date).
+API: `GET /evidence-debt` (group part|supplier|decision, trends), `GET /evidence-debt/decisions/{id}` (components +
+debts with age), `GET /evidence-debt/items` (one row per piece of debt: age, decisions it affects, parts, suppliers).
+UI: "Evidence debt" view under Decisions. No migration. Nothing changes a decision: people decide.
+
+| Command | Result |
+|---|---|
+| `cargo test -p domain-manufacturing --lib debt` | 16 passed (incl. 3 proptests: as-of invariance of components and debts, debts match components) |
+| `cargo test -p kizuna-api --test evidence_debt` (own DB `kizuna_test_debt`) | 4 passed: weakening evidence, past date unchanged, items + blocked decisions, part/supplier grouping, expired cert, supplier re-request open→cancelled, tenant isolation, 400/401/404 |
+| `cargo test --workspace --no-fail-fast` | 563 passed, 2 ignored; 2 failed then fixed/explained: i18n catalog (4 new error codes, fixed: 3/3), what-if 100k edges 408 under load (passes alone, known flake) |
+| clippy `-D warnings`, fmt, `pnpm lint` + vitest | clean; vitest 114 passed (+3 debt view incl. axe EN/JA) |
+
+Gaps: obsolete findings carry no time of that change and are left out of every date; approved supplier re-requests
+stay pending until the decision is reconfirmed or revoked (no fulfilment status exists); release requirements are a
+fixed list for `*_release`/`*_acceptance`/`first_article` kinds only; pilot rank-correlation measure not done.
+
 ## M7 results (2026-11-05, this host)
 | Command | Result |
 |---|---|
