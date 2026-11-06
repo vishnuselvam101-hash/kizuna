@@ -1,7 +1,7 @@
 // Server-generated text arrives as a stable message code + typed params ({ code, params }) next to an English
 // fallback string. It is rendered here from i18n-server.json, the catalogue the server renders letters and
 // reports from, so both always say the same thing. Unknown codes (an older web app) show the fallback.
-import catalog from "./i18n-server.json";
+import catalog from "./i18n-server.json" with { type: "json" };
 
 export type Lang = "en" | "ja";
 export interface Msg {

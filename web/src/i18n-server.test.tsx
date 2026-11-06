@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { claim, conflictDetail, detectionSettings } from "./fixtures";
 import { FindingsView } from "./FindingsView";
-import catalog from "./i18n-server.json";
+import catalog from "./i18n-server.json" with { type: "json" };
 import { renderMsg, SERVER_CODES } from "./msg";
 import { SecurityView } from "./SecurityView";
 import { fakeApi, renderWithSession } from "./test-utils";

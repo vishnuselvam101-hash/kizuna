@@ -23,9 +23,15 @@ export function fileSize(bytes: number): string {
   return `${v.toFixed(1)} ${units[i]}`;
 }
 
-export function sourceLocation(t: TFn, loc: Record<string, string | number> | undefined): string {
-  const known = ["page", "row", "col", "sheet", "cell", "line"];
-  const parts = Object.entries(loc ?? {}).map(([k, v]) => (known.includes(k) ? t(`loc.${k}` as never, { v }) : `${k} ${v}`));
+/** Where a value sits in its document, in reading order (sheet → page → section → line/row/col/cell). A location
+ *  also carries machine provenance (bounding boxes, layout reader, label basis, calibrated probability, review
+ *  flags); those are for the extraction pipeline, not the reader, and are left out. */
+const LOC_KEYS = ["sheet", "page", "section", "line", "row", "col", "cell"] as const;
+export function sourceLocation(t: TFn, loc: Record<string, unknown> | undefined): string {
+  const parts = LOC_KEYS.filter((k) => {
+    const v = loc?.[k];
+    return typeof v === "string" || typeof v === "number";
+  }).map((k) => t(`loc.${k}` as never, { v: loc![k] as string | number }));
   return parts.length ? parts.join(t("loc.sep")) : t("evidence.noLocation");
 }
 

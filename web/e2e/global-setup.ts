@@ -102,7 +102,7 @@ export default async function globalSetup() {
       ["仕入先", "北陸金属工業"],
     ]),
   );
-    // Scanned drawing: render a title block, photograph it as JPEG, wrap it in an image-only PDF.
+  // Scanned drawing: render a title block, photograph it as JPEG, wrap it in an image-only PDF.
   await p.setViewportSize({ width: 1200, height: 700 });
   await p.setContent(`<!doctype html><html lang="ja"><meta charset="utf-8"><style>body{${FONT} margin:0; background:#fff}
   .tb{margin:60px; border:3px solid #000; padding:30px; font-size:40px; line-height:1.6}</style>
