@@ -449,3 +449,31 @@ fn bounded_fan_out_reports_review_batch() {
         999
     );
 }
+
+#[test]
+fn seeded_impacts_propagate_downstream_only() {
+    let deps = vec![
+        claim_dep("D1", "C1", Materiality::AnyChange, Snapshot::default()),
+        dec_dep("D2", "D1"),
+        dec_dep("D3", "OTHER"),
+    ];
+    let seed = Impact {
+        decision: "D1".into(),
+        material: true,
+        cause_kind: "regulation_list_changed",
+        reason: String::new(),
+        reason_msg: Msg::new("invalidation.reglist"),
+        path: vec!["C1".into(), "D1".into()],
+        semantic_change: json!({ "predicate": "reg.list.svhc" }),
+    };
+    let ghost = Impact {
+        decision: "NOPE".into(),
+        ..seed.clone()
+    };
+    let out = propagate_seeds(&deps, vec![seed, ghost], usize::MAX).unwrap();
+    let ids: Vec<&str> = out.iter().map(|i| i.decision.as_str()).collect();
+    assert_eq!(ids, ["D1", "D2"]);
+    assert_eq!(out[0].cause_kind, "regulation_list_changed");
+    assert!(out.iter().all(|i| i.material));
+    assert!(propagate_seeds(&deps, vec![out[0].clone()], 0).is_err());
+}

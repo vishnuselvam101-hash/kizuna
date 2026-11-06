@@ -26,14 +26,20 @@ use crate::error::{ApiError, ApiResult};
 use crate::security_events::{self as sec, Kind};
 use crate::storage::ObjectKey;
 
-pub const KINDS: [&str; 6] = [
+pub const KINDS: [&str; 9] = [
     "spec_document",
     "drawing",
     "purchase_order",
     "inspection_report",
     "spreadsheet",
     "other",
+    "regulation_list",
+    "compliance_declaration",
+    "material_declaration",
 ];
+
+/// Kinds read by the regulation-list importer (`/reg-lists/*`), not by document extraction.
+pub const REGLIST_KINDS: [&str; 3] = ["regulation_list", "compliance_declaration", "material_declaration"];
 
 /// Display-only file name: last path component, no control or quote characters, at most 255 chars.
 pub fn sanitize_filename(name: &str) -> String {

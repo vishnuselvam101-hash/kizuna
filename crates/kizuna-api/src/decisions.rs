@@ -262,6 +262,64 @@ pub(crate) async fn apply_impacts(
     Ok(flagged)
 }
 
+/// A change seen by specific claims that the dependency engine cannot derive from claim values (a regulation-list
+/// version): `seeds` maps claim → (cause kind, reason, semantic change). Decisions depending on those claims are
+/// flagged (unless the edge is informational) and the flag propagates through decision→decision edges as usual.
+/// Returns the decisions newly flagged per seed claim (already-flagged decisions get an event but are not counted).
+pub(crate) async fn invalidate_seeded(
+    tx: &mut Tx,
+    tenant: Uuid,
+    actor: Uuid,
+    seeds: &BTreeMap<Uuid, (&'static str, Msg, Value)>,
+) -> ApiResult<BTreeMap<Uuid, usize>> {
+    let claims: Vec<Uuid> = seeds.keys().copied().collect();
+    let rows: Vec<DepRow> = sqlx::query_as(&format!(
+        "{DEP_SELECT} AND (d.depends_on_decision IS NOT NULL OR d.depends_on_claim = ANY($1))"
+    ))
+    .bind(&claims)
+    .fetch_all(&mut **tx)
+    .await?;
+    let deps: Vec<Dep> = rows.into_iter().map(to_dep).collect();
+    let mut direct = Vec::new();
+    for d in &deps {
+        let Some(c) = d.claim.as_deref().and_then(|c| Uuid::parse_str(c).ok()) else {
+            continue;
+        };
+        if let Some((kind, why, sem)) = seeds.get(&c) {
+            direct.push(Impact {
+                decision: d.decision.clone(),
+                material: d.materiality != Materiality::Informational,
+                cause_kind: kind,
+                reason: String::new(),
+                reason_msg: why.clone(),
+                path: vec![c.to_string(), d.decision.clone()],
+                semantic_change: sem.clone(),
+            });
+        }
+    }
+    let impacts: Vec<Impact> = dependency_engine::propagate_seeds(&deps, direct, usize::MAX)
+        .map_err(ApiError::internal)?
+        .into_iter()
+        .map(Impact::worded)
+        .collect();
+    // One application per seed claim, so every invalidation event names the claim that carried the change.
+    let mut by_seed: BTreeMap<Uuid, Vec<Impact>> = BTreeMap::new();
+    for i in impacts {
+        let c = i
+            .path
+            .first()
+            .and_then(|c| Uuid::parse_str(c).ok())
+            .filter(|c| seeds.contains_key(c))
+            .ok_or_else(|| ApiError::internal("seeded impact without its seed claim"))?;
+        by_seed.entry(c).or_default().push(i);
+    }
+    let mut per = BTreeMap::new();
+    for (c, group) in by_seed {
+        per.insert(c, apply_impacts(tx, tenant, actor, group, Some(c), None).await?);
+    }
+    Ok(per)
+}
+
 /// Hook: evidence changed. Runs in the caller's transaction so the flag commits with the change.
 /// A correction or withdrawal also reaches decisions that depend on earlier versions of the same claim, and is
 /// assessed against the value those decisions actually used (cumulative drift is not hidden by small steps).

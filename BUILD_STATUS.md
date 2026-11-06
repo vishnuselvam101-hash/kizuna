@@ -67,6 +67,15 @@ Since: extraction uses a short lease row instead of a held connection (8 concurr
 tenant timezone (IANA, admin screen, audited) drives expiry "today" and report dates; checkpoints are chained (KZCP2);
 JA/EN manual merged and updated (idle timeout, re-auth, time zone, re-extract).
 
+## Innovation I6: regulation-list versions as dependency nodes (2026-11-06, branch `inn-reglist`)
+ADR 0028, migration 0031, engine `mfg-reglist@1`. Tenants import
+substance-list versions, compliance declarations (`reg.declaration` claims linked to the list version answered) and
+FMD-style compositions (`reg.composition`); curated material profiles (MFA). A new version assesses every current
+declaration (`may_contain` / `cannot_rule_out` / `not_affected`, all stored) and flags dependent decisions via
+`dependency_engine::propagate_seeds` (cause `regulation_list_changed`); the I4 planner re-requests the stale
+declaration. No shipped list content; tests use invented substances. API: `/reg-lists`, `/reg-lists/{id}/versions`,
+`/reg-lists/{declarations,compositions}`, `/material-profiles`. No web screen yet (upload kinds + error texts only).
+
 ## Innovation I1 + I4: three-way match and minimal re-request (2026-11-05, branch `innov-match`)
 | Command | Result |
 |---|---|

@@ -247,14 +247,15 @@ pub(crate) async fn compute_with(
         }
     }
     // Other current supplier documents carrying the same item can also answer it: add them as candidates.
-    for a in acc.values_mut() {
+    for (supplier, a) in &mut acc {
         for (id, item) in &a.items {
             let mut alt: Vec<(Uuid, String, String)> = sqlx::query_as(
                 "SELECT DISTINCT c.artifact_id, a.display_name, encode(a.sha256, 'hex') FROM claims c JOIN artifacts a ON a.id = c.artifact_id \
                  WHERE c.subject_type = 'part' AND c.subject_key = $1 AND c.predicate = $2 AND c.superseded_at IS NULL \
-                 AND c.review_status <> 'rejected' AND a.kind = 'inspection_report' \
+                 AND c.review_status <> 'rejected' AND a.kind IN ('inspection_report', 'compliance_declaration') \
                  AND coalesce(c.scope->>'lot', '') = coalesce($3, '') AND coalesce(c.scope->>'heat', '') = coalesce($4, '') \
-                 AND coalesce(c.scope->>'purchase_order', '') = coalesce($5, '') AND NOT (c.id = ANY($6)) LIMIT 20",
+                 AND coalesce(c.scope->>'purchase_order', '') = coalesce($5, '') AND NOT (c.id = ANY($6)) \
+                 AND (a.kind <> 'compliance_declaration' OR c.scope->>'supplier' = $7) LIMIT 20",
             )
             .bind(&item.part)
             .bind(&item.predicate)
@@ -262,11 +263,12 @@ pub(crate) async fn compute_with(
             .bind(&item.heat)
             .bind(&item.purchase_order)
             .bind(ov.removed.iter().copied().collect::<Vec<Uuid>>())
+            .bind(supplier)
             .fetch_all(&mut **tx)
             .await?;
             if let Some(s) = &ov.added
                 && let Some(art) = &s.artifact
-                && art.kind == "inspection_report"
+                && resupply::supplier_side(&art.kind)
                 && s.claim.subject_type == "part"
                 && s.claim.subject_key == item.part
                 && s.claim.predicate == item.predicate

@@ -7,7 +7,7 @@ import { fileSize } from "./format";
 import { Badge, Empty, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
 import { WhatIfPanel } from "./WhatIfPanel";
 
-export const DOC_KINDS = ["spec_document", "drawing", "purchase_order", "inspection_report", "spreadsheet", "other"] as const;
+export const DOC_KINDS = ["spec_document", "drawing", "purchase_order", "inspection_report", "spreadsheet", "other", "regulation_list", "compliance_declaration", "material_declaration"] as const;
 
 /**
  * Quarantine release (tenant administrators). Four-eyes: the server refuses anyone who uploaded the document, and so

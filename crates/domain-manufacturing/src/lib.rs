@@ -8,6 +8,7 @@ pub mod capa;
 pub mod infer;
 mod ja;
 pub mod mapping;
+pub mod reglist;
 pub mod resupply;
 pub mod rules;
 pub mod three_way;

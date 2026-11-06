@@ -219,6 +219,10 @@
   "en": "new applicable evidence disagrees: {why}",
   "ja": "適用される新しい証拠と食い違いがあります：{why}"
  },
+ "invalidation.reglist": {
+  "en": "regulated-substance list {list} changed from version {from} to version {to}: {verdict}",
+  "ja": "規制物質リスト {list} が版 {from} から版 {to} に更新されました：{verdict}"
+ },
  "invalidation.superseded": {
   "en": "evidence corrected: {why}",
   "ja": "証拠が訂正されました：{why}"
@@ -242,6 +246,10 @@
  "limitations.finding": {
   "en": "Deterministic rule {rule}; extracted values may contain extraction errors (lowest source confidence {confidence} bps); a matching hash proves only that a document is unchanged since capture.",
   "ja": "決定的ルール {rule} による判定です。抽出値には読み取り誤りが含まれる可能性があります（出典の最低信頼度 {confidence} bps）。ハッシュの一致は、取り込み後に文書が変わっていないことを示すだけです。"
+ },
+ "limitations.reglist": {
+  "en": "KIZUNA ships no regulation-list content: lists, compositions and material profiles are your data, and the assessment is only as complete as they are. A material nobody has described is never assumed clean. Flagged decisions need a person to re-review them; nothing is reversed automatically.",
+  "ja": "KIZUNA は規制リストの内容を同梱していません。リスト・組成・材料プロファイルはお客様のデータであり、判定の完全さはそれらに依存します。誰も記述していない材料が非含有とみなされることはありません。フラグが付いた判断は担当者による再確認が必要で、自動的に取り消されることはありません。"
  },
  "limitations.signal": {
   "en": "Statistical/rule signal {engine} on extracted values. Strength describes how pronounced the pattern is; it is not a probability of wrongdoing. Extraction errors, ordinary process behaviour or re-issued documents can produce the same pattern. No evidence is rejected automatically.",
@@ -366,6 +374,18 @@
  "materiality.within_threshold": {
   "en": "change within threshold {threshold}",
   "ja": "変化量はしきい値 {threshold} 以内です"
+ },
+ "reglist.cannot_rule_out": {
+  "en": "the composition is not known well enough to rule out newly listed substance(s) {substances}",
+  "ja": "組成が十分に分からないため、新たに収載された物質 {substances} の含有を否定できません"
+ },
+ "reglist.may_contain": {
+  "en": "a material the declaration covers could contain newly listed substance(s) {substances}",
+  "ja": "宣言の対象材料に、新たに収載された物質 {substances} が含まれる可能性があります"
+ },
+ "reglist.not_affected": {
+  "en": "no covered material could contain a newly listed substance (by composition data and material profiles)",
+  "ja": "組成データと材料プロファイルによると、対象材料に新たに収載された物質が含まれる可能性はありません"
  },
  "report.md.chain": {
   "en": "Audit chain intact: {intact} ({events} events, head `{head}`).",
