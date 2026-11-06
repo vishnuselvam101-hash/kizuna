@@ -20,6 +20,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+pub mod receipt;
+
 pub const FORMAT: &str = "kizuna-evidence-pack";
 pub const VERSION: u32 = 1;
 pub const MANIFEST: &str = "manifest.json";
@@ -1264,6 +1266,19 @@ pub enum Lang {
 
 /// Human-readable report.
 pub fn render(r: &Report, lang: Lang) -> String {
+    render_with(r, lang, None, ("this pack", "このパック"))
+}
+
+/// Human-readable report of a delivery receipt (status final / pending / failed).
+pub fn render_receipt(r: &receipt::ReceiptReport, lang: Lang) -> String {
+    let pending = (r.status == "pending").then_some((
+        "RESULT: PENDING (consistent, not yet signed)",
+        "結果：保留（整合、未署名）",
+    ));
+    render_with(&r.report, lang, pending, ("this receipt", "この受領証"))
+}
+
+fn render_with(r: &Report, lang: Lang, result: Option<(&str, &str)>, noun: (&str, &str)) -> String {
     let pick = |m: &Msg| -> String {
         match lang {
             Lang::En => m.en.clone(),
@@ -1279,18 +1294,12 @@ pub fn render(r: &Report, lang: Lang) -> String {
         }
     };
     let mut out = String::new();
-    out += &head(
-        if r.ok {
-            "RESULT: VERIFIED"
-        } else {
-            "RESULT: VERIFICATION FAILED"
-        },
-        if r.ok {
-            "結果：検証成功"
-        } else {
-            "結果：検証失敗"
-        },
-    );
+    let (en, ja) = match result {
+        Some(x) => x,
+        None if r.ok => ("RESULT: VERIFIED", "結果：検証成功"),
+        None => ("RESULT: VERIFICATION FAILED", "結果：検証失敗"),
+    };
+    out += &head(en, ja);
     out += "\n\n";
     if !r.ok {
         out += &head("Failures", "失敗した検査");
@@ -1305,16 +1314,19 @@ pub fn render(r: &Report, lang: Lang) -> String {
     for c in r.checks.iter().filter(|c| c.ok) {
         out += &format!("  ✓ {}\n", pick(&c.msg));
     }
-    if r.ok {
+    if r.ok && !r.proven.is_empty() {
         out += "\n";
-        out += &head("What this pack PROVES", "このパックが証明すること");
+        out += &head(&format!("What {} PROVES", noun.0), &format!("{}が証明すること", noun.1));
         out += ":\n";
         for m in &r.proven {
             out += &format!("  • {}\n", pick(m));
         }
     }
     out += "\n";
-    out += &head("What this pack does NOT prove", "このパックが証明しないこと");
+    out += &head(
+        &format!("What {} does NOT prove", noun.0),
+        &format!("{}が証明しないこと", noun.1),
+    );
     out += ":\n";
     for m in &r.not_proven {
         out += &format!("  • {}\n", pick(m));

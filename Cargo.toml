@@ -56,3 +56,7 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.aes]
 opt-level = 3
+[profile.dev.package.curve25519-dalek]
+opt-level = 3
+[profile.dev.package.ed25519-dalek]
+opt-level = 3

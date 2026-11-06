@@ -42,6 +42,10 @@ export const portalEn = {
   "portal.sent": "Received {name}. It is checked before your customer reviews it.",
   "portal.uploads": "Your uploads",
   "portal.noUploads": "Nothing uploaded for this request yet.",
+  "portal.receipt": "Delivery receipt",
+  "portal.receipt.for": "Download the delivery receipt for {name}",
+  "portal.receipt.hint":
+    "A delivery receipt records the exact file (SHA-256), time and request your customer received. Check it offline with kizuna-verify-pack receipt <receipt.json> --file <your file>. It is pending until your customer's next signed checkpoint; download it again later for the final receipt. A receipt is not acceptance.",
   "portal.reviewNote": "Uploading does not approve anything: your customer reviews every document.",
   "portal.notFound": "This request is not available.",
   "upload.received": "Received",
@@ -133,6 +137,10 @@ export const portalJa: Record<keyof typeof portalEn, string> = {
   "portal.sent": "{name} を受け付けました。取引先が確認する前に安全性を検査します。",
   "portal.uploads": "アップロード済み",
   "portal.noUploads": "この依頼へのアップロードはまだありません。",
+  "portal.receipt": "受領証",
+  "portal.receipt.for": "{name} の受領証をダウンロード",
+  "portal.receipt.hint":
+    "受領証は、取引先が受領したファイル（SHA-256）・時刻・依頼を記録したものです。kizuna-verify-pack receipt <受領証.json> --file <送付したファイル> でオフライン検証できます。取引先の次回の署名済みチェックポイントまでは「保留」です。後で再ダウンロードすると確定版になります。受領証は受入を意味しません。",
   "portal.reviewNote": "アップロードで何かが承認されることはありません。すべての書類は取引先が確認します。",
   "portal.notFound": "この依頼は表示できません。",
   "upload.received": "受付済み",

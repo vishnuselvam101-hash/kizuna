@@ -126,6 +126,21 @@ impl Ctx {
         Resp { status, body, headers }
     }
 
+    /// GET returning the exact response bytes (for byte-canonical downloads).
+    pub async fn get_bytes(&self, path: &str, token: &str) -> (StatusCode, HeaderMap, Vec<u8>) {
+        let mut req = Request::builder()
+            .method(Method::GET)
+            .uri(path)
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(ConnectInfo(self.ip));
+        let res = self.app.clone().oneshot(req).await.unwrap();
+        let (status, headers) = (res.status(), res.headers().clone());
+        let bytes = res.into_body().collect().await.unwrap().to_bytes().to_vec();
+        (status, headers, bytes)
+    }
+
     pub async fn call(&self, method: Method, path: &str, token: Option<&str>, body: Option<Value>) -> Resp {
         let mut b = Request::builder().method(method).uri(path);
         if let Some(t) = token {

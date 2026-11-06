@@ -19,6 +19,24 @@ Node 24.22.2 / pnpm 12.15.0, Python 3.14 + uv. No remote (by instruction); CI wo
 | I2/I3 | done (synthetic eval only) | certificate integrity signals (9 kinds) + revision drift radar, ADR 0019, migration 0016, `/integrity/*` API, "Integrity signals" and "Revision drift" views; eval docs/testing/INTEGRITY_SIGNALS_EVAL.md |
 | M6 | done (pilot-ready demo, not production) | synthetic E2E, benchmarks, encrypted backup + restore drill, deployment + demo docs, WebAuthn/password screening/key rotation/injected clock (lane-auth), full UI (lane-web), API gaps, fuzzing, scans, two independent security reviews fixed |
 
+## Innovation I7: sealed delivery receipts (2026-11-06, branch `inn-receipts`)
+Portal upload that is stored → `delivery_receipt.issued` audit event + `delivery_receipts` row in the capture
+transaction (migration **0032**). `GET /portal/uploads/{id}/receipt` returns the
+canonical `kizuna-delivery-receipt` v1 JSON: pending (event only) until a KZCP3 checkpoint covers it, then final
+(RFC 6962 proof + checkpoint); self-verified before it is served; downloads audited; out-of-scope → 404 + `portal.denied`.
+Offline check: `kizuna-verify-pack receipt <receipt.json> [--file <doc>] [--trusted-key <key id>]` (exit 0 final,
+3 pending, 1 failed, 2 usage). Portal UI: per-upload "Delivery receipt" button (EN/JA).
+
+| Command | Result |
+|---|---|
+| `cargo test --workspace` (own DB `kizuna_test_receipts`) | 561 passed, 0 failed, 2 ignored; new: verify-pack `receipt` 10 (exhaustive single-bit flip over 3 receipts + proptest), `receipt_cli` 1, unit 2; api `delivery_receipts` 3 |
+| clippy `-D warnings`, fmt | clean |
+| web `pnpm lint` + `pnpm test` | 113 vitest pass (+2 receipt button, axe EN/JA) |
+
+Not done: commitments to extracted values (`claims_committed`) are in the format and verifier but not issued by the
+server; no WASM/browser verifier; staff uploads on a supplier's behalf get no receipt. `curve25519-dalek`/`ed25519-dalek`
+now build with opt-level 3 in dev (exhaustive bit-flip test 145 s → 24 s).
+
 ## Integration results (2026-11-05 late, main 5009a60)
 Further merged: feat-evidence-pack (mig 0022, ADR 0023), feat-whatif (0023), qa (ADR 0024: mfg-rules@2, mfg-map@4,
 ai-map@3), er-tuning (0024), ja-v2 (0025, mfg-map@5), perf-verify (0026), feat-supplier-portal (0027, ADR 0025),

@@ -17,9 +17,9 @@ const req: PortalRequest = {
 };
 const detail: PortalRequest = { ...req, body_ja: "再提出のお願い", body_en: "Please resend the mill certificate." };
 const uploads: PortalUpload[] = [
-  { id: "u-1", original_filename: "cert.pdf", size_bytes: 2048, status: "received_for_review", reason_code: null, created_at: "2026-11-05T10:00:00Z" },
-  { id: "u-2", original_filename: "macro.pdf", size_bytes: 900, status: "quarantined", reason_code: null, created_at: "2026-11-05T10:01:00Z" },
-  { id: "u-4", original_filename: "x.exe", size_bytes: 9, status: "not_accepted", reason_code: "file_type_not_accepted", created_at: "2026-11-05T10:02:00Z" },
+  { id: "u-1", original_filename: "cert.pdf", size_bytes: 2048, status: "received_for_review", reason_code: null, created_at: "2026-11-05T10:00:00Z", receipt_id: "rc-1" },
+  { id: "u-2", original_filename: "macro.pdf", size_bytes: 900, status: "quarantined", reason_code: null, created_at: "2026-11-05T10:01:00Z", receipt_id: "rc-2" },
+  { id: "u-4", original_filename: "x.exe", size_bytes: 9, status: "not_accepted", reason_code: "file_type_not_accepted", created_at: "2026-11-05T10:02:00Z", receipt_id: null },
 ];
 
 function signedIn() {
@@ -29,6 +29,7 @@ function signedIn() {
     "GET /portal/requests/r-1/uploads": uploads,
     "POST /portal/requests/r-1/uploads": { ...uploads[0], id: "u-3", original_filename: "new.pdf", status: "received_for_review" },
     "POST /portal/logout": { ok: true },
+    "GET /portal/uploads/u-1/receipt": () => new Response('{"format":"kizuna-delivery-receipt"}', { status: 200, headers: { "content-type": "application/json" } }),
   });
   f.api.setTokens({ access_token: "kzp.x.y", refresh_token: "" });
   return f;
@@ -77,6 +78,25 @@ test("upload posts the file to the request and refreshes the status list", async
   expect(calls.filter((c) => c.path === "/portal/requests/r-1/uploads" && c.method === "GET").length).toBeGreaterThan(1);
   // The portal never calls the tenant API.
   expect(calls.every((c) => c.path.startsWith("/portal/"))).toBe(true);
+});
+
+test.each(["en", "ja"] as const)("stored uploads offer their delivery receipt; refused ones do not (%s)", async (lang) => {
+  const { api, calls } = signedIn();
+  const created: Blob[] = [];
+  URL.createObjectURL = ((b: Blob) => (created.push(b), "blob:x")) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = () => {};
+  const { container } = render(<PortalApp api={api} lang={lang} />);
+  const en = lang === "en";
+  fireEvent.click(await screen.findByRole("button", { name: en ? "Open request RR-0193A7C2D4E5" : "依頼 RR-0193A7C2D4E5 を開く" }));
+  const btn = await screen.findByRole("button", { name: en ? "Download the delivery receipt for cert.pdf" : "cert.pdf の受領証をダウンロード" });
+  expect(screen.getAllByRole("button", { name: en ? /delivery receipt for/ : /の受領証をダウンロード/ })).toHaveLength(2);
+  expect(screen.queryByRole("button", { name: en ? /receipt for x\.exe/ : /x\.exe の受領証/ })).toBeNull();
+  expect(screen.getByText(en ? /kizuna-verify-pack receipt/ : /オフライン検証/)).toBeTruthy();
+  expect(await axeViolations(container)).toEqual([]);
+  fireEvent.click(btn);
+  await waitFor(() => expect(created).toHaveLength(1));
+  expect(await created[0].text()).toContain("kizuna-delivery-receipt");
+  expect(calls.some((c) => c.method === "GET" && c.path === "/portal/uploads/u-1/receipt")).toBe(true);
 });
 
 test("invitation: password, then authenticator enrolment, then signed in; the link token leaves the address bar", async () => {
