@@ -9,6 +9,32 @@ import { Badge, Empty, Loading, Notice, PageTitle, Panel, useLoad } from "./ui";
 
 const STATUSES = ["open", "needs_evidence", "resolved_approved", "resolved_rejected", "obsolete"] as const;
 
+/** Opens an 8D corrective action from this finding (its claims become the case's cited evidence). */
+function OpenCapa({ open: run }: { open: () => Promise<string> }) {
+  const { t } = useI18n();
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  async function open() {
+    setErr(null);
+    setMsg("");
+    try {
+      setMsg(t("capa.openedFromFinding", { ref: await run() }));
+    } catch (x) {
+      setErr(x);
+    }
+  }
+  return (
+    <section aria-labelledby="f-capa">
+      <h3 id="f-capa">{t("capa.fromFinding")}</h3>
+      <p className="muted">{t("capa.fromFindingHint")}</p>
+      <button type="button" onClick={open}>
+        {t("capa.fromFindingBtn")}
+      </button>
+      <Notice msg={msg} error={err} />
+    </section>
+  );
+}
+
 function SourceCard({ c, d }: { c: Claim; d: ConflictDetail }) {
   const { t, tv } = useI18n();
   const src = d.sources.find((s) => s.claim_id === c.id);
@@ -53,10 +79,13 @@ export function FindingDetail({
   d,
   onReview,
   canReview,
+  onOpenCapa,
 }: {
   d: ConflictDetail;
   onReview: (decision: string, comment: string, faultyClaims: string[]) => void;
   canReview: boolean;
+  /** Opens an 8D case from this finding and resolves to its reference; absent for users who may not. */
+  onOpenCapa?: () => Promise<string>;
 }) {
   const { tm, t, tv, fmtDate } = useI18n();
   const [comment, setComment] = useState("");
@@ -151,6 +180,7 @@ export function FindingDetail({
           </ul>
         )}
       </section>
+      {onOpenCapa && <OpenCapa open={onOpenCapa} />}
       {d.requires_human_review && canReview && (
         <section aria-labelledby="f-act" className="review-box">
           <h3 id="f-act">{t("finding.recordReview")}</h3>
@@ -222,6 +252,8 @@ export function FindingsView() {
       setMsg(t("findings.ran", { n: r.findings_new, obsolete: r.marked_obsolete }));
       list.reload();
     });
+  const openCapa = async () =>
+    (await api.request<{ case: { reference: string } }>("POST", "/capa/cases", { source_kind: "conflict", source_id: detail!.conflict.id })).case.reference;
   const review = (decision: string, comment: string, faulty: string[]) =>
     guard(async () => {
       if (!detail) return;
@@ -289,7 +321,13 @@ export function FindingsView() {
             />
           )}
         </Panel>
-        <div>{detail ? <FindingDetail key={detail.conflict.id} d={detail} onReview={review} canReview={can("review_decide")} /> : <Empty text={t("findings.select")} />}</div>
+        <div>{detail ? <FindingDetail
+              key={detail.conflict.id}
+              d={detail}
+              onReview={review}
+              canReview={can("review_decide")}
+              onOpenCapa={can("decision_write") ? openCapa : undefined}
+            /> : <Empty text={t("findings.select")} />}</div>
       </div>
     </div>
   );

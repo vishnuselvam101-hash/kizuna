@@ -18,8 +18,15 @@ test("evidence explorer: a component's claims show document, exact location, met
   const sheet = ev.getByRole("row").filter({ hasText: "仕様書_JA-BRK-1001.xlsx" }).first();
   await expect(sheet).toContainText(c.t("loc.sheet", { v: "仕様" }));
   // The scanned drawing is pixels only: its claims were read by OCR.
-  await expect(ev.getByRole("row").filter({ hasText: "スキャン図面_JA-BRK-1001.pdf" }).first()).toContainText("SUS304");
-  await expect(ev.getByTestId("claim-id").first()).toHaveText(/^[0-9a-f-]{36}$/);
+  const scan = ev.getByRole("row").filter({ hasText: "スキャン図面_JA-BRK-1001.pdf" });
+  await expect(scan.filter({ hasText: "mfg.material" }).first()).toContainText("SUS304");
+  await expect(scan.filter({ hasText: "mfg.drawing_number" }).first()).toContainText(c.t("loc.page", { v: 1 }));
+  // Claim ids show in short form with the full id on hover and a copy button.
+  const id = ev.locator(".claim-id code").first();
+  await expect(id).toHaveAttribute("title", /^[0-9a-f-]{36}$/);
+  const full = (await id.getAttribute("title"))!;
+  await expect(id).toHaveText(full.slice(0, 8));
+  await expect(ev.getByRole("button", { name: c.t("claim.copyId", { id: full.slice(0, 8) }), exact: true }).first()).toBeVisible();
   await axe(page, "evidence explorer");
   await noHorizontalScroll(page, "evidence explorer");
   await shot(page, info, "evidence");

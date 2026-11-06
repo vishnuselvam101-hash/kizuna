@@ -14,10 +14,10 @@ async function focusedName(page: Page) {
   });
 }
 
-/** Presses Tab until the focused element's accessible name matches; asserts a visible focus indicator. */
-async function tabTo(page: Page, name: string | RegExp, max = 250) {
+/** Presses Tab (or Shift+Tab, to go back up a long page) until the focused element's accessible name matches; asserts a visible focus indicator. */
+async function tabTo(page: Page, name: string | RegExp, max = 250, key: "Tab" | "Shift+Tab" = "Tab") {
   for (let i = 0; i < max; i++) {
-    await page.keyboard.press("Tab");
+    await page.keyboard.press(key);
     const n = await focusedName(page);
     if (typeof name === "string" ? n === name || n.startsWith(name) : name.test(n)) {
       const visible = await page.evaluate(() => {
@@ -76,7 +76,8 @@ test("keyboard only: sign in, upload, extract, review a conflict, sign out", asy
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status")).toContainText(c.t("docs.extracted", { n: 1, labels: "x" }).split("1")[1].slice(0, 8));
 
-  await tabTo(page, c.t("section.conflicts"));
+  // The document list is long: go back up to the primary navigation.
+  await tabTo(page, c.t("section.conflicts"), 400, "Shift+Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(c.t("nav.findings"));
   await tabTo(page, "VLV-1950");

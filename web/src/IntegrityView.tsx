@@ -199,7 +199,7 @@ export function SignalDetailView({ d, canReview, onReview }: { d: SignalDetail; 
       </section>
       <section aria-labelledby="sig-ev">
         <h3 id="sig-ev">{t("integrity.evidence")}</h3>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table>
           <caption className="sr-only">{t("integrity.evidence")}</caption>
           <thead>
@@ -363,7 +363,7 @@ export function DriftDetailView({ d, canReview, onReview }: { d: DriftDetail; ca
         {f.changes.length === 0 ? (
           <p className="muted">{t("common.none")}</p>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0}>
           <table>
             <caption className="sr-only">{t("drift.diff")}</caption>
             <thead>

@@ -64,7 +64,7 @@ test("import settings: save Shift_JIS CSV settings; analyst re-extracts the CSV 
   await expect(status(page)).toContainText(c.t("docs.reextracted", { n: "§", sup: "§", same: "§", flagged: "§" }).split("§")[1].trim());
 });
 
-test("AI-assisted extraction: admin accepts the notice and turns it on; re-extraction maps 製造者 via the local provider", async ({ page }, info) => {
+test("AI-assisted extraction: admin accepts the notice and turns it on; re-extraction maps the maker column 製造元 via the local provider", async ({ page }, info) => {
   const c = ctx(info);
   await login(page, c, "admin");
   await go(page, c, "admin", "integrations");

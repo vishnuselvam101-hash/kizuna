@@ -62,6 +62,7 @@ test("English tenant also ingests the synthetic supplier set (specs, drawings, P
 });
 
 test("analyst extracts claims from every accepted document, including OCR of the scanned drawing and the DXF", async ({ page }, info) => {
+  test.setTimeout(600_000); // the English tenant also holds the bulk synthetic set
   const c = ctx(info);
   await login(page, c, "analyst");
   await go(page, c, "evidence", "documents");
@@ -90,8 +91,8 @@ test("analyst extracts claims from every accepted document, including OCR of the
     const key = Object.keys(counts).find((k) => k.includes(f))!;
     expect(counts[key], `claims from ${f}`).toBeGreaterThan(0);
   }
-  // Japanese labels (長さ, 引張強さ, 硬さ …) are understood; only the maker column is left for the AI-assisted mapper.
-  expect(unmapped["仕様書_JA-BRK-1001.xlsx"]).toEqual(["製造者"]);
-  for (const f of ["検査成績書_JA-BRK-1001.pdf", "ミルシート_JA-BRK-1001.pdf"])
+  // Japanese labels (長さ, 引張強さ, 硬さ, 製造者 …) are understood; the maker column 製造元 has no rule but is
+  // inferred from its label (flagged for confirmation), so no Japanese label is left unmapped.
+  for (const f of ["仕様書_JA-BRK-1001.xlsx", "検査成績書_JA-BRK-1001.pdf", "ミルシート_JA-BRK-1001.pdf"])
     expect(unmapped[f].filter((l) => /[\u3040-\u9fff]/.test(l)), `Japanese labels left unmapped in ${f}`).toEqual([]);
 });

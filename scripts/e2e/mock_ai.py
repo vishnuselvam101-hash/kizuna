@@ -14,7 +14,7 @@ import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-RULES = [("製造者", "supplier"), ("メーカー", "supplier"), ("全長", "length"), ("寸法", "length")]
+RULES = [("製造者", "supplier"), ("製造元", "supplier"), ("メーカー", "supplier"), ("全長", "length"), ("寸法", "length")]
 
 
 def answer(user: str) -> dict:

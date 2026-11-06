@@ -56,7 +56,7 @@ kz_extraction_env
 [[ $(id -u) == 0 ]] && export KIZUNA_ALLOW_ROOT=1
 BIN=${CARGO_TARGET_DIR:-target}/release
 echo "== build (release)"
-cargo build -q --release --bin kizuna-server --bin kizuna-admin
+cargo build -q --release --bin kizuna-server --bin kizuna-admin --bin kizuna-verify-pack
 
 DB=kizuna_e2e_browser_$(date +%s)_$$
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/kizuna-browser.XXXXXX")
@@ -132,7 +132,7 @@ kz_wait_http "http://127.0.0.1:$WEB_PORT/" 30
 
 cat >"$WORK/env.sh" <<ENV
 export E2E_BASE_URL=http://localhost:$WEB_PORT E2E_WORK=$WORK E2E_CREDS=$WORK/creds.json E2E_DATA=$WORK/data
-export E2E_AI_LOG=$WORK/ai.log E2E_SERVER_LOG=$WORK/server.log
+export E2E_AI_LOG=$WORK/ai.log E2E_SERVER_LOG=$WORK/server.log E2E_VERIFY_PACK=$(realpath "$BIN/kizuna-verify-pack")
 ENV
 if [[ $MODE == up ]]; then echo "up: WORK=$WORK  (source \$WORK/env.sh; stop with --down \$WORK)"; exit 0; fi
 

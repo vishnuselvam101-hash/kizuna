@@ -78,7 +78,7 @@ button.link:hover:not(:disabled) { background: none; text-decoration: underline;
   button, input, select { min-height: 44px; }
 }
 label { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); font-size: var(--t-sm); color: var(--fg-muted); }
-label.check { display: flex; align-items: center; gap: var(--s2); color: var(--fg); }
+label.check { display: flex; align-items: center; gap: var(--s2); color: var(--fg); min-height: 32px; } /* 24 px target spacing for 16 px boxes */
 label.stack { margin-bottom: var(--s2); }
 .form-row { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: end; }
 .form-row > label { min-width: 0; max-width: 100%; }
@@ -386,6 +386,8 @@ code.secret { word-break: break-all; user-select: all; }
 button.who { border: 0; background: transparent; cursor: pointer; }
 button.who:hover, button.who[aria-current="page"] { color: var(--fg); text-decoration: underline; }
 tr[aria-current="true"] td { background: var(--info-bg); }
+/* The row tint already marks the selection; a tinted badge on top of it would drop below 4.5:1 contrast. */
+tr[aria-current="true"] .badge { background: transparent; }
 
 /* What-if simulation */
 .g-edge.hl { stroke: var(--crit); stroke-opacity: 0.9; stroke-width: 2; }
