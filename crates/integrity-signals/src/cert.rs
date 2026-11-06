@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use kizuna_messages::{Lang, Msg};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -112,6 +113,8 @@ pub struct Signal {
     pub strength: Strength,
     pub why: String,
     pub why_ja: String,
+    /// The explanation as a message code (`why`/`why_ja` are its EN/JA renderings).
+    pub msg: Msg,
     /// The statistic, the threshold it was compared with, and sample sizes.
     pub statistic: Value,
     pub evidence: Vec<EvidenceRef>,
@@ -124,11 +127,6 @@ pub struct Signal {
 pub const MAX_EVIDENCE: usize = 60;
 /// Pairwise comparison is limited to this many certificates per supplier and part (the most recent ones).
 pub const MAX_PAIR_GROUP: usize = 2000;
-
-const BENIGN_EN: &str =
-    "This pattern can have ordinary causes and is not a finding of wrongdoing; a person should review the documents.";
-const BENIGN_JA: &str =
-    "この傾向には通常の理由もあり得ます。不正の判断ではありません。担当者が文書を確認してください。";
 
 fn norm_id(s: &Option<String>) -> Option<String> {
     s.as_ref()
@@ -221,6 +219,10 @@ pub fn analyze(certs: &[Certificate], limits: &Limits, s: &Settings) -> Vec<Sign
         chemistry(c, s, &mut out);
         dates(c, s, &mut out);
     }
+    for g in &mut out {
+        g.why = g.msg.en();
+        g.why_ja = g.msg.render(Lang::Ja);
+    }
     out.sort_by(|a, b| a.fingerprint.cmp(&b.fingerprint));
     out
 }
@@ -289,25 +291,18 @@ fn copies(supplier: &str, part: &str, group: &[&Certificate], s: &Settings, out:
             let (la, lb) = (label(a), label(b));
             let chance_txt = format!("{chance:.1e}");
             let (ns, nsh, hist) = (same.len(), shared.len(), group.len());
-            let (why, why_ja) = if table_copy {
-                (
-                    format!(
-                        "All {ns} values on the certificates for {la} and {lb} are identical, although they are for different lots/heats. Estimated chance of values this alike appearing by coincidence anywhere in this supplier's {hist} certificates: about {chance_txt}. {BENIGN_EN}"
-                    ),
-                    format!(
-                        "{la} と {lb} の証明書は別ロット/ヒートですが、全 {ns} 項目の値が一致しています。このサプライヤーの証明書 {hist} 件の中で偶然これほど一致する推定確率は約 {chance_txt} です。{BENIGN_JA}"
-                    ),
-                )
+            let msg = Msg::new(if table_copy {
+                "integrity.table_copy"
             } else {
-                (
-                    format!(
-                        "{ns} of {nsh} shared values on the certificates for {la} and {lb} are identical, although they are for different lots/heats. Estimated chance of values this alike appearing by coincidence anywhere in this supplier's {hist} certificates: about {chance_txt}. {BENIGN_EN}"
-                    ),
-                    format!(
-                        "{la} と {lb} の証明書は別ロット/ヒートですが、共通 {nsh} 項目中 {ns} 項目の値が一致しています。このサプライヤーの証明書 {hist} 件の中で偶然これほど一致する推定確率は約 {chance_txt} です。{BENIGN_JA}"
-                    ),
-                )
-            };
+                "integrity.identical_values"
+            })
+            .with("same", ns)
+            .with("shared", nsh)
+            .with("a", la.as_str())
+            .with("b", lb.as_str())
+            .with("certificates", hist)
+            .with("chance", chance_txt.as_str())
+            .with_msg("benign", Msg::new("integrity.benign"));
             let mut evidence = Vec::new();
             for c in [a, b] {
                 for r in c
@@ -327,8 +322,9 @@ fn copies(supplier: &str, part: &str, group: &[&Certificate], s: &Settings, out:
                 part: Some(part.into()),
                 characteristic: None,
                 strength,
-                why,
-                why_ja,
+                why: String::new(),
+                why_ja: String::new(),
+                msg,
                 statistic: json!({
                     "identical": same.len(), "shared": shared.len(), "chance_all_pairs": chance, "pairs_compared": pairs,
                     "threshold": { "min_identical_values": s.min_identical_values, "max_coincidence_ppm": s.max_coincidence_ppm, "min_table_values": s.min_table_values },
@@ -406,14 +402,19 @@ fn distribution(
                     part: Some(part.into()),
                     characteristic: Some(ch.clone()),
                     strength,
-                    why: format!(
-                        "All {n} reported values of {ch} lie within {min}–{max} {unit_txt}, a spread of {pct} % of the tolerance width {lo}–{hi} {unit_txt} (threshold {} %). Real measurements usually vary more. {BENIGN_EN}",
-                        s.narrow_band_pct
-                    ),
-                    why_ja: format!(
-                        "{ch} の報告値 {n} 件はすべて {min}～{max} {unit_txt} の範囲にあり、公差幅 {lo}～{hi} {unit_txt} の {pct} % しかばらついていません（しきい値 {} %）。{BENIGN_JA}",
-                        s.narrow_band_pct
-                    ),
+                    why: String::new(),
+                    why_ja: String::new(),
+                    msg: Msg::new("integrity.narrow_band")
+                        .with("n", n)
+                        .with("characteristic", ch.as_str())
+                        .with("min", min.to_string())
+                        .with("max", max.to_string())
+                        .with("unit", unit_txt.as_str())
+                        .with("pct", pct.to_string())
+                        .with("lower", lo.to_string())
+                        .with("upper", hi.to_string())
+                        .with("threshold", s.narrow_band_pct)
+                        .with_msg("benign", Msg::new("integrity.benign")),
                     statistic: json!({
                         "n": n, "spread": spread.normalize().to_string(), "tolerance_width": width.normalize().to_string(),
                         "spread_pct_of_tolerance": pct.to_string(), "threshold_pct": s.narrow_band_pct,
@@ -462,14 +463,18 @@ fn distribution(
                 part: Some(part.into()),
                 characteristic: Some(ch.clone()),
                 strength,
-                why: format!(
-                    "{k} of {n} reported values of {ch} are at a spec limit ({lims} {unit_txt}) or within {} resolution step(s) of it; {exact} exactly at the limit (threshold {} %). Values usually spread across the tolerance. {BENIGN_EN}",
-                    s.limit_steps, s.at_limit_pct
-                ),
-                why_ja: format!(
-                    "{ch} の報告値 {n} 件中 {k} 件が規格限界（{lims} {unit_txt}）上、または分解能 {} 刻み以内にあります（限界値ちょうど {exact} 件、しきい値 {} %）。{BENIGN_JA}",
-                    s.limit_steps, s.at_limit_pct
-                ),
+                why: String::new(),
+                why_ja: String::new(),
+                msg: Msg::new("integrity.at_limit")
+                    .with("k", k)
+                    .with("n", n)
+                    .with("characteristic", ch.as_str())
+                    .with("limits", lims.as_str())
+                    .with("unit", unit_txt.as_str())
+                    .with("steps", s.limit_steps)
+                    .with("exact", exact)
+                    .with("threshold", s.at_limit_pct)
+                    .with_msg("benign", Msg::new("integrity.benign")),
                 statistic: json!({
                     "n": n, "near_limit": k, "exactly_at_limit": exact, "threshold_pct": s.at_limit_pct,
                     "limit_steps": s.limit_steps, "resolution": res.map(|r| r.to_string()),
@@ -533,12 +538,16 @@ fn precision(certs: &[Certificate], s: &Settings, out: &mut Vec<Signal>) {
             part: None,
             characteristic: Some(ch.clone()),
             strength,
-            why: format!(
-                "{k} of {n} values of {ch} are reported more finely (up to {max_dp} decimal places) than the configured resolution {res} {unit_txt} of the gauge or method. Calculated values (averages, conversions) or a finer instrument than configured are ordinary causes. {BENIGN_EN}"
-            ),
-            why_ja: format!(
-                "{ch} の値 {n} 件中 {k} 件が、設定された計測器・試験方法の分解能 {res} {unit_txt} より細かく（最大小数 {max_dp} 桁）報告されています。平均値・換算値や、設定より精密な計測器の使用も考えられます。{BENIGN_JA}"
-            ),
+            why: String::new(),
+            why_ja: String::new(),
+            msg: Msg::new("integrity.excess_precision")
+                .with("k", k)
+                .with("n", n)
+                .with("characteristic", ch.as_str())
+                .with("max_dp", max_dp)
+                .with("resolution", res.to_string())
+                .with("unit", unit_txt.as_str())
+                .with_msg("benign", Msg::new("integrity.benign")),
             statistic: json!({ "n": n, "finer_than_resolution": k, "resolution": res.to_string(), "unit": unit, "max_decimal_places": max_dp, "threshold_pct": s.excess_pct, "min_values": s.min_excess_values }),
             evidence: finer.iter().take(MAX_EVIDENCE).map(|(c, r)| reading_ref(c, r)).collect(),
             certificates: certs_set.into_iter().map(str::to_string).collect(),
@@ -601,14 +610,15 @@ fn digits(certs: &[Certificate], s: &Settings, out: &mut Vec<Signal>) {
             part: None,
             characteristic: Some(ch.clone()),
             strength,
-            why: format!(
-                "The last recorded digits of {} values of {ch} are not evenly spread over 0–9 (χ² = {:.1}, p = {p_txt}; threshold {max_p:.0e}). Measured values usually end in every digit about equally often; rounding by hand or a gauge that reads in steps of 5 are ordinary causes. {BENIGN_EN}",
-                t.n, t.statistic
-            ),
-            why_ja: format!(
-                "{ch} の {} 件の値の末尾の数字が 0～9 に均等に分布していません（χ² = {:.1}、p = {p_txt}、しきい値 {max_p:.0e}）。手作業での丸めや 5 刻みで読む計測器も通常の原因です。{BENIGN_JA}",
-                t.n, t.statistic
-            ),
+            why: String::new(),
+            why_ja: String::new(),
+            msg: Msg::new("integrity.digit_preference")
+                .with("n", t.n)
+                .with("characteristic", ch.as_str())
+                .with("chi2", format!("{:.1}", t.statistic))
+                .with("p", p_txt.as_str())
+                .with("threshold", format!("{max_p:.0e}"))
+                .with_msg("benign", Msg::new("integrity.benign")),
             statistic: json!({
                 "n": t.n, "chi2": t.statistic, "df": t.df, "p_value": t.p_value, "threshold_p": max_p,
                 "detail": t.explanation, "resolution": res.to_string(), "unit": unit,
@@ -647,18 +657,13 @@ fn chemistry(c: &Certificate, s: &Settings, out: &mut Vec<Signal>) {
         part: Some(c.part.clone()),
         characteristic: None,
         strength: Strength::Strong,
-        why: format!(
-            "The {} chemical composition values on {} add up to {sum_t} %{}; a composition in mass-% cannot exceed 100 %. An extraction or transcription error (decimal point, wrong column) is a common cause. {BENIGN_EN}",
-            chem.len(),
-            c.document,
-            if bad_element { ", and at least one element is outside 0–100 %" } else { "" }
-        ),
-        why_ja: format!(
-            "{} の化学成分 {} 項目の合計が {sum_t} % です{}。質量%の成分合計は 100 % を超えません。読み取り・転記の誤り（小数点、列ずれ）もよくある原因です。{BENIGN_JA}",
-            c.document,
-            chem.len(),
-            if bad_element { "（0～100 % の範囲外の元素あり）" } else { "" }
-        ),
+        why: String::new(),
+        why_ja: String::new(),
+        msg: Msg::new(if bad_element { "integrity.chemistry_sum_element" } else { "integrity.chemistry_sum" })
+            .with("elements", chem.len())
+            .with("document", c.document.as_str())
+            .with("sum", sum_t.to_string())
+            .with_msg("benign", Msg::new("integrity.benign")),
         statistic: json!({ "sum_pct": sum_t.to_string(), "elements": chem.len(), "limit_pct": limit.to_string(), "element_out_of_range": bad_element }),
         evidence: chem.iter().map(|r| reading_ref(c, r)).collect(),
         certificates: vec![c.id.clone()],
@@ -675,7 +680,6 @@ fn dates(c: &Certificate, s: &Settings, out: &mut Vec<Signal>) {
         &'static str,
         &'c Option<DateField>,
         &'static str,
-        &'static str,
     );
     let checks: [Check; 3] = [
         (
@@ -683,27 +687,24 @@ fn dates(c: &Certificate, s: &Settings, out: &mut Vec<Signal>) {
             &c.issued,
             "certificate_date",
             &c.shipped,
-            "the certificate is dated after the shipment date",
-            "証明書の日付が出荷日より後です",
+            "integrity.date.issued_after_shipment",
         ),
         (
             "inspected_after_shipment",
             &c.inspected,
             "inspection_date",
             &c.shipped,
-            "the inspection is dated after the shipment date",
-            "検査日が出荷日より後です",
+            "integrity.date.inspected_after_shipment",
         ),
         (
             "issued_before_inspection",
             &c.inspected,
             "inspection_date",
             &c.issued,
-            "the certificate is dated before the inspection it reports",
-            "証明書の日付が、記載された検査日より前です",
+            "integrity.date.issued_before_inspection",
         ),
     ];
-    for (check, later, later_name, earlier, en, ja) in checks {
+    for (check, later, later_name, earlier, what) in checks {
         let (Some(l), Some(e)) = (later, earlier) else {
             continue;
         };
@@ -732,14 +733,15 @@ fn dates(c: &Certificate, s: &Settings, out: &mut Vec<Signal>) {
             part: Some(c.part.clone()),
             characteristic: Some(check.into()),
             strength,
-            why: format!(
-                "On {}, {en} ({} vs {}, {gap} days). A typing error or a re-issued certificate are common causes. {BENIGN_EN}",
-                c.document, l.date, e.date
-            ),
-            why_ja: format!(
-                "{} で、{ja}（{} と {}、{gap} 日）。入力ミスや証明書の再発行もよくある原因です。{BENIGN_JA}",
-                c.document, l.date, e.date
-            ),
+            why: String::new(),
+            why_ja: String::new(),
+            msg: Msg::new("integrity.date_order")
+                .with("document", c.document.as_str())
+                .with_msg("what", Msg::new(what))
+                .with("later", l.date.as_str())
+                .with("earlier", e.date.as_str())
+                .with("days", gap)
+                .with_msg("benign", Msg::new("integrity.benign")),
             statistic: json!({ "check": check, "days": gap, "grace_days": s.date_grace_days }),
             evidence: vec![date_ref(c, later_name, l), date_ref(c, earlier_name, e)],
             certificates: vec![c.id.clone()],
@@ -819,16 +821,15 @@ fn lot_sequence(supplier: &str, part: &str, group: &[&Certificate], s: &Settings
                 part: Some(part.into()),
                 characteristic: None,
                 strength,
-                why: format!(
-                    "Lot {lot} on {} is out of order with {k} of {} certificates of this supplier and part dated at least {gap} days apart (lot numbers usually rise with the date). Shipping from older stock is a common cause. {BENIGN_EN}",
-                    c.document,
-                    comparable.len()
-                ),
-                why_ja: format!(
-                    "{} のロット {lot} は、{gap} 日以上離れた同サプライヤー・同部品の証明書 {} 件中 {k} 件と日付順が逆転しています（通常ロット番号は日付とともに増えます）。在庫品の出荷もよくある原因です。{BENIGN_JA}",
-                    c.document,
-                    comparable.len()
-                ),
+                why: String::new(),
+                why_ja: String::new(),
+                msg: Msg::new("integrity.lot_sequence")
+                    .with("lot", lot.as_str())
+                    .with("document", c.document.as_str())
+                    .with("k", k)
+                    .with("comparable", comparable.len())
+                    .with("days", gap)
+                    .with_msg("benign", Msg::new("integrity.benign")),
                 statistic: json!({ "lot_prefix": prefix, "lot_number": n, "inversions": k, "comparable": comparable.len(), "min_days_apart": gap }),
                 evidence,
                 certificates: std::iter::once(c.id.clone())

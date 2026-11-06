@@ -24,11 +24,20 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from ja_corpus import Doc, build  # noqa: E402
+from ja_dev3 import build_dev3  # noqa: E402
 
 # The original corpus's "holdout" was used for tuning since 2026-11-05 v2, so it is the dev split now; the
 # independent holdout (tests/ja_holdout.py) is only ever evaluated, never tuned on.
 DEV_NAMES = {"holdout": "dev", "scan": "dev_scan"}
-PROVENANCE = ("ocr_conf_bps", "label_basis", "subject_basis", "p_correct_bps", "review")
+PROVENANCE = (
+    "ocr_conf_bps",
+    "subject_conf_bps",
+    "layout",
+    "label_basis",
+    "subject_basis",
+    "p_correct_bps",
+    "review",
+)
 
 from kizuna_extraction.worker import handle  # noqa: E402
 
@@ -70,6 +79,13 @@ def canon_claim(c: dict) -> tuple:
     return ("text", norm_text(c.get("value", "")))
 
 
+def same_subject(t: dict, c: dict) -> bool:
+    """Multi-part documents name the part a truth value belongs to; a mapped claim must be about that part."""
+    if "subject" not in t or "subject" not in c:
+        return True
+    return norm_text(c["subject"] or "").upper() == norm_text(t["subject"]).upper()
+
+
 def match(
     truth: list[dict], claims: list[dict], lenient: bool, used_out: list | None = None
 ) -> tuple[dict, dict, dict]:
@@ -82,7 +98,11 @@ def match(
     for t in truth:
         ct = canon_truth(t)
         hit = next(
-            (i for i, c in enumerate(claims) if not used[i] and c["field"] == t["field"] and cc[i] == ct),
+            (
+                i
+                for i, c in enumerate(claims)
+                if not used[i] and c["field"] == t["field"] and cc[i] == ct and same_subject(t, c)
+            ),
             None,
         )
         if hit is None:
@@ -98,7 +118,10 @@ def match(
                 (
                     i
                     for i, c in enumerate(claims)
-                    if not used[i] and c["field"] == t["field"] and norm_text(c.get("value", "")) == raw
+                    if not used[i]
+                    and c["field"] == t["field"]
+                    and norm_text(c.get("value", "")) == raw
+                    and same_subject(t, c)
                 ),
                 None,
             )
@@ -166,6 +189,8 @@ def _conf(c: dict) -> dict:
     loc = c.get("source_location") or {}
     return {
         "ocr_conf_bps": loc.get("ocr_conf_bps"),
+        "subject_conf_bps": loc.get("subject_conf_bps"),
+        "layout": loc.get("layout"),
         "label_basis": loc.get("label_basis", "rule"),
         "subject_basis": loc.get("subject_basis", "rule"),
         "p_correct_bps": loc.get("p_correct_bps"),
@@ -262,6 +287,7 @@ def corpus(scans: bool = True, holdout: bool = False) -> list[Doc]:
     docs = build(scans=scans)
     for d in docs:
         d.split = DEV_NAMES.get(d.split, d.split)
+    docs += build_dev3(scans=scans)  # v3 layout families, tuning split "dev"
     if holdout:
         from ja_holdout import build_holdout
 

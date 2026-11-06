@@ -87,9 +87,17 @@ def _is_kv(text: str) -> bool:
     return COLON_KV.match(text) is not None or BRACKET_KV.match(text) is not None
 
 
+# Which layout reader produced a value (`location.layout`): the calibration groups values by it, because the
+# geometric readers (strips, title blocks, horizontal tables) pair label and value by position only.
+LAYOUTS = {"text": "kv", "table": "table", "htable": "htable", "pair": "pair", "title-block": "title"}
+
+
 def _rec(label: str, value: str, loc: dict, group: str, method: str, conf: float) -> dict:
     if method.startswith("ocr"):
         loc = {**loc, "ocr_confidence": round(conf, 3)}  # travels with the value into the claim's location
+    layout = LAYOUTS.get(method.split("-", 1)[1]) if "-" in method else None
+    if layout is not None:
+        loc = {**loc, "layout": layout}
     return {
         "label": label[:120],
         "value": value[:500],
@@ -225,7 +233,11 @@ def _fax(lines: list[Line], method: str, sink: Sink) -> None:
 
 
 def _page(page: int, lines: list[Line], method: str, sink: Sink, carry: list[Header | None]) -> None:
-    table_no = 0
+    from .geometry import emit_strip, horizontal_tables, strip
+
+    used, table_no = horizontal_tables(lines, page, method, sink, 0)
+    for i in used:
+        lines[i].extra["read"] = True  # structure lines: later readers (title blocks) leave them alone
     pipe_header: list[str] | None = None
     grid: Header | None = None
     skip_until = 0
@@ -233,7 +245,9 @@ def _page(page: int, lines: list[Line], method: str, sink: Sink, carry: list[Hea
     for i, ln in enumerate(lines):
         if sink.full:
             return
-        if i < skip_until or ln.extra.get("fax_header"):
+        if i < skip_until or i in used or ln.extra.get("fax_header"):
+            if i in used:
+                grid = None
             continue
         text = ln.text.strip()
         conf = ln.confidence
@@ -260,7 +274,16 @@ def _page(page: int, lines: list[Line], method: str, sink: Sink, carry: list[Hea
                 c = min(x for x in (lab.conf, val.conf, conf) if x is not None)
                 sink.add(_rec(lab.text, val.text, _loc(ln, cell=cno + 2), "doc", f"{method}-text", c))
             continue
-        # 3. column-aligned tables: consecutive multi-cell lines without `label: value` cells
+        # 3. label/value strips: labels with their values directly below (or above)
+        nxt = lines[i + 1] if i + 1 < len(lines) else None
+        if grid is None and nxt is not None and (i + 1) not in used:
+            pair = strip(ln, nxt)
+            if pair is not None:
+                emit_strip(*pair, method, sink)
+                ln.extra["read"] = nxt.extra["read"] = True
+                skip_until = i + 2
+                continue
+        # 4. column-aligned tables: consecutive multi-cell lines without `label: value` cells
         gridish = len(ln.cells) >= 2 and not any(_is_kv(c.text) for c in ln.cells)
         if gridish and grid is not None and adjacent(lines[i - 1], ln):
             row_no += 1
@@ -287,14 +310,16 @@ def _page(page: int, lines: list[Line], method: str, sink: Sink, carry: list[Hea
             assert nxt is not None
             if not _numeric_row(nxt) and gridline(nxt, nxt2) and nxt2 is not None and _numeric_row(nxt2):
                 grid = _header(nxt, ln)  # two-row header: `ln` is a super-header (units, groups)
+                ln.extra["read"] = nxt.extra["read"] = True
                 skip_until = i + 2
             else:
                 grid = _header(ln, None)
+                ln.extra["read"] = True
             table_no, row_no = table_no + 1, 0
             carry[0] = grid
             continue
         grid = None
-        # 4. `label: value` cells (a line may hold several, e.g. title blocks)
+        # 5. `label: value` cells (a line may hold several, e.g. title blocks)
         for cno, c in enumerate(ln.cells, start=1):
             m = kv_match(c.text)
             if m:

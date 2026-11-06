@@ -84,7 +84,7 @@ function DecisionReport() {
 
 function OrgReportPanel() {
   const { api } = useSession();
-  const { t, fmtNum } = useI18n();
+  const { tm, t, fmtNum } = useI18n();
   const [q, setQ] = useState({ scope: "open_findings", from: "", to: "" });
   const [report, setReport] = useState<OrgReport | null>(null);
   const [err, setErr] = useState<unknown>(null);
@@ -150,7 +150,7 @@ function OrgReportPanel() {
                 : t("reports.unsigned")}
             </dd>
           </dl>
-          <p className="muted">{report.statement}</p>
+          <p className="muted">{tm(report.statement_msg, report.statement)}</p>
           <div className="actions">
             <button onClick={() => download("kizuna-org-report.json", JSON.stringify(report, null, 2), "application/json")}>
               {t("reports.downloadOrg")}

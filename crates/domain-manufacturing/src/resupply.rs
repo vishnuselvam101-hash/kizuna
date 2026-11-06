@@ -47,12 +47,8 @@ pub fn needs_resupply(changed: &str, candidate: &str) -> bool {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Lang {
-    Ja,
-    En,
-}
+/// Letter language (the shared message-catalogue language).
+pub use kizuna_messages::Lang;
 
 fn dim_label(d: &str, lang: Lang) -> String {
     let ja = match d {

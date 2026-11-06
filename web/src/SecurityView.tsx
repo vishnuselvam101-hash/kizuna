@@ -11,6 +11,7 @@ export interface Incident {
   severity: string;
   subject: string;
   summary: string;
+  summary_msg?: unknown;
   status: string;
   last_seen: string;
 }
@@ -22,6 +23,7 @@ export interface IncidentAction {
   policy: string;
   status: string;
   detail: string | null;
+  detail_msg?: unknown;
 }
 
 interface Summary {
@@ -35,7 +37,7 @@ const REVERSIBLE = new Set(["lock_account", "block_ip", "restrict_uploads", "sus
 const sevTone = (s: string) => (s === "critical" || s === "high" ? "crit" : s === "medium" ? "warn" : "info");
 
 export function ActionRow({ a, canManage, onDecide }: { a: IncidentAction; canManage: boolean; onDecide: (id: string, verb: string) => void }) {
-  const { t, tv } = useI18n();
+  const { tm, t, tv } = useI18n();
   return (
     <tr>
       <td>{tv("sec.action", a.kind)}</td>
@@ -46,7 +48,7 @@ export function ActionRow({ a, canManage, onDecide }: { a: IncidentAction; canMa
       <td>
         <Badge group="sec.astatus" value={a.status} />
       </td>
-      <td>{a.detail}</td>
+      <td>{tm(a.detail_msg, a.detail)}</td>
       <td>
         {canManage && a.status === "proposed" && (
           <>
@@ -62,7 +64,7 @@ export function ActionRow({ a, canManage, onDecide }: { a: IncidentAction; canMa
 
 export function SecurityView() {
   const { api, can } = useSession();
-  const { t, tv, fmtDate } = useI18n();
+  const { tm, t, tv, fmtDate } = useI18n();
   const summary = useLoad(() => api.request<Summary>("GET", "/security/summary"), []);
   const list = useLoad(() => api.request<Incident[]>("GET", "/security/incidents"), []);
   const [sel, setSel] = useState<{ incident: Incident; actions: IncidentAction[] } | null>(null);
@@ -132,7 +134,7 @@ export function SecurityView() {
             { key: "sev", label: t("sec.severity"), value: (i) => i.severity, render: (i) => <Badge group="sec.sev" value={i.severity} tone={sevTone(i.severity)} /> },
             { key: "rule", label: t("sec.rule"), value: (i) => i.rule, render: (i) => tv("sec.rule", i.rule), className: "nowrap" },
             { key: "subject", label: t("sec.subject"), value: (i) => i.subject, render: (i) => <code>{i.subject}</code> },
-            { key: "summary", label: t("sec.summary"), render: (i) => i.summary },
+            { key: "summary", label: t("sec.summary"), render: (i) => tm(i.summary_msg, i.summary) },
             { key: "status", label: t("sec.status"), value: (i) => i.status, render: (i) => <Badge group="sec.istatus" value={i.status} /> },
             { key: "seen", label: t("sec.last_seen"), value: (i) => i.last_seen, render: (i) => fmtDate(i.last_seen), className: "num" },
           ]}
@@ -140,7 +142,7 @@ export function SecurityView() {
       </Panel>
       {sel && (
         <Panel title={tv("sec.rule", sel.incident.rule)} id="s-detail">
-          <p>{sel.incident.summary}</p>
+          <p>{tm(sel.incident.summary_msg, sel.incident.summary)}</p>
           <div className="table-wrap" tabIndex={0} role="region" aria-label={t("sec.col.action")}>
           <table className="table">
             <caption className="sr-only">{tv("sec.rule", sel.incident.rule)}</caption>

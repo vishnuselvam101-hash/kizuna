@@ -13,6 +13,7 @@ use dependency_engine::{
     Change, Dep, ENGINE_VERSION, Impact, Materiality, NeedsReviewBatch, Snapshot, assess_bounded,
     upstream_withdrawn_bounded,
 };
+use kizuna_messages::{Lang, Msg, render_value};
 use policy_engine::Permission;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -219,7 +220,7 @@ pub(crate) async fn apply_impacts(
         };
         sqlx::query(
             "INSERT INTO invalidation_events (id, tenant_id, decision_id, cause_claim, cause_decision, cause_kind, semantic_change, \
-             material, reason, path, previous_status, new_status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+             material, reason, path, previous_status, new_status, reason_msg) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
         )
         .bind(Uuid::now_v7())
         .bind(tenant)
@@ -233,6 +234,7 @@ pub(crate) async fn apply_impacts(
         .bind(json!(i.path))
         .bind(&prev)
         .bind(new)
+        .bind(i.reason_msg.to_value())
         .execute(&mut **tx)
         .await?;
         if new != prev {
@@ -279,15 +281,17 @@ pub(crate) async fn impacts_of(
         Cause::Claim { change } => change,
         Cause::Revoked { decision } => {
             let deps = load_deps(tx, None, None).await?;
-            return Ok(
-                upstream_withdrawn_bounded(&deps, &decision.to_string(), "was revoked", limit).map(|impacts| {
-                    Computed {
-                        impacts,
-                        cause_claim: None,
-                        cause_decision: Some(*decision),
-                    }
-                }),
-            );
+            return Ok(upstream_withdrawn_bounded(
+                &deps,
+                &decision.to_string(),
+                &kizuna_messages::Msg::new("invalidation.verb.revoked"),
+                limit,
+            )
+            .map(|impacts| Computed {
+                impacts,
+                cause_claim: None,
+                cause_decision: Some(*decision),
+            }));
         }
     };
     match change {
@@ -731,7 +735,9 @@ pub struct InvalidationOut {
     pub cause_decision: Option<Uuid>,
     pub semantic_change: Value,
     pub material: bool,
+    /// English text; `reason_msg` is the same reason as a message code (absent on rows recorded before codes).
     pub reason: String,
+    pub reason_msg: Option<Value>,
     pub path: Value,
     pub previous_status: String,
     pub new_status: String,
@@ -741,7 +747,7 @@ pub struct InvalidationOut {
 
 async fn invalidations(tx: &mut Tx, id: Uuid) -> ApiResult<Vec<InvalidationOut>> {
     Ok(sqlx::query_as::<_, InvalidationOut>(
-        "SELECT cause_kind, cause_claim, cause_decision, semantic_change, material, reason, path, previous_status, new_status, recorded_at \
+        "SELECT cause_kind, cause_claim, cause_decision, semantic_change, material, reason, reason_msg, path, previous_status, new_status, recorded_at \
          FROM invalidation_events WHERE decision_id = $1 ORDER BY recorded_at",
     )
     .bind(id)
@@ -1086,6 +1092,8 @@ pub async fn affected_by_claims(tx: &mut Tx, claims: &[Uuid]) -> ApiResult<Vec<V
 #[derive(Deserialize)]
 pub struct ReportQuery {
     pub format: Option<String>,
+    /// `ja` / `en`; default: the request language (`Accept-Language`, else Japanese).
+    pub lang: Option<String>,
 }
 
 /// Traceable verification report for one decision (JSON or Markdown), with a SHA-256 over its canonical JSON.
@@ -1093,10 +1101,12 @@ pub async fn report(
     State(st): State<AppState>,
     p: Principal,
     Path(id): Path<Uuid>,
+    rl: crate::lang::ReqLang,
     ApiQuery(q): ApiQuery<ReportQuery>,
 ) -> ApiResult<Response> {
     p.require(&st, Permission::DecisionRead).await?;
-    let body = report_body(&st, &p, id).await?;
+    let lang = rl.resolve(q.lang.as_deref(), Lang::En)?;
+    let body = report_body(&st, &p, id, lang).await?;
     let report_sha = body["report_sha256"].as_str().unwrap_or_default().to_string();
     crate::security_events::record(
         &st.pool,
@@ -1118,8 +1128,9 @@ pub async fn report(
     Ok(Json(body).into_response())
 }
 
-/// The verification report of a decision (JSON body, hashed and, when a key is configured, signed).
-pub(crate) async fn report_body(st: &AppState, p: &Principal, id: Uuid) -> ApiResult<Value> {
+/// The verification report of a decision (JSON body, hashed and, when a key is configured, signed). English fields
+/// stay as recorded; `lang` and the `*_msg` / `text` fields carry the same content for rendering in that language.
+pub(crate) async fn report_body(st: &AppState, p: &Principal, id: Uuid, lang: Lang) -> ApiResult<Value> {
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
     let trace = build_trace(&mut tx, id).await?;
     let claim_ids: Vec<Uuid> = trace["evidence"]
@@ -1130,12 +1141,25 @@ pub(crate) async fn report_body(st: &AppState, p: &Principal, id: Uuid) -> ApiRe
         .filter_map(|s| Uuid::parse_str(s).ok())
         .collect();
     let findings: Vec<Value> = sqlx::query_scalar(
-        "SELECT json_build_object('id', id, 'kind', kind, 'status', status, 'why', explanation->>'why')::jsonb FROM conflicts \
-         WHERE claim_a = ANY($1) OR claim_b = ANY($1) ORDER BY detected_at",
+        "SELECT json_build_object('id', id, 'kind', kind, 'status', status, 'why', explanation->>'why', 'msg', explanation->'msg')::jsonb \
+         FROM conflicts WHERE claim_a = ANY($1) OR claim_b = ANY($1) ORDER BY detected_at",
     )
     .bind(&claim_ids)
     .fetch_all(&mut *tx)
     .await?;
+    let findings: Vec<Value> = findings
+        .into_iter()
+        .map(|mut f| {
+            let fallback = f["why"].as_str().unwrap_or_default().to_string();
+            f["text"] = render_value(&f["msg"], lang, &fallback).into();
+            f
+        })
+        .collect();
+    let mut invalidations = trace["invalidations"].clone();
+    for i in invalidations.as_array_mut().into_iter().flatten() {
+        let fallback = i["reason"].as_str().unwrap_or_default().to_string();
+        i["reason_text"] = render_value(&i["reason_msg"], lang, &fallback).into();
+    }
     let artifacts: Vec<Value> = sqlx::query_scalar(
         "SELECT DISTINCT json_build_object('id', a.id, 'name', a.display_name, 'sha256', encode(a.sha256, 'hex'), 'status', a.status, \
            'last_integrity_check', (SELECT json_build_object('ok', ok, 'at', checked_at) FROM integrity_checks i WHERE i.artifact_id = a.id ORDER BY checked_at DESC LIMIT 1))::jsonb \
@@ -1163,12 +1187,15 @@ pub(crate) async fn report_body(st: &AppState, p: &Principal, id: Uuid) -> ApiRe
         "derivation_matches_audit_log": trace["derivation_matches_audit_log"],
         "evidence": trace["evidence"],
         "changed_since_decision": trace["changed_since_decision"],
-        "invalidations": trace["invalidations"],
+        "invalidations": invalidations,
         "findings": findings,
         "source_documents": artifacts,
         "reviews": reviews,
         "audit_chain": { "intact": chain.intact, "events": chain.events_checked, "head_sha256": chain.head_hash },
-        "statement": "Hashes show that stored documents and the audit log are unchanged since capture. They do not show that document contents are true or authentic. Extracted values are machine-read and carry their review status.",
+        "statement": kizuna_messages::Msg::new("statement.verification_report").en(),
+        "statement_msg": kizuna_messages::Msg::new("statement.verification_report"),
+        "statement_text": kizuna_messages::Msg::new("statement.verification_report").render(lang),
+        "lang": lang,
     });
     let canonical = audit_engine::canonical_json(&body).map_err(ApiError::internal)?;
     let report_sha = crate::crypto::sha256(canonical.as_bytes());
@@ -1207,20 +1234,52 @@ fn md_escape(v: &Value) -> String {
     out
 }
 
+/// The report as Markdown in the report's language (`lang`, default English for reports made before it existed).
 pub fn render_markdown(r: &Value) -> String {
+    let lang = r["lang"].as_str().and_then(Lang::parse).unwrap_or(Lang::En);
+    let t = |code: &str| Msg::new(code).render(lang);
+    let tv = |code: &str, params: &[(&str, String)]| {
+        params
+            .iter()
+            .fold(Msg::new(code), |m, (k, v)| m.with(k, v.as_str()))
+            .render(lang)
+    };
+    let yes_no = |v: &Value| {
+        t(if v.as_bool() == Some(true) {
+            "report.md.yes"
+        } else {
+            "report.md.no"
+        })
+    };
     let d = &r["decision"];
     let mut out = format!(
-        "# Verification report: {}\n\nDecision `{}` · kind `{}` · outcome **{}** · status **{}**\n\nDecided {} by {} · derivation SHA-256 `{}` (reproducible: {})\n\nRationale: {}\n\n## Evidence\n\n| Claim | Predicate | Value at decision | Current | Changed |\n|---|---|---|---|---|\n",
-        md_escape(&d["title"]),
-        md_escape(&d["id"]),
-        md_escape(&d["kind"]),
-        md_escape(&d["outcome"]),
-        md_escape(&d["status"]),
-        md_escape(&d["decided_at"]),
-        md_escape(&d["decided_by"]),
-        md_escape(&d["derivation_sha256"]),
-        r["derivation_reproducible"],
-        md_escape(&d["rationale"]),
+        "# {}\n\n{}\n\n{}\n\n{}\n\n## {}\n\n| {} | {} | {} | {} | {} |\n|---|---|---|---|---|\n",
+        tv("report.md.title", &[("title", md_escape(&d["title"]))]),
+        tv(
+            "report.md.decision",
+            &[
+                ("id", md_escape(&d["id"])),
+                ("kind", md_escape(&d["kind"])),
+                ("outcome", md_escape(&d["outcome"])),
+                ("status", md_escape(&d["status"])),
+            ]
+        ),
+        tv(
+            "report.md.decided",
+            &[
+                ("at", md_escape(&d["decided_at"])),
+                ("by", md_escape(&d["decided_by"])),
+                ("sha", md_escape(&d["derivation_sha256"])),
+                ("reproducible", yes_no(&r["derivation_reproducible"])),
+            ]
+        ),
+        tv("report.md.rationale", &[("rationale", md_escape(&d["rationale"]))]),
+        t("report.md.evidence"),
+        t("report.md.col.claim"),
+        t("report.md.col.predicate"),
+        t("report.md.col.at_decision"),
+        t("report.md.col.current"),
+        t("report.md.col.changed"),
     );
     for e in r["evidence"].as_array().into_iter().flatten() {
         let val = |s: &Value| {
@@ -1240,10 +1299,10 @@ pub fn render_markdown(r: &Value) -> String {
             md_escape(&e["predicate"]),
             val(&e["snapshot_at_decision"]),
             val(&e["current_value"]),
-            e["changed"]
+            yes_no(&e["changed"])
         );
     }
-    out += "\n## Source documents\n\n";
+    out += &format!("\n## {}\n\n", t("report.md.sources"));
     for a in r["source_documents"].as_array().into_iter().flatten() {
         out += &format!(
             "- {} — SHA-256 `{}` ({})\n",
@@ -1252,32 +1311,50 @@ pub fn render_markdown(r: &Value) -> String {
             md_escape(&a["status"])
         );
     }
-    out += "\n## Findings\n\n";
+    out += &format!("\n## {}\n\n", t("report.md.findings"));
     for f in r["findings"].as_array().into_iter().flatten() {
+        let text = f["text"].as_str().map_or_else(|| f["why"].clone(), |s| json!(s));
         out += &format!(
             "- {} ({}): {}\n",
             md_escape(&f["kind"]),
             md_escape(&f["status"]),
-            md_escape(&f["why"])
+            md_escape(&text)
         );
     }
-    out += "\n## Changes since decision\n\n";
+    out += &format!("\n## {}\n\n", t("report.md.changes"));
     for i in r["invalidations"].as_array().into_iter().flatten() {
+        let text = i["reason_text"]
+            .as_str()
+            .map_or_else(|| i["reason"].clone(), |s| json!(s));
         out += &format!(
-            "- {} — material: {} — {}\n",
+            "- {} — {} — {}\n",
             md_escape(&i["recorded_at"]),
-            i["material"],
-            md_escape(&i["reason"])
+            tv("report.md.material", &[("material", yes_no(&i["material"]))]),
+            md_escape(&text)
         );
     }
+    let statement = r["statement_text"]
+        .as_str()
+        .map_or_else(|| r["statement"].clone(), |s| json!(s));
     out += &format!(
-        "\n## Integrity\n\nAudit chain intact: {} ({} events, head `{}`).\n\n{}\n\nReport SHA-256: `{}` · generated {}\n",
-        r["audit_chain"]["intact"],
-        r["audit_chain"]["events"],
-        md_escape(&r["audit_chain"]["head_sha256"]),
-        md_escape(&r["statement"]),
-        md_escape(&r["report_sha256"]),
-        md_escape(&r["generated_at"]),
+        "\n## {}\n\n{}\n\n{}\n\n{}\n",
+        t("report.md.integrity"),
+        tv(
+            "report.md.chain",
+            &[
+                ("intact", yes_no(&r["audit_chain"]["intact"])),
+                ("events", r["audit_chain"]["events"].to_string()),
+                ("head", md_escape(&r["audit_chain"]["head_sha256"])),
+            ]
+        ),
+        md_escape(&statement),
+        tv(
+            "report.md.footer",
+            &[
+                ("sha", md_escape(&r["report_sha256"])),
+                ("at", md_escape(&r["generated_at"])),
+            ]
+        ),
     );
     out
 }

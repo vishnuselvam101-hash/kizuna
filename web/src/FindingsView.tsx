@@ -58,14 +58,14 @@ export function FindingDetail({
   onReview: (decision: string, comment: string, faultyClaims: string[]) => void;
   canReview: boolean;
 }) {
-  const { t, tv, fmtDate } = useI18n();
+  const { tm, t, tv, fmtDate } = useI18n();
   const [comment, setComment] = useState("");
   const [needComment, setNeedComment] = useState(false);
   // Rejecting (confirming the conflict) must name which evidence is wrong; those claims are rejected server-side.
   const [faulty, setFaulty] = useState<string[]>([]);
   const [needFaulty, setNeedFaulty] = useState(false);
   const c = d.conflict;
-  const extra = Object.entries(c.explanation).filter(([k]) => k !== "why");
+  const extra = Object.entries(c.explanation).filter(([k]) => k !== "why" && k !== "msg");
   const affected = d.potentially_affected_decisions ?? [];
   const involved = [d.claim_a, ...(d.claim_b ? [d.claim_b] : [])];
   function submit(decision: string) {
@@ -91,7 +91,7 @@ export function FindingDetail({
       </section>
       <section aria-labelledby="f-why">
         <h3 id="f-why">{t("finding.why")}</h3>
-        <p>{c.explanation.why ?? t("finding.noWhy")}</p>
+        <p>{c.explanation.why || c.explanation.msg ? tm(c.explanation.msg, c.explanation.why) : t("finding.noWhy")}</p>
         {extra.length > 0 && (
           <dl className="kv">
             {extra.map(([k, v]) => (
@@ -120,7 +120,7 @@ export function FindingDetail({
             pct: confidence(t, Math.min(d.claim_a.confidence_bps, d.claim_b?.confidence_bps ?? d.claim_a.confidence_bps)),
           })}
         </p>
-        <p className="muted">{d.limitations}</p>
+        <p className="muted">{tm(d.limitations_msg, d.limitations)}</p>
       </section>
       <section aria-labelledby="f-rev">
         <h3 id="f-rev">{t("finding.reviewNeeded")}</h3>
@@ -198,7 +198,7 @@ export function FindingDetail({
 
 export function FindingsView() {
   const { api, can } = useSession();
-  const { t, tv } = useI18n();
+  const { tm, t, tv } = useI18n();
   const [status, setStatus] = useState<string>("open");
   const list = useLoad(() => api.request<Conflict[]>("GET", `/conflicts?status=${status}`), [status]);
   const [detail, setDetail] = useState<ConflictDetail | null>(null);
@@ -284,7 +284,7 @@ export function FindingsView() {
                     </button>
                   ),
                 },
-                { key: "why", label: t("finding.why"), value: (c) => c.explanation.why ?? "", render: (c) => <span className="muted clamp">{c.explanation.why}</span> },
+                { key: "why", label: t("finding.why"), value: (c) => c.explanation.why ?? "", render: (c) => <span className="muted clamp">{tm(c.explanation.msg, c.explanation.why)}</span> },
               ]}
             />
           )}

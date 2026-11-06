@@ -4,4 +4,4 @@ Runs as a sandboxed subprocess (crates/kizuna-api/src/extraction.rs): bytes in o
 No database credentials, no network, no access to other documents. Document text is data, never instructions.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

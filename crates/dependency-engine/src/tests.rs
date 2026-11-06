@@ -143,7 +143,7 @@ fn new_evidence_respects_applicability() {
         &deps,
         &Change::Withdrawn {
             old_claim: "c1".into(),
-            reason: "rejected in review".into(),
+            reason: kizuna_messages::Msg::new("withdraw.rejected_in_review"),
         },
     );
     assert!(r[0].material);
@@ -191,7 +191,7 @@ fn cycles_terminate() {
         &deps,
         &Change::Withdrawn {
             old_claim: "c1".into(),
-            reason: "x".into(),
+            reason: kizuna_messages::Msg::new("withdraw.rejected_in_review"),
         },
     );
     assert_eq!(r.len(), 2);
@@ -216,7 +216,7 @@ proptest! {
                 deps.push(d);
             }
         }
-        let r = assess(&deps, &Change::Withdrawn { old_claim: "c1".into(), reason: "t".into() });
+        let r = assess(&deps, &Change::Withdrawn { old_claim: "c1".into(), reason: kizuna_messages::Msg::new("withdraw.rejected_in_review") });
         let got: BTreeSet<String> = r.iter().filter(|i| i.material).map(|i| i.decision.clone()).collect();
         // Ground truth by fixpoint iteration.
         let mut truth: BTreeSet<String> = claim_users.iter().filter(|&&u| u < n).map(|u| format!("D{u}")).collect();
@@ -246,7 +246,7 @@ fn withdrawal_of_informational_evidence_is_not_material() {
         &deps,
         &Change::Withdrawn {
             old_claim: "c1".into(),
-            reason: "r".into(),
+            reason: kizuna_messages::Msg::new("withdraw.rejected_in_review"),
         },
     );
     assert_eq!(out.len(), 1);
@@ -375,7 +375,7 @@ fn arb_change() -> impl Strategy<Value = Change> {
         },
         1 => Change::Withdrawn {
             old_claim: format!("c{c}"),
-            reason: "rejected".into(),
+            reason: kizuna_messages::Msg::new("withdraw.rejected_in_review"),
         },
         _ => Change::NewEvidence {
             new_claim: if c == 4 { "cN".into() } else { format!("c{c}") },
@@ -399,7 +399,7 @@ proptest! {
         let new = assess(&deps, &change);
         prop_assert_eq!(&new, &reference::assess(&deps, &change));
         let r = format!("D{}", revoked % n);
-        prop_assert_eq!(upstream_withdrawn(&deps, &r, "was revoked"), reference::upstream_withdrawn(&deps, &r, "was revoked"));
+        prop_assert_eq!(upstream_withdrawn(&deps, &r, &kizuna_messages::Msg::new("invalidation.verb.revoked")), reference::upstream_withdrawn(&deps, &r, &kizuna_messages::Msg::new("invalidation.verb.revoked")));
         // The bound is exact: Ok (and identical) up to the true fan-out, an explicit review-batch result beyond it.
         let len = new.len();
         prop_assert_eq!(assess_bounded(&deps, &change, len), Ok(new.clone()));
@@ -422,7 +422,7 @@ fn bounded_fan_out_reports_review_batch() {
     }
     let ch = Change::Withdrawn {
         old_claim: "c1".into(),
-        reason: "x".into(),
+        reason: kizuna_messages::Msg::new("withdraw.rejected_in_review"),
     };
     let e = assess_bounded(&deps, &ch, 100).unwrap_err();
     assert_eq!(
@@ -438,9 +438,14 @@ fn bounded_fan_out_reports_review_batch() {
     );
     assert_eq!(assess_bounded(&deps, &ch, 1000).unwrap().len(), 1000);
     assert_eq!(
-        upstream_withdrawn_bounded(&deps, "D0", "was revoked", 998)
-            .unwrap_err()
-            .reached,
+        upstream_withdrawn_bounded(
+            &deps,
+            "D0",
+            &kizuna_messages::Msg::new("invalidation.verb.revoked"),
+            998
+        )
+        .unwrap_err()
+        .reached,
         999
     );
 }

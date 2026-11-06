@@ -137,7 +137,7 @@ pub async fn org_report(
     };
     let mut tx = db::tenant_snapshot_tx(&st.pool, p.tenant_id).await?;
     let findings: Vec<Value> = sqlx::query_scalar(
-        "SELECT json_build_object('id', id, 'kind', kind, 'subject', subject_key, 'status', status, 'why', explanation->>'why', \
+        "SELECT json_build_object('id', id, 'kind', kind, 'subject', subject_key, 'status', status, 'why', explanation->>'why', 'msg', explanation->'msg', \
            'detected_at', detected_at)::jsonb FROM conflicts WHERE ($1 OR status IN ('open', 'needs_evidence')) \
            AND ($2::timestamptz IS NULL OR detected_at >= $2) AND ($3::timestamptz IS NULL OR detected_at < $3) ORDER BY detected_at LIMIT 10001",
     )
@@ -174,7 +174,8 @@ pub async fn org_report(
         "findings": findings,
         "decisions": decisions,
         "audit_chain": { "intact": chain.intact, "events": chain.events_checked, "head_sha256": chain.head_hash },
-        "statement": "Hashes show integrity since capture, not that document contents are true or authentic.",
+        "statement": kizuna_messages::Msg::new("statement.org_report").en(),
+        "statement_msg": kizuna_messages::Msg::new("statement.org_report"),
         "truncated": truncated,
     });
     let sha = crate::crypto::sha256(

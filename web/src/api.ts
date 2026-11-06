@@ -27,10 +27,17 @@ export class Api {
     this.tokens = t;
   }
 
+  /** Server-rendered text (reports, letters, generated titles) follows the UI language set on <html lang>. */
+  private lang(headers: Record<string, string>) {
+    const l = typeof document !== "undefined" ? document.documentElement.lang : "";
+    if (l === "ja" || l === "en") headers["accept-language"] = l;
+  }
+
   async request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
     const headers: Record<string, string> = {};
     if (body !== undefined && !(body instanceof FormData)) headers["content-type"] = "application/json";
     if (this.tokens) headers.authorization = `Bearer ${this.tokens.access_token}`;
+    this.lang(headers);
     const res = await this.fetchFn(this.base + path, {
       method,
       headers,
@@ -49,6 +56,7 @@ export class Api {
     const headers: Record<string, string> = {};
     if (body !== undefined) headers["content-type"] = "application/json";
     if (this.tokens) headers.authorization = `Bearer ${this.tokens.access_token}`;
+    this.lang(headers);
     const res = await this.fetchFn(this.base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     if (res.status === 401 && retry && this.tokens) {
       if (await this.refresh()) return this.blob(method, path, body, false);
@@ -63,6 +71,7 @@ export class Api {
   async text(path: string): Promise<string> {
     const headers: Record<string, string> = {};
     if (this.tokens) headers.authorization = `Bearer ${this.tokens.access_token}`;
+    this.lang(headers);
     const res = await this.fetchFn(this.base + path, { method: "GET", headers });
     if (!res.ok) throw new ApiError(res.status, "request_failed");
     return res.text();

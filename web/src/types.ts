@@ -99,7 +99,7 @@ export interface Conflict {
   kind: string;
   subject_key: string;
   status: string;
-  explanation: { why?: string; [k: string]: unknown };
+  explanation: { why?: string; msg?: unknown; [k: string]: unknown };
   detected_at: string;
 }
 
@@ -119,6 +119,7 @@ export interface ConflictDetail {
   reviews: { decision: string; comment: string | null; decided_at: string }[];
   requires_human_review: boolean;
   limitations: string;
+  limitations_msg?: unknown;
   potentially_affected_decisions?: { id: string; title: string; status: string }[];
 }
 
@@ -154,6 +155,7 @@ export interface TraceEvidence {
 
 export interface Invalidation {
   reason: string;
+  reason_msg?: unknown;
   material: boolean;
   recorded_at: string;
   cause_kind: string;
@@ -208,10 +210,11 @@ export interface OrgReport {
   report_version: string;
   generated_at: string;
   scope: string;
-  findings: { id: string; kind: string; subject: string; status: string; why: string | null; detected_at: string }[];
+  findings: { id: string; kind: string; subject: string; status: string; why: string | null; msg?: unknown; detected_at: string }[];
   decisions: { id: string; title: string; subject: string; outcome: string; status: string; derivation_sha256: string }[];
   audit_chain: { intact: boolean; events: number; head_sha256: string | null };
   statement: string;
+  statement_msg?: unknown;
   report_sha256: string;
   signature?: { algorithm: string; public_key: string; signature: string };
 }

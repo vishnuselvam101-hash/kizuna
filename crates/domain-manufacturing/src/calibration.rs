@@ -1,4 +1,4 @@
-//! Confidence calibration (`cal@1`): maps a mapped value's provenance (text layer or OCR, rule / tenant synonym /
+//! Confidence calibration (`cal@2`; cal@1 had no `/geom` groups and no subject confidence): maps a mapped value's provenance (text layer or OCR, rule / tenant synonym /
 //! fallback label, OCR word confidence) to the empirical probability that the value is correct, and decides
 //! whether it must be confirmed by a person before it can back a decision.
 //!
@@ -25,20 +25,33 @@ pub fn table() -> &'static Table {
     T.get_or_init(|| serde_json::from_str(include_str!("calibration.json")).expect("calibration.json is valid"))
 }
 
-/// Calibration group of a value: `text|ocr` / `rule|tenant_synonym|fallback` (a guessed subject counts as fallback).
-pub fn group(ocr: bool, label_basis: &str, subject_fallback: bool) -> String {
+/// Layouts whose label and value are paired by position only (worker `location.layout`, cal@2).
+pub const GEOMETRIC_LAYOUTS: [&str; 3] = ["pair", "title", "htable"];
+
+/// Calibration group of a value: `text|ocr` / `rule|tenant_synonym|fallback` (a guessed subject counts as
+/// fallback), plus `/geom` when a geometric reader paired the label and value (cal@2).
+pub fn group(ocr: bool, label_basis: &str, subject_fallback: bool, layout: Option<&str>) -> String {
     let basis = if subject_fallback { "fallback" } else { label_basis };
-    format!("{}/{basis}", if ocr { "ocr" } else { "text" })
+    let geom = layout.is_some_and(|l| GEOMETRIC_LAYOUTS.contains(&l));
+    format!(
+        "{}/{basis}{}",
+        if ocr { "ocr" } else { "text" },
+        if geom { "/geom" } else { "" }
+    )
 }
 
 /// Calibrated probability (bps) that a value of `group` with OCR confidence `conf_bps` is correct. Unknown groups
-/// fall back to `…/fallback` of the same source, then 0 (always reviewed).
+/// fall back to the group without `/geom`, then `…/fallback` of the same source, then 0 (always reviewed).
 pub fn p_correct_bps(group: &str, conf_bps: Option<u32>) -> u32 {
     let t = table();
-    let steps = t.groups.get(group).or_else(|| {
-        let src = group.split('/').next().unwrap_or("ocr");
-        t.groups.get(&format!("{src}/fallback"))
-    });
+    let steps = t
+        .groups
+        .get(group)
+        .or_else(|| t.groups.get(group.trim_end_matches("/geom")))
+        .or_else(|| {
+            let src = group.split('/').next().unwrap_or("ocr");
+            t.groups.get(&format!("{src}/fallback"))
+        });
     let Some(steps) = steps else { return 0 };
     let c = conf_bps.unwrap_or(10_000).min(10_000);
     steps
@@ -85,7 +98,9 @@ mod tests {
                 prev = p;
             }
         }
-        assert_eq!(group(true, "rule", true), "ocr/fallback");
+        assert_eq!(group(true, "rule", true, None), "ocr/fallback");
+        assert_eq!(group(false, "rule", false, Some("pair")), "text/rule/geom");
+        assert_eq!(group(false, "rule", false, Some("table")), "text/rule");
         assert_eq!(p_correct_bps("nonsense", None), 0);
     }
 }

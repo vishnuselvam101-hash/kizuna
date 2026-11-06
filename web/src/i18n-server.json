@@ -1,0 +1,530 @@
+{
+ "action.account_disabled": {
+  "en": "account disabled, {n} sessions revoked",
+  "ja": "アカウントを無効化し、セッションを {n} 件無効化しました"
+ },
+ "action.account_reenabled": {
+  "en": "account re-enabled",
+  "ja": "アカウントを再度有効にしました"
+ },
+ "action.admin_address_escalated": {
+  "en": "address used by an active administrator; escalated for approval",
+  "ja": "有効な管理者が使用しているアドレスのため、承認待ちに回しました"
+ },
+ "action.approved": {
+  "en": "{detail}; approved: {comment}",
+  "ja": "{detail}（承認コメント：{comment}）"
+ },
+ "action.artifact_quarantined": {
+  "en": "artifact quarantined",
+  "ja": "文書を隔離しました"
+ },
+ "action.block_lifted": {
+  "en": "block lifted",
+  "ja": "ブロックを解除しました"
+ },
+ "action.block_superseded": {
+  "en": "block already replaced by a newer action; left in place",
+  "ja": "より新しい対応でブロックが置き換えられているため、そのままにしました"
+ },
+ "action.extraction_resumed": {
+  "en": "extraction resumed",
+  "ja": "抽出を再開しました"
+ },
+ "action.extraction_suspended": {
+  "en": "extraction suspended for {minutes} minutes",
+  "ja": "抽出を {minutes} 分間停止しました"
+ },
+ "action.incident_closed": {
+  "en": "incident closed",
+  "ja": "インシデントのクローズに伴い終了しました"
+ },
+ "action.ip_blocked": {
+  "en": "logins from {target} blocked for {minutes} minutes",
+  "ja": "{target} からのログインを {minutes} 分間ブロックしました"
+ },
+ "action.last_admin_escalated": {
+  "en": "would disable the last active administrator; use the emergency procedure instead",
+  "ja": "最後の有効な管理者が無効になるため実行していません。緊急手順で対応してください"
+ },
+ "action.notified": {
+  "en": "in-app notification (incident dashboard)",
+  "ja": "アプリ内で通知しました（インシデント画面）"
+ },
+ "action.reapplied": {
+  "en": "re-applied: {detail}",
+  "ja": "再適用：{detail}"
+ },
+ "action.restriction_lifted": {
+  "en": "upload restriction lifted",
+  "ja": "アップロード制限を解除しました"
+ },
+ "action.restriction_superseded": {
+  "en": "restriction already replaced by a newer action; left in place",
+  "ja": "より新しい対応で制限が置き換えられているため、そのままにしました"
+ },
+ "action.reverted": {
+  "en": "{detail}; {comment}",
+  "ja": "{detail}（コメント：{comment}）"
+ },
+ "action.sessions_revoked": {
+  "en": "{n} sessions revoked",
+  "ja": "セッションを {n} 件無効化しました"
+ },
+ "action.uploads_restricted": {
+  "en": "uploads restricted for {minutes} minutes",
+  "ja": "アップロードを {minutes} 分間制限しました"
+ },
+ "conflict.applicability.other_supplier": {
+  "en": "order placed with {supplier}; specification evidence applies to {covered}",
+  "ja": "発注先は {supplier} ですが、仕様書の証拠の適用先は {covered} です"
+ },
+ "conflict.approval.missing": {
+  "en": "no approval evidence for ordered revision {revision}",
+  "ja": "発注リビジョン {revision} の承認を示す証拠がありません"
+ },
+ "conflict.approval.status": {
+  "en": "revision {revision} approval status is '{status}'",
+  "ja": "リビジョン {revision} の承認状態が「{status}」です"
+ },
+ "conflict.expiry.expired": {
+  "en": "evidence expired",
+  "ja": "証拠の有効期限が切れています（期限 {expired_on}、基準日 {reference_date}）"
+ },
+ "conflict.inspection.lot_disagrees": {
+  "en": "inspection records for lot {lot} disagree on {predicate}",
+  "ja": "ロット {lot} の検査記録で {predicate} の値が一致しません"
+ },
+ "conflict.material.certified_differs": {
+  "en": "certified material differs from the specification",
+  "ja": "証明書の材質（{certified}）が仕様（{specified}）と異なります"
+ },
+ "conflict.po.supplier_differs": {
+  "en": "purchase order {po} names different suppliers",
+  "ja": "発注書 {po} に異なるサプライヤーが記載されています"
+ },
+ "conflict.revision.no_evidence": {
+  "en": "{role} revision {revision} has no specification or drawing evidence",
+  "ja": "{role}リビジョン {revision} を裏付ける仕様書・図面の証拠がありません"
+ },
+ "conflict.revision.older": {
+  "en": "{role} revision {revision} is older than revision {latest}",
+  "ja": "{role}リビジョン {revision} は最新のリビジョン {latest} より古い版です"
+ },
+ "conflict.revision.unknown": {
+  "en": "{role} revision {revision} does not exist in specification evidence",
+  "ja": "{role}リビジョン {revision} は仕様書の証拠に存在しません"
+ },
+ "conflict.spec_value.different": {
+  "en": "same predicate and revision, different values",
+  "ja": "同じ項目・同じリビジョンで値が異なります"
+ },
+ "conflict.spec_value.sources_differ": {
+  "en": "sources state different values",
+  "ja": "出典によって記載値が異なります"
+ },
+ "conflict.spec_value.units_incomparable": {
+  "en": "units cannot be compared",
+  "ja": "単位が異なり比較できません"
+ },
+ "conflict.tolerance.outside": {
+  "en": "measured value outside nominal ± tolerance",
+  "ja": "測定値 {measured} {unit} が公差範囲（{lower}〜{upper} {unit}）を外れています"
+ },
+ "conflict.tolerance.units_incomparable": {
+  "en": "measurement and specification units cannot be compared",
+  "ja": "測定値と規格値の単位が異なり比較できません"
+ },
+ "decision.title.po_line_acceptance": {
+  "en": "Accept {po} line {line} ({part})",
+  "ja": "{po} 明細 {line}（{part}）の受入"
+ },
+ "drift.revision_regression": {
+  "en": "The revision of {key} goes back from {ra} ({a}) to {rb} ({b}), captured later. An older copy may have been received again; {n} field(s) differ.",
+  "ja": "{key} のリビジョンが {ra}（{a}）から、後で取り込まれた {rb}（{b}）へ戻っています。古い写しを再受領した可能性があります。差分 {n} 項目。"
+ },
+ "drift.revision_without_change": {
+  "en": "The revision of {key} changed from {ra} ({a}) to {rb} ({b}), but none of the {fields} extracted fields changed. The change may be in content that is not extracted; please confirm what changed.",
+  "ja": "{key} のリビジョンは {ra}（{a}）から {rb}（{b}）に変わりましたが、抽出された {fields} 項目に変更はありません。抽出対象外の内容が変わった可能性があります。変更内容を確認してください。"
+ },
+ "drift.silent_change": {
+  "en": "{n} field(s) of {key} differ between {a} and {b}, but both carry revision {ra}. A change without a revision update means copies with the same revision may not match. An extraction difference is also possible; compare the source locations.",
+  "ja": "{key} の {a} と {b} は同じリビジョン {ra} ですが、{n} 項目が異なります。リビジョン更新のない変更は、同一リビジョンの写しが一致しない恐れがあります。抽出の差の可能性もあるため、出典箇所を比較してください。"
+ },
+ "drift.silent_change_rescan": {
+  "en": "{a} and {b} of {key} both carry revision {ra} and have different files, but the extracted content is identical (often a re-scan).",
+  "ja": "{key} の {a} と {b} はどちらもリビジョン {ra} で、ファイルは異なりますが抽出内容は同一です（再スキャンの可能性）。"
+ },
+ "integrity.at_limit": {
+  "en": "{k} of {n} reported values of {characteristic} are at a spec limit ({limits} {unit}) or within {steps} resolution step(s) of it; {exact} exactly at the limit (threshold {threshold} %). Values usually spread across the tolerance. {benign}",
+  "ja": "{characteristic} の報告値 {n} 件中 {k} 件が規格限界（{limits} {unit}）上、または分解能 {steps} 刻み以内にあります（限界値ちょうど {exact} 件、しきい値 {threshold} %）。通常、値は公差範囲全体に分布します。{benign}"
+ },
+ "integrity.benign": {
+  "en": "This pattern can have ordinary causes and is not a finding of wrongdoing; a person should review the documents.",
+  "ja": "この傾向には通常の理由もあり得ます。不正の判断ではありません。担当者が文書を確認してください。"
+ },
+ "integrity.chemistry_sum": {
+  "en": "The {elements} chemical composition values on {document} add up to {sum} %; a composition in mass-% cannot exceed 100 %. An extraction or transcription error (decimal point, wrong column) is a common cause. {benign}",
+  "ja": "{document} の化学成分 {elements} 項目の合計が {sum} % です。質量%の成分合計は 100 % を超えません。読み取り・転記の誤り（小数点、列ずれ）もよくある原因です。{benign}"
+ },
+ "integrity.chemistry_sum_element": {
+  "en": "The {elements} chemical composition values on {document} add up to {sum} %, and at least one element is outside 0–100 %; a composition in mass-% cannot exceed 100 %. An extraction or transcription error (decimal point, wrong column) is a common cause. {benign}",
+  "ja": "{document} の化学成分 {elements} 項目の合計が {sum} % です（0～100 % の範囲外の元素あり）。質量%の成分合計は 100 % を超えません。読み取り・転記の誤り（小数点、列ずれ）もよくある原因です。{benign}"
+ },
+ "integrity.date.inspected_after_shipment": {
+  "en": "the inspection is dated after the shipment date",
+  "ja": "検査日が出荷日より後です"
+ },
+ "integrity.date.issued_after_shipment": {
+  "en": "the certificate is dated after the shipment date",
+  "ja": "証明書の日付が出荷日より後です"
+ },
+ "integrity.date.issued_before_inspection": {
+  "en": "the certificate is dated before the inspection it reports",
+  "ja": "証明書の日付が、記載された検査日より前です"
+ },
+ "integrity.date_order": {
+  "en": "On {document}, {what} ({later} vs {earlier}, {days} days). A typing error or a re-issued certificate are common causes. {benign}",
+  "ja": "{document} で、{what}（{later} と {earlier}、{days} 日）。入力ミスや証明書の再発行もよくある原因です。{benign}"
+ },
+ "integrity.digit_preference": {
+  "en": "The last recorded digits of {n} values of {characteristic} are not evenly spread over 0–9 (χ² = {chi2}, p = {p}; threshold {threshold}). Measured values usually end in every digit about equally often; rounding by hand or a gauge that reads in steps of 5 are ordinary causes. {benign}",
+  "ja": "{characteristic} の {n} 件の値の末尾の数字が 0～9 に均等に分布していません（χ² = {chi2}、p = {p}、しきい値 {threshold}）。手作業での丸めや 5 刻みで読む計測器も通常の原因です。{benign}"
+ },
+ "integrity.excess_precision": {
+  "en": "{k} of {n} values of {characteristic} are reported more finely (up to {max_dp} decimal places) than the configured resolution {resolution} {unit} of the gauge or method. Calculated values (averages, conversions) or a finer instrument than configured are ordinary causes. {benign}",
+  "ja": "{characteristic} の値 {n} 件中 {k} 件が、設定された計測器・試験方法の分解能 {resolution} {unit} より細かく（最大小数 {max_dp} 桁）報告されています。平均値・換算値や、設定より精密な計測器の使用も考えられます。{benign}"
+ },
+ "integrity.identical_values": {
+  "en": "{same} of {shared} shared values on the certificates for {a} and {b} are identical, although they are for different lots/heats. Estimated chance of values this alike appearing by coincidence anywhere in this supplier's {certificates} certificates: about {chance}. {benign}",
+  "ja": "{a} と {b} の証明書は別ロット/ヒートですが、共通 {shared} 項目中 {same} 項目の値が一致しています。このサプライヤーの証明書 {certificates} 件の中で偶然これほど一致する推定確率は約 {chance} です。{benign}"
+ },
+ "integrity.lot_sequence": {
+  "en": "Lot {lot} on {document} is out of order with {k} of {comparable} certificates of this supplier and part dated at least {days} days apart (lot numbers usually rise with the date). Shipping from older stock is a common cause. {benign}",
+  "ja": "{document} のロット {lot} は、{days} 日以上離れた同サプライヤー・同部品の証明書 {comparable} 件中 {k} 件と日付順が逆転しています（通常ロット番号は日付とともに増えます）。在庫品の出荷もよくある原因です。{benign}"
+ },
+ "integrity.narrow_band": {
+  "en": "All {n} reported values of {characteristic} lie within {min}–{max} {unit}, a spread of {pct} % of the tolerance width {lower}–{upper} {unit} (threshold {threshold} %). Real measurements usually vary more. {benign}",
+  "ja": "{characteristic} の報告値 {n} 件はすべて {min}～{max} {unit} の範囲にあり、公差幅 {lower}～{upper} {unit} の {pct} % しかばらついていません（しきい値 {threshold} %）。実測値は通常もっとばらつきます。{benign}"
+ },
+ "integrity.table_copy": {
+  "en": "All {same} values on the certificates for {a} and {b} are identical, although they are for different lots/heats. Estimated chance of values this alike appearing by coincidence anywhere in this supplier's {certificates} certificates: about {chance}. {benign}",
+  "ja": "{a} と {b} の証明書は別ロット/ヒートですが、全 {same} 項目の値が一致しています。このサプライヤーの証明書 {certificates} 件の中で偶然これほど一致する推定確率は約 {chance} です。{benign}"
+ },
+ "invalidation.depends_on": {
+  "en": "depends on potentially affected decision {decision}",
+  "ja": "影響を受ける可能性のある判断 {decision} に依存しています"
+ },
+ "invalidation.new_evidence": {
+  "en": "new applicable evidence disagrees: {why}",
+  "ja": "適用される新しい証拠と食い違いがあります：{why}"
+ },
+ "invalidation.superseded": {
+  "en": "evidence corrected: {why}",
+  "ja": "証拠が訂正されました：{why}"
+ },
+ "invalidation.upstream": {
+  "en": "upstream decision {decision} {verb}",
+  "ja": "上流の判断 {decision} {verb}"
+ },
+ "invalidation.verb.revoked": {
+  "en": "was revoked",
+  "ja": "が取り消されました"
+ },
+ "invalidation.withdrawn": {
+  "en": "evidence withdrawn: {reason}",
+  "ja": "証拠が取り下げられました：{reason}"
+ },
+ "limitations.drift": {
+  "en": "Compares extracted fields ({engine}); content that is not extracted (views, notes not read by OCR) is not compared, and a field missing in one version may be an extraction gap. Confirming the drift runs selective invalidation for the changed claims.",
+  "ja": "抽出された項目を比較しています（{engine}）。抽出対象外の内容（投影図、OCR で読み取れない注記など）は比較されず、片方の版にだけない項目は抽出漏れの可能性があります。ドリフトを確定すると、変更されたクレームについて選択的な無効化が実行されます。"
+ },
+ "limitations.finding": {
+  "en": "Deterministic rule {rule}; extracted values may contain extraction errors (lowest source confidence {confidence} bps); a matching hash proves only that a document is unchanged since capture.",
+  "ja": "決定的ルール {rule} による判定です。抽出値には読み取り誤りが含まれる可能性があります（出典の最低信頼度 {confidence} bps）。ハッシュの一致は、取り込み後に文書が変わっていないことを示すだけです。"
+ },
+ "limitations.signal": {
+  "en": "Statistical/rule signal {engine} on extracted values. Strength describes how pronounced the pattern is; it is not a probability of wrongdoing. Extraction errors, ordinary process behaviour or re-issued documents can produce the same pattern. No evidence is rejected automatically.",
+  "ja": "抽出値に対する統計・ルールのシグナル（{engine}）です。強さは傾向の顕著さを表し、不正の確率ではありません。抽出の誤り、通常の工程のばらつき、文書の再発行でも同じ傾向が出ることがあります。証拠が自動で却下されることはありません。"
+ },
+ "match.certificate_material_mismatch": {
+  "en": "certificate states {certified} but {required} is required",
+  "ja": "成績書の材質は {certified} ですが、指定は {required} です"
+ },
+ "match.certificate_material_missing": {
+  "en": "no certificate states the material grade (required {required})",
+  "ja": "材質を記載した成績書がありません（指定 {required}）"
+ },
+ "match.certificate_revision_mismatch": {
+  "en": "certificate inspected revision {inspected} but revision {ordered} was ordered",
+  "ja": "成績書の検査リビジョンは {inspected} ですが、発注リビジョンは {ordered} です"
+ },
+ "match.certificate_revision_missing": {
+  "en": "inspection report states measurements but no drawing revision",
+  "ja": "検査報告書に測定値はありますが、図面リビジョンの記載がありません"
+ },
+ "match.certificate_type_insufficient": {
+  "en": "EN 10204 {supplied} supplied where {required} is required",
+  "ja": "EN 10204 {required} が必要ですが、提出されたのは {supplied} です"
+ },
+ "match.certificate_type_missing": {
+  "en": "{required} certificate required; no certificate states its type",
+  "ja": "{required} の証明書が必要ですが、種類を記載した証明書がありません"
+ },
+ "match.certificate_type_unverifiable": {
+  "en": "certificate type '{supplied}' cannot be compared with required '{required}'",
+  "ja": "証明書の種類「{supplied}」を指定の「{required}」と照合できません"
+ },
+ "match.drawing_not_approved": {
+  "en": "drawing revision {revision} is not approved ({status})",
+  "ja": "図面リビジョン {revision} は承認されていません（{status}）"
+ },
+ "match.drawing_number_mismatch": {
+  "en": "PO cites drawing {po} but the drawing evidence is {drawing}",
+  "ja": "発注書の図番は {po} ですが、図面の証拠では {drawing} です"
+ },
+ "match.measurement_missing": {
+  "en": "toleranced dimension {dimension} ({spec}) has no measured value on any linked certificate",
+  "ja": "公差指定のある寸法 {dimension}（{spec}）の測定値が、紐づくどの成績書にもありません"
+ },
+ "match.measurement_out_of_tolerance": {
+  "en": "measured {measured} is outside {spec}",
+  "ja": "測定値 {measured} が規格 {spec} を外れています"
+ },
+ "match.measurement_unit_incompatible": {
+  "en": "measured {measured} cannot be compared with {spec}",
+  "ja": "測定値 {measured} を規格 {spec} と比較できません（単位の不一致）"
+ },
+ "match.no_certificate": {
+  "en": "no certificate or inspection report is linked to {po} line {line}",
+  "ja": "{po} の明細 {line} に紐づく成績書・検査報告書がありません"
+ },
+ "match.no_design_evidence": {
+  "en": "no drawing or specification evidence for part {part}",
+  "ja": "品番 {part} の図面・仕様書の証拠がありません"
+ },
+ "match.po_drawing_material_mismatch": {
+  "en": "PO orders {po} but the drawing specifies {drawing}",
+  "ja": "発注書の材質は {po} ですが、図面の指定は {drawing} です"
+ },
+ "match.po_revision_missing": {
+  "en": "purchase order line states no drawing revision; evaluated against the latest revision",
+  "ja": "発注明細に図面リビジョンの記載がないため、最新リビジョンで照合しました"
+ },
+ "match.property_missing": {
+  "en": "{property} ({spec}) is not stated on any linked certificate",
+  "ja": "{property}（{spec}）が、紐づくどの成績書にも記載されていません"
+ },
+ "match.property_out_of_spec": {
+  "en": "certificate states {certified} {property}; required {bound} {limit}",
+  "ja": "成績書の {property} は {certified} ですが、規格は {bound} {limit} です"
+ },
+ "match.property_unit_incompatible": {
+  "en": "{certified} cannot be compared with {limit}",
+  "ja": "{certified} を規格値 {limit} と比較できません（単位の不一致）"
+ },
+ "match.revision_older": {
+  "en": "ordered revision {ordered} is older than drawing revision {latest}",
+  "ja": "発注リビジョン {ordered} は図面リビジョン {latest} より古い版です"
+ },
+ "match.revision_unknown": {
+  "en": "ordered revision {ordered} does not exist in drawing evidence",
+  "ja": "発注リビジョン {ordered} は図面の証拠に存在しません"
+ },
+ "match.traceability_missing": {
+  "en": "certificate identifies neither a lot nor a heat number",
+  "ja": "成績書にロット番号も溶解番号も記載されていません"
+ },
+ "materiality.applicability_changed": {
+  "en": "applicability changed (revision or scope)",
+  "ja": "適用範囲（リビジョンまたは対象）が変わりました"
+ },
+ "materiality.exceeds_threshold": {
+  "en": "change exceeds threshold {threshold}",
+  "ja": "変化量がしきい値 {threshold} を超えています"
+ },
+ "materiality.informational": {
+  "en": "informational dependency",
+  "ja": "参考扱いの依存関係です"
+ },
+ "materiality.same_quantity": {
+  "en": "same quantity (unit-aware)",
+  "ja": "数量は同じです（単位換算後）"
+ },
+ "materiality.same_value": {
+  "en": "same value",
+  "ja": "値は同じです"
+ },
+ "materiality.units_incomparable": {
+  "en": "units no longer comparable",
+  "ja": "単位が異なり比較できなくなりました"
+ },
+ "materiality.value_changed": {
+  "en": "value changed",
+  "ja": "値が変わりました"
+ },
+ "materiality.within_threshold": {
+  "en": "change within threshold {threshold}",
+  "ja": "変化量はしきい値 {threshold} 以内です"
+ },
+ "report.md.chain": {
+  "en": "Audit chain intact: {intact} ({events} events, head `{head}`).",
+  "ja": "監査チェーンの完全性：{intact}（イベント {events} 件、先頭 `{head}`）。"
+ },
+ "report.md.changes": {
+  "en": "Changes since decision",
+  "ja": "判断後の変更"
+ },
+ "report.md.col.at_decision": {
+  "en": "Value at decision",
+  "ja": "判断時の値"
+ },
+ "report.md.col.changed": {
+  "en": "Changed",
+  "ja": "変更"
+ },
+ "report.md.col.claim": {
+  "en": "Claim",
+  "ja": "クレーム"
+ },
+ "report.md.col.current": {
+  "en": "Current",
+  "ja": "現在の値"
+ },
+ "report.md.col.predicate": {
+  "en": "Predicate",
+  "ja": "項目"
+ },
+ "report.md.decided": {
+  "en": "Decided {at} by {by} · derivation SHA-256 `{sha}` (reproducible: {reproducible})",
+  "ja": "判断日時 {at} · 判断者 {by} · 導出 SHA-256 `{sha}`（再現可能：{reproducible}）"
+ },
+ "report.md.decision": {
+  "en": "Decision `{id}` · kind `{kind}` · outcome **{outcome}** · status **{status}**",
+  "ja": "判断 `{id}` · 種類 `{kind}` · 結論 **{outcome}** · 状態 **{status}**"
+ },
+ "report.md.evidence": {
+  "en": "Evidence",
+  "ja": "証拠"
+ },
+ "report.md.findings": {
+  "en": "Findings",
+  "ja": "指摘"
+ },
+ "report.md.footer": {
+  "en": "Report SHA-256: `{sha}` · generated {at}",
+  "ja": "レポート SHA-256：`{sha}` · 作成日時 {at}"
+ },
+ "report.md.integrity": {
+  "en": "Integrity",
+  "ja": "完全性"
+ },
+ "report.md.material": {
+  "en": "material: {material}",
+  "ja": "重要な変更：{material}"
+ },
+ "report.md.no": {
+  "en": "false",
+  "ja": "いいえ"
+ },
+ "report.md.rationale": {
+  "en": "Rationale: {rationale}",
+  "ja": "判断理由：{rationale}"
+ },
+ "report.md.sources": {
+  "en": "Source documents",
+  "ja": "出典文書"
+ },
+ "report.md.title": {
+  "en": "Verification report: {title}",
+  "ja": "検証レポート：{title}"
+ },
+ "report.md.yes": {
+  "en": "true",
+  "ja": "はい"
+ },
+ "rerequest.no_action": {
+  "en": "the material changes do not concern any supplier statement this decision relies on",
+  "ja": "重要な変更は、この判断が依拠するサプライヤーの記載に関係しません"
+ },
+ "security.abusive_uploads": {
+  "en": "{count} rejected or quarantined uploads within 30 minutes",
+  "ja": "30分以内に拒否または隔離されたアップロードが {count} 件ありました"
+ },
+ "security.audit_chain_broken": {
+  "en": "audit hash chain verification failed; preserve the database for forensics",
+  "ja": "監査ハッシュチェーンの検証に失敗しました。調査のためデータベースを保全してください"
+ },
+ "security.brute_force": {
+  "en": "{failures} failed credential checks for one account within 15 minutes",
+  "ja": "1つのアカウントで15分以内に認証失敗が {failures} 回ありました"
+ },
+ "security.denied_requests": {
+  "en": "{count} denied requests within 10 minutes",
+  "ja": "10分以内に権限のない操作が {count} 回拒否されました"
+ },
+ "security.extraction_failures": {
+  "en": "{count} extraction failures within 30 minutes",
+  "ja": "30分以内に抽出の失敗が {count} 件ありました"
+ },
+ "security.integrity_failure": {
+  "en": "stored document bytes no longer match their recorded SHA-256",
+  "ja": "保存された文書のバイト列が、記録済みの SHA-256 と一致しなくなりました"
+ },
+ "security.mass_export": {
+  "en": "{count} report exports within one hour",
+  "ja": "1時間以内にレポートの書き出しが {count} 件ありました"
+ },
+ "security.password_spray": {
+  "en": "{failures} failed logins for {accounts} accounts from one address within 15 minutes",
+  "ja": "1つのアドレスから15分以内に {accounts} アカウントへのログイン失敗が {failures} 回ありました"
+ },
+ "security.privileged_changes": {
+  "en": "{count} privileged account changes within 10 minutes by one administrator",
+  "ja": "1人の管理者が10分以内に特権アカウントを {count} 回変更しました"
+ },
+ "security.refresh_token_reuse": {
+  "en": "a rotated refresh token was replayed (likely theft)",
+  "ja": "更新済みのリフレッシュトークンが再使用されました（盗用の可能性が高い）"
+ },
+ "statement.org_report": {
+  "en": "Hashes show integrity since capture, not that document contents are true or authentic.",
+  "ja": "ハッシュが示すのは取り込み後の完全性であり、文書の内容が真実・真正であることではありません。"
+ },
+ "statement.verification_report": {
+  "en": "Hashes show that stored documents and the audit log are unchanged since capture. They do not show that document contents are true or authentic. Extracted values are machine-read and carry their review status.",
+  "ja": "ハッシュは、保存された文書と監査ログが取り込み後に変更されていないことを示します。文書の内容が真実である、または真正であることを示すものではありません。抽出値は機械による読み取りで、それぞれのレビュー状態が付いています。"
+ },
+ "term.revision_role.inspected": {
+  "en": "inspected",
+  "ja": "検査"
+ },
+ "term.revision_role.ordered": {
+  "en": "ordered",
+  "ja": "発注"
+ },
+ "text.verbatim": {
+  "en": "{text}",
+  "ja": "{text}"
+ },
+ "withdraw.ai_no_longer_accepted": {
+  "en": "AI-origin claim no longer accepted",
+  "ja": "AI 由来のクレームは受け入れ対象外になりました"
+ },
+ "withdraw.not_found_on_reextraction": {
+  "en": "not found on re-extraction",
+  "ja": "再抽出で見つかりませんでした"
+ },
+ "withdraw.rejected_by_finding": {
+  "en": "rejected when finding {finding} was confirmed",
+  "ja": "指摘 {finding} の確定に伴い却下されました"
+ },
+ "withdraw.rejected_in_review": {
+  "en": "rejected in review",
+  "ja": "レビューで却下されました"
+ },
+ "withdraw.superseded_by_ai": {
+  "en": "superseded by an unreviewed AI suggestion on re-extraction",
+  "ja": "再抽出で未レビューの AI 提案に置き換えられました"
+ }
+}

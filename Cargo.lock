@@ -891,6 +891,7 @@ name = "dependency-engine"
 version = "0.1.0"
 dependencies = [
  "conflict-engine",
+ "kizuna-messages",
  "proptest",
  "rust_decimal",
  "serde",
@@ -997,6 +998,7 @@ dependencies = [
  "conflict-engine",
  "entity-resolution",
  "evidence-core",
+ "kizuna-messages",
  "proptest",
  "rust_decimal",
  "serde",
@@ -1840,6 +1842,7 @@ name = "integrity-signals"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "kizuna-messages",
  "proptest",
  "quality-stats",
  "rust_decimal",
@@ -1956,6 +1959,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "integrity-signals",
+ "kizuna-messages",
  "kizuna-verify-pack",
  "lettre",
  "libc",
@@ -2005,6 +2009,14 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "kizuna-messages"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3229,6 +3241,7 @@ dependencies = [
 name = "security-detection"
 version = "0.1.0"
 dependencies = [
+ "kizuna-messages",
  "serde",
  "serde_json",
 ]

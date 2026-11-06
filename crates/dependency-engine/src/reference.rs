@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use kizuna_messages::Msg;
 use serde_json::json;
 
 use crate::{Change, Dep, Impact, Materiality, applicable, materiality};
@@ -23,7 +24,7 @@ pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
                     || d.snapshot.scope != new.scope
                     || !applicable(&d.applicability, new);
                 let (material, why) = if moved && d.materiality != Materiality::Informational {
-                    (true, "applicability changed (revision or scope)".to_string())
+                    (true, Msg::new("materiality.applicability_changed"))
                 } else {
                     materiality(&d.materiality, &d.snapshot, new)
                 };
@@ -31,7 +32,8 @@ pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
                     decision: d.decision.clone(),
                     material,
                     cause_kind: "superseded",
-                    reason: format!("evidence corrected: {why}"),
+                    reason_msg: Msg::new("invalidation.superseded").with_msg("why", why.clone()),
+                    reason: String::new(),
                     path: vec![old_claim.clone(), new_claim.clone(), d.decision.clone()],
                     semantic_change: json!({ "from": d.snapshot.display(), "to": new.display(), "predicate": d.predicate }),
                 })
@@ -40,7 +42,8 @@ pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
                 decision: d.decision.clone(),
                 material: d.materiality != Materiality::Informational,
                 cause_kind: "withdrawn",
-                reason: format!("evidence withdrawn: {reason}"),
+                reason_msg: Msg::new("invalidation.withdrawn").with_msg("reason", reason.clone()),
+                reason: String::new(),
                 path: vec![old_claim.clone(), d.decision.clone()],
                 semantic_change: json!({ "from": d.snapshot.display(), "to": null, "predicate": d.predicate }),
             }),
@@ -57,11 +60,12 @@ pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
             {
                 let (material, why) = materiality(&d.materiality, &d.snapshot, new);
                 // Confirming evidence (same value) is not a change at all.
-                (why != "same quantity (unit-aware)" && why != "same value").then(|| Impact {
+                (why.code != "materiality.same_quantity" && why.code != "materiality.same_value").then(|| Impact {
                     decision: d.decision.clone(),
                     material,
                     cause_kind: "new_evidence",
-                    reason: format!("new applicable evidence disagrees: {why}"),
+                    reason_msg: Msg::new("invalidation.new_evidence").with_msg("why", why.clone()),
+                reason: String::new(),
                     path: vec![new_claim.clone(), d.decision.clone()],
                     semantic_change: json!({ "from": d.snapshot.display(), "to": new.display(), "predicate": predicate }),
                 })
@@ -86,7 +90,7 @@ pub fn assess(deps: &[Dep], change: &Change) -> Vec<Impact> {
 }
 
 /// Decisions that depend on a revoked/withdrawn decision.
-pub fn upstream_withdrawn(deps: &[Dep], decision: &str, reason: &str) -> Vec<Impact> {
+pub fn upstream_withdrawn(deps: &[Dep], decision: &str, reason: &Msg) -> Vec<Impact> {
     let mut seeds = BTreeMap::new();
     for d in deps.iter().filter(|d| d.on_decision.as_deref() == Some(decision)) {
         let material = d.materiality != Materiality::Informational;
@@ -99,7 +103,10 @@ pub fn upstream_withdrawn(deps: &[Dep], decision: &str, reason: &str) -> Vec<Imp
                 decision: d.decision.clone(),
                 material,
                 cause_kind: "upstream_decision",
-                reason: format!("upstream decision {decision} {reason}"),
+                reason_msg: Msg::new("invalidation.upstream")
+                    .with("decision", decision)
+                    .with_msg("verb", reason.clone()),
+                reason: String::new(),
                 path: vec![decision.to_string(), d.decision.clone()],
                 semantic_change: json!({ "upstream_decision": decision }),
             },
@@ -133,7 +140,8 @@ fn propagate(deps: &[Dep], mut by_decision: BTreeMap<String, Impact>) -> Vec<Imp
                     decision: d.decision.clone(),
                     material,
                     cause_kind: "upstream_decision",
-                    reason: format!("depends on potentially affected decision {dec}"),
+                    reason_msg: Msg::new("invalidation.depends_on").with("decision", dec.as_str()),
+                    reason: String::new(),
                     path: p.clone(),
                     semantic_change: json!({ "upstream_decision": dec }),
                 },
@@ -143,5 +151,5 @@ fn propagate(deps: &[Dep], mut by_decision: BTreeMap<String, Impact>) -> Vec<Imp
             }
         }
     }
-    by_decision.into_values().collect()
+    by_decision.into_values().map(Impact::worded).collect()
 }

@@ -457,7 +457,7 @@ pub async fn run_in_tx(tx: &mut Tx, tenant: Uuid) -> ApiResult<RunResp> {
         .bind(&g.part)
         .bind(&g.characteristic)
         .bind(g.strength.as_str())
-        .bind(json!({ "why": g.why, "why_ja": g.why_ja }))
+        .bind(json!({ "why": g.why, "why_ja": g.why_ja, "msg": g.msg }))
         .bind(&g.statistic)
         .bind(json!(g.evidence))
         .bind(artifacts_of(&g.evidence))
@@ -494,7 +494,7 @@ pub async fn run_in_tx(tx: &mut Tx, tenant: Uuid) -> ApiResult<RunResp> {
         .bind(&d.later_revision)
         .bind(json!(d.changes))
         .bind(d.strength.as_str())
-        .bind(json!({ "why": d.why, "why_ja": d.why_ja, "file_changed": d.file_changed }))
+        .bind(json!({ "why": d.why, "why_ja": d.why_ja, "msg": d.msg, "file_changed": d.file_changed }))
         .bind(&d.fingerprint)
         .bind(ENGINE_VERSION)
         .bind(sv)
@@ -654,6 +654,7 @@ pub async fn get_signal(State(st): State<AppState>, p: Principal, Path(id): Path
         "requires_human_review": open,
         "never_auto_reject": true,
         "limitations": format!("Statistical/rule signal {ENGINE_VERSION} on extracted values. Strength describes how pronounced the pattern is; it is not a probability of wrongdoing. Extraction errors, ordinary process behaviour or re-issued documents can produce the same pattern. No evidence is rejected automatically."),
+        "limitations_msg": kizuna_messages::Msg::new("limitations.signal").with("engine", ENGINE_VERSION),
     })))
 }
 
@@ -866,6 +867,7 @@ pub async fn get_drift(State(st): State<AppState>, p: Principal, Path(id): Path<
         "requires_human_review": open,
         "potentially_affected_decisions": affected,
         "limitations": format!("Compares extracted fields ({ENGINE_VERSION}); content that is not extracted (views, notes not read by OCR) is not compared, and a field missing in one version may be an extraction gap. Confirming the drift runs selective invalidation for the changed claims."),
+        "limitations_msg": kizuna_messages::Msg::new("limitations.drift").with("engine", ENGINE_VERSION),
     })))
 }
 

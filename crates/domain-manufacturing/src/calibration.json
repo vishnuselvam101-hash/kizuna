@@ -1,66 +1,96 @@
 {
- "version": "cal@1",
+ "version": "cal@2",
  "fitted_on": "train+dev+dev_scan",
- "gate_bps": 9232,
+ "gate_bps": 0,
  "groups": {
   "ocr/fallback": [
    [
     10000,
-    0
+    2000
    ]
   ],
   "ocr/rule": [
    [
     7720,
-    6429
+    4286
    ],
    [
-    8240,
-    8333
+    8160,
+    9000
    ],
    [
-    9130,
-    9232
+    8750,
+    9242
    ],
    [
     10000,
-    9286
+    9500
+   ]
+  ],
+  "ocr/rule/geom": [
+   [
+    10000,
+    1837
    ]
   ],
   "text/fallback": [
    [
     10000,
-    9898
+    9909
+   ]
+  ],
+  "text/fallback/geom": [
+   [
+    10000,
+    9818
    ]
   ],
   "text/rule": [
    [
     10000,
-    9984
+    9986
+   ]
+  ],
+  "text/rule/geom": [
+   [
+    10000,
+    9959
    ]
   ],
   "text/tenant_synonym": [
    [
     10000,
-    9984
+    9986
+   ]
+  ],
+  "text/tenant_synonym/geom": [
+   [
+    10000,
+    9959
    ]
   ],
   "ocr/tenant_synonym": [
    [
     7720,
-    6429
+    4286
    ],
    [
-    8240,
-    8333
+    8160,
+    9000
    ],
    [
-    9130,
-    9232
+    8750,
+    9242
    ],
    [
     10000,
-    9286
+    9500
+   ]
+  ],
+  "ocr/tenant_synonym/geom": [
+   [
+    10000,
+    1837
    ]
   ]
  }

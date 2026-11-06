@@ -194,6 +194,11 @@ impl Ctx {
         r.body["access_token"].as_str().unwrap().to_owned()
     }
 
+    /// Unix time of the server's clock (tests may inject an offset clock; TOTP codes must follow it).
+    pub fn server_now(&self) -> i64 {
+        self.st.clock.now().unix_timestamp()
+    }
+
     /// Enrols TOTP for the session's user; returns the raw secret.
     pub async fn enroll_totp(&self, token: &str) -> Vec<u8> {
         let r = self
@@ -201,7 +206,7 @@ impl Ctx {
             .await;
         assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
         let secret = base32_decode(r.body["secret_base32"].as_str().unwrap());
-        let code = kizuna_api::crypto::totp_now(&secret, now());
+        let code = kizuna_api::crypto::totp_now(&secret, self.server_now());
         let r = self
             .post("/api/v1/auth/mfa/totp/confirm", Some(token), json!({ "code": code }))
             .await;
@@ -214,7 +219,12 @@ impl Ctx {
         let tok = self.token(slug, email).await;
         let secret = self.enroll_totp(&tok).await;
         let r = self
-            .login(slug, email, PW, Some(kizuna_api::crypto::totp_now(&secret, now() + 30)))
+            .login(
+                slug,
+                email,
+                PW,
+                Some(kizuna_api::crypto::totp_now(&secret, self.server_now() + 30)),
+            )
             .await;
         assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);
         r.body["access_token"].as_str().unwrap().to_owned()
@@ -232,7 +242,7 @@ impl Ctx {
                 &slug,
                 &email,
                 PW,
-                Some(kizuna_api::crypto::totp_now(&secret, now() + 30)),
+                Some(kizuna_api::crypto::totp_now(&secret, self.server_now() + 30)),
             )
             .await;
         assert_eq!(r.status, StatusCode::OK, "{:?}", r.body);

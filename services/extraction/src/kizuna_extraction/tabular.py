@@ -78,9 +78,15 @@ def _header_like(cells: list[str]) -> bool:
 def _preamble(rows: list[tuple[int, list[str]]], sink: Sink, method: str) -> None:
     for rno, cells in rows:
         filled = [(i, c) for i, c in enumerate(cells, start=1) if c]
-        if len(filled) == 2 and label_like(filled[0][1]):
-            loc = {"row": rno, "col": filled[1][0]}
-            sink.add(_rec(filled[0][1], filled[1][1], loc, "doc", method, 0.95))
+        if len(filled) % 2 or not filled:
+            continue
+        labs, vals = filled[0::2], filled[1::2]
+        # `label,value` (also with empty cells between), or several pairs on one row: `品番,X,品名,Y`
+        if all(label_like(c) for _i, c in labs) and (
+            len(filled) == 2 or not any(label_like(c) for _i, c in vals)
+        ):
+            for (_li, lab), (vi, val) in zip(labs, vals, strict=True):
+                sink.add(_rec(lab, val, {"row": rno, "col": vi}, "doc", method, 0.95))
 
 
 def _body(rows, header: list[str], sink: Sink, sheet: str | None, method: str, formulas: set | None) -> None:
