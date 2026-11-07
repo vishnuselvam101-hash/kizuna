@@ -1479,8 +1479,8 @@ pub async fn entity_candidates(
     .bind(&stype)
     .fetch_all(&mut *tx)
     .await?;
-    let decided: Vec<(String, String)> =
-        sqlx::query_as("SELECT left_key, right_key FROM entity_decisions WHERE subject_type = $1")
+    let decided: Vec<(String, String, String)> =
+        sqlx::query_as("SELECT left_key, right_key, outcome FROM entity_decisions WHERE subject_type = $1")
             .bind(&stype)
             .fetch_all(&mut *tx)
             .await?;
@@ -1495,7 +1495,7 @@ pub async fn entity_candidates(
         HashMap::new()
     };
     tx.commit().await?;
-    let undecided = |l: &str, r: &str| !decided.iter().any(|(a, b)| (a == l && b == r) || (a == r && b == l));
+    let undecided = |l: &str, r: &str| !decided.iter().any(|(a, b, _)| (a == l && b == r) || (a == r && b == l));
     let (pending, stats) = match version {
         // v1: rule outcomes; automatic `Match` pairs (safe normalisation) are not listed for review.
         ErVersion::V1 => {
@@ -1508,26 +1508,46 @@ pub async fn entity_candidates(
         }
         // v2: every non-safe pair is listed, including FS `match` (strong evidence still needs a human decision).
         ErVersion::V2 => {
-            let res = entity_resolution::v2::resolve_with_context(
-                entity_resolution::v2::Kind::for_subject_type(&stype),
+            use entity_resolution::v2::{self, active};
+            let kind = v2::Kind::for_subject_type(&stype);
+            let res = v2::resolve_with_context(
+                kind,
                 &keys,
                 &context,
-                &entity_resolution::v2::Config {
+                &v2::Config {
                     typo_review,
-                    ..entity_resolution::v2::Config::default()
+                    ..v2::Config::default()
                 },
             );
-            let c: Vec<Value> = res
+            // Review order (ER v3): pattern-stratified active learning seeded by the EM parameters and updated by
+            // the recorded human decisions. It only orders the queue and adds an advisory probability; every pair
+            // still needs a human decision and nothing is merged here.
+            let mut model = active::PatternModel::new(&res.stats.params, active::StratifiedConfig::default());
+            let gamma_of = |l: &str, r: &str| v2::gamma(kind, &v2::prepare(kind, l), &v2::prepare(kind, r));
+            for (l, r, outcome) in &decided {
+                model.record(&gamma_of(l, r), outcome == "same");
+            }
+            let pending: Vec<v2::Candidate> = res
                 .candidates
                 .into_iter()
                 .filter(|c| !c.safe && undecided(&c.left, &c.right))
-                .map(|c| json!(c))
+                .collect();
+            let gammas: Vec<_> = pending.iter().map(|c| gamma_of(&c.left, &c.right)).collect();
+            let order = active::order_queue_stratified(&model, &gammas, &[], v2::Config::default().seed);
+            let c: Vec<Value> = order
+                .into_iter()
+                .map(|i| {
+                    let mut v = json!(pending[i]);
+                    v["suggested_p_match"] = json!(model.posterior(&gammas[i]));
+                    v
+                })
                 .collect();
             let s = &res.stats;
             (
                 c,
                 json!({ "pairs_compared": s.pairs_compared, "em": s.em, "t_match": s.t_match, "t_possible": s.t_possible,
-                        "typo_review": s.typo_review, "typo_reviews": s.typo_reviews, "typo_left_to_fs": s.typo_left_to_fs }),
+                        "typo_review": s.typo_review, "typo_reviews": s.typo_reviews, "typo_left_to_fs": s.typo_left_to_fs,
+                        "review_order": "stratified_active_learning", "decisions_used": model.decisions().len() }),
             )
         }
     };
