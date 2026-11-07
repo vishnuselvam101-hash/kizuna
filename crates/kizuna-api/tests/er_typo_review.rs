@@ -46,6 +46,16 @@ async fn typo_review_mode_is_a_tenant_setting_and_strict_uses_context() {
     assert!(typo_pair(&strict.body, "SHF-77810", "SHF-77811"), "{:?}", strict.body);
     assert!(!typo_pair(&strict.body, "BRK-10234", "BRK-10235"), "{:?}", strict.body);
     assert_eq!(strict.body["stats"]["typo_left_to_fs"], 1);
+    // ER v3 review order: stratified active learning, advisory probability on every pending pair.
+    assert_eq!(strict.body["stats"]["review_order"], "stratified_active_learning");
+    assert_eq!(strict.body["stats"]["decisions_used"], 0);
+    let pending = strict.body["candidates"].as_array().unwrap();
+    assert!(!pending.is_empty());
+    assert!(pending.iter().all(|c| {
+        c["suggested_p_match"]
+            .as_f64()
+            .is_some_and(|p| (0.0..=1.0).contains(&p))
+    }));
 
     let put = |tok: String, mode: &str, v: i64| {
         let c = &c;
@@ -101,5 +111,25 @@ async fn typo_review_mode_is_a_tenant_setting_and_strict_uses_context() {
     assert_eq!(
         weak.iter().map(|d| d["weakening"].clone()).collect::<Vec<_>>(),
         vec![json!(false), json!(true)]
+    );
+
+    // A human decision feeds the order model; it is recorded, not applied, and the pair leaves the queue.
+    let first = off.body["candidates"][0].clone();
+    let d = c
+        .post(
+            "/api/v1/entities/decisions",
+            Some(&tok),
+            json!({"subject_type": "part", "left_key": first["left"], "right_key": first["right"], "outcome": "different"}),
+        )
+        .await;
+    assert_eq!(d.status, StatusCode::OK, "{:?}", d.body);
+    let after = c.get("/api/v1/entities/candidates", &tok).await;
+    assert_eq!(after.body["stats"]["decisions_used"], 1, "{:?}", after.body);
+    assert!(
+        after.body["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|x| x["left"] != first["left"] || x["right"] != first["right"])
     );
 }

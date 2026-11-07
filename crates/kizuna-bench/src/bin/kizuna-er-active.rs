@@ -8,12 +8,18 @@
 //!   effect of the order from the effect of the prediction rule).
 //! - `random`: seeded random order; unreviewed pairs take the active model's suggestion (posterior ≥ 0.5).
 //! - `after`: uncertainty sampling (|log-odds| ascending); unreviewed pairs take the model's suggestion.
+//! - `stratified` (ER v3, the API's review order): per-pattern Beta model seeded by the clamped EM posterior,
+//!   `probes` seeded random reviews per comparison pattern, then the pattern with the highest min(θ̂, 1 − θ̂);
+//!   `stratified_s{S}_p{P}_f{F}` runs other settings. Unreviewed pairs take the pattern model's suggestion.
+//!
+//! `ER_STRATEGIES=a,b,...` picks the strategies; `ER_DIAGNOSE=1` prints what uncertainty sampling queries and
+//! where the remaining errors are (per comparison pattern) to stderr.
 //!
 //! The model (`entity_resolution::v2::active`) is refit after EVERY decision (closed-form counts). Safe pairs are
 //! predicted matches in every strategy; true pairs v2 never surfaces are false negatives in every strategy.
 //! F1 is over all true pairs. Nothing is merged; the reviewer's answers are the only decisions.
 //!
-//! Usage: kizuna-er-active [--seed N] [--prior-strength S] [--out reports/er/er_active.json]
+//! Usage: [ER_STRATEGIES=..] [ER_DIAGNOSE=1] kizuna-er-active [--seed N] [--prior-strength S] [--out reports/er/er_active.json]
 
 use entity_resolution::Outcome;
 use entity_resolution::v2::{self, active};
@@ -60,6 +66,9 @@ impl Queue {
 
 /// F1 after k = 0..=n reviews for one strategy.
 fn curve(q: &Queue, strategy: &str, prior: &v2::em::FsParams, strength: f64, seed: u64) -> Vec<f64> {
+    if let Some(cfg) = stratified_cfg(strategy) {
+        return curve_stratified(q, prior, cfg, seed);
+    }
     let n = q.truth.len();
     let mut reviewed = vec![false; n];
     let mut model = active::ActiveModel::new(prior, strength);
@@ -100,6 +109,91 @@ fn curve(q: &Queue, strategy: &str, prior: &v2::em::FsParams, strength: f64, see
     out
 }
 
+/// `stratified` (library default settings) or `stratified_s{strength}_p{probes}_f{floor}` (sensitivity runs).
+fn stratified_cfg(strategy: &str) -> Option<active::StratifiedConfig> {
+    if strategy == "stratified" {
+        return Some(active::StratifiedConfig::default());
+    }
+    let rest = strategy.strip_prefix("stratified_s")?;
+    let (s, rest) = rest.split_once("_p")?;
+    let (p, f) = rest.split_once("_f")?;
+    Some(active::StratifiedConfig {
+        prior_strength: s.parse().ok()?,
+        probes: p.parse().ok()?,
+        prior_floor: f.parse().ok()?,
+    })
+}
+
+/// F1 after k = 0..=n reviews for the pattern-stratified strategy (refit after every decision).
+fn curve_stratified(q: &Queue, prior: &v2::em::FsParams, cfg: active::StratifiedConfig, seed: u64) -> Vec<f64> {
+    let n = q.truth.len();
+    let mut reviewed = vec![false; n];
+    let mut model = active::PatternModel::new(prior, cfg);
+    let mut out = Vec::with_capacity(n + 1);
+    for k in 0..=n {
+        let sugg = model.suggest_all(&q.gammas);
+        out.push(q.f1(|i| if reviewed[i] { q.truth[i] } else { sugg[i] }));
+        if k == n {
+            break;
+        }
+        let i = active::next_item_stratified(&model, &q.gammas, &reviewed, seed).expect("unreviewed item left");
+        reviewed[i] = true;
+        model.record(&q.gammas[i], q.truth[i]);
+    }
+    out
+}
+
+/// Diagnosis of uncertainty sampling: what it queries and where the remaining errors are.
+fn diagnose(q: &Queue, prior: &v2::em::FsParams, strength: f64, seed: u64) -> Value {
+    let n = q.truth.len();
+    let mut reviewed = vec![false; n];
+    let mut model = active::ActiveModel::new(prior, strength);
+    let mut snaps = Vec::new();
+    let mut queried: Vec<usize> = Vec::new();
+    for k in 0..=n.min(2000) {
+        if [0usize, 25, 100, 250, 500, 1000, 2000].contains(&k) {
+            let sugg = model.suggest_all(&q.gammas);
+            let (mut fp, mut fneg) = (0usize, 0usize);
+            let mut err_by_pattern: HashMap<String, (usize, usize, usize)> = HashMap::new();
+            for i in 0..n {
+                if reviewed[i] {
+                    continue;
+                }
+                let key = format!("{:?}", q.gammas[i]);
+                let e = err_by_pattern.entry(key).or_default();
+                e.0 += 1;
+                if sugg[i] && !q.truth[i] {
+                    fp += 1;
+                    e.1 += 1;
+                }
+                if !sugg[i] && q.truth[i] {
+                    fneg += 1;
+                    e.2 += 1;
+                }
+            }
+            let mut worst: Vec<_> = err_by_pattern.into_iter().filter(|(_, e)| e.1 + e.2 > 0).collect();
+            worst.sort_by_key(|(_, e)| std::cmp::Reverse(e.1 + e.2));
+            worst.truncate(4);
+            let distinct: std::collections::BTreeSet<String> =
+                queried.iter().map(|&i| format!("{:?}", q.gammas[i])).collect();
+            let qm = queried.iter().filter(|&&i| q.truth[i]).count();
+            snaps.push(json!({"k": k, "model_p": model.params().p, "fp": fp, "fn": fneg,
+                "queried_distinct_patterns": distinct.len(), "queried_match_share": if queried.is_empty() {0.0} else {qm as f64 / queried.len() as f64},
+                "worst_patterns (n, fp, fn)": worst}));
+        }
+        if k == n.min(2000) {
+            break;
+        }
+        let i = active::next_item(&model, &q.gammas, &reviewed, seed).expect("item");
+        reviewed[i] = true;
+        queried.push(i);
+        model.record(&q.gammas[i], q.truth[i]);
+    }
+    let patterns: std::collections::BTreeSet<String> = q.gammas.iter().map(|g| format!("{g:?}")).collect();
+    json!({"queue_match_share": q.truth.iter().filter(|t| **t).count() as f64 / n.max(1) as f64,
+           "distinct_patterns": patterns.len(), "snapshots": snaps})
+}
+
 fn evaluate(d: &Dataset, label: &str, cfg: &v2::Config, strength: f64, seed: u64) -> Value {
     let keys = d.keys();
     let truth = d.truth();
@@ -131,7 +225,18 @@ fn evaluate(d: &Dataset, label: &str, cfg: &v2::Config, strength: f64, seed: u64
         q.truth.push(t);
     }
     let n = q.truth.len();
-    let strategies: Vec<Value> = ["before", "weight_model", "random", "after"]
+    if std::env::var_os("ER_DIAGNOSE").is_some() {
+        eprintln!("{} {label}: {}", d.name, diagnose(&q, &r.stats.params, strength, seed));
+    }
+    let names: Vec<String> = std::env::var("ER_STRATEGIES")
+        .map(|v| v.split(',').map(str::to_string).collect())
+        .unwrap_or_else(|_| {
+            ["before", "weight_model", "random", "after", "stratified"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        });
+    let strategies: Vec<Value> = names
         .iter()
         .map(|s| {
             let f = curve(&q, s, &r.stats.params, strength, seed);

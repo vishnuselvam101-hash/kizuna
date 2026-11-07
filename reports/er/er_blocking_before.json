@@ -1,0 +1,1124 @@
+{
+  "command": "./target/release/kizuna-er-blocking --out reports/er/er_blocking_before.json",
+  "commit": "49d3085",
+  "environment": {
+    "commit": "49d3085",
+    "cpu": "AMD EPYC 9354P 32-Core Processor",
+    "kernel": "7.0.0-38-generic",
+    "loadavg_at_start": "8.03 7.51 5.93 2/730 2769823",
+    "logical_cpus": 8,
+    "memory": "MemTotal:       32859784 kB",
+    "profile": "release",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "worktree_dirty": false
+  },
+  "note": "synthetic labelled sets; nothing is merged",
+  "results": [
+    {
+      "all_pairs": 385881,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 11802,
+      "candidates_surfaced": 502,
+      "dataset": "ja_suppliers_seed20261105_300",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 25,
+        "fallback_reason": null,
+        "iterations": 101,
+        "log_likelihood": -22427.88692384241,
+        "monotone": true,
+        "training_pairs": 15312,
+        "used": "estimated"
+      },
+      "keys": 879,
+      "missed_by_blocking_by_script": {
+        "kana-kanji": 303,
+        "kanji-latin": 223
+      },
+      "missed_by_blocking_by_variant": {
+        "fullwidth_space": 22,
+        "halfwidth_katakana": 67,
+        "kana_small_or_long_vowel": 76,
+        "kanji_variant": 9,
+        "katakana_reading": 101,
+        "legal_form_dropped": 14,
+        "legal_form_notation": 22,
+        "romaji": 112,
+        "romaji_macron_upper": 103
+      },
+      "missed_examples": [
+        [
+          "(有)ヒロシマギケン",
+          "(有)広島技研",
+          "katakana_reading"
+        ],
+        [
+          "(有)ヒロシマギケン",
+          "(有)廣島技研",
+          "katakana_reading"
+        ],
+        [
+          "(有)広島技研",
+          "Hiroshima Giken Y.K.",
+          "romaji"
+        ],
+        [
+          "(有)広島精密",
+          "Hiroshima Seimitsu Y.K.",
+          "romaji"
+        ],
+        [
+          "(有)廣島技研",
+          "Hiroshima Giken Y.K.",
+          "kanji_variant"
+        ],
+        [
+          "(有)桜井技研",
+          "Sakurai Giken Y.K.",
+          "legal_form_notation"
+        ],
+        [
+          "(有)桜井技研",
+          "ｻｸﾗｲｷﾞｹﾝ有限会社",
+          "legal_form_notation"
+        ],
+        [
+          "(株)ケイヒンギケン",
+          "(株)京浜技研",
+          "katakana_reading"
+        ],
+        [
+          "(株)サクライコウギョウ",
+          "(株)桜井工業",
+          "katakana_reading"
+        ],
+        [
+          "(株)サクライコウギョウ",
+          "桜井工業",
+          "katakana_reading"
+        ],
+        [
+          "(株)タカハシセイキ",
+          "(株)高橋精機",
+          "katakana_reading"
+        ],
+        [
+          "(株)タカハシセイキ",
+          "高橋　精機(株)",
+          "katakana_reading"
+        ],
+        [
+          "(株)ダイトウキンゾク",
+          "(株)大東金属",
+          "katakana_reading"
+        ],
+        [
+          "(株)ダイトウキンゾク",
+          "(株)大東金屬",
+          "katakana_reading"
+        ],
+        [
+          "(株)ダイトウキンゾク",
+          "大東金属（株）",
+          "katakana_reading"
+        ],
+        [
+          "(株)ダイトウセイキ",
+          "(株)大東精機",
+          "katakana_reading"
+        ],
+        [
+          "(株)ダイトウセイキ",
+          "大東　精機(株)",
+          "katakana_reading"
+        ],
+        [
+          "(株)ダイトウセイキ",
+          "大東精機",
+          "katakana_reading"
+        ],
+        [
+          "(株)チバコーギヨー",
+          "(株)千葉工業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)チバコーギヨー",
+          "千葉工業株式会社",
+          "kana_small_or_long_vowel"
+        ]
+      ],
+      "pair_recall": 0.4457323498419389,
+      "params": {
+        "m": [
+          [
+            0.5385061767891466,
+            0.02428568913569297,
+            2.5628827555768814e-6,
+            0.43720557119240483
+          ],
+          [
+            0.7491897962569632,
+            0.2508101967539622,
+            6.9890745471192e-9
+          ],
+          [
+            0.6851098001424615,
+            0.304201034335345,
+            0.010689165522193626
+          ]
+        ],
+        "p": 0.04475110422035053,
+        "u": [
+          [
+            6.836778901318991e-11,
+            0.0015286178758362778,
+            0.10357708029011399,
+            0.894894301765682
+          ],
+          [
+            0.00035648729182454327,
+            0.01937127745711909,
+            0.9802722352510564
+          ],
+          [
+            0.5743265486941691,
+            0.1534551025198168,
+            0.27221834878601414
+          ]
+        ]
+      },
+      "surfaced_recall": 0.4457323498419389,
+      "t_match": 5.333316200598887,
+      "t_possible": 2.9156634626310565,
+      "true_blocked": 423,
+      "true_in_review_queue": 420,
+      "true_pairs": 949,
+      "true_surfaced": 423
+    },
+    {
+      "all_pairs": 386760,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 11885,
+      "candidates_surfaced": 487,
+      "dataset": "ja_suppliers_seed20261106_300",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 24,
+        "fallback_reason": null,
+        "iterations": 54,
+        "log_likelihood": -22734.14043987928,
+        "monotone": true,
+        "training_pairs": 15399,
+        "used": "estimated"
+      },
+      "keys": 880,
+      "missed_by_blocking_by_script": {
+        "kana-kanji": 298,
+        "kana-latin": 1,
+        "kanji-latin": 221
+      },
+      "missed_by_blocking_by_variant": {
+        "fullwidth_space": 12,
+        "halfwidth_katakana": 60,
+        "kana_small_or_long_vowel": 68,
+        "kanji_variant": 10,
+        "katakana_reading": 116,
+        "legal_form_dropped": 12,
+        "legal_form_notation": 26,
+        "romaji": 106,
+        "romaji_macron_upper": 110
+      },
+      "missed_examples": [
+        [
+          "(有)関東技研",
+          "カントウギケン有限会社",
+          "legal_form_notation"
+        ],
+        [
+          "(有)関東技研",
+          "ｶﾝﾄｳｷﾞｹﾝ有限会社",
+          "legal_form_notation"
+        ],
+        [
+          "(株)タイヘイハツジョウ",
+          "(株)太平発条",
+          "katakana_reading"
+        ],
+        [
+          "(株)トウカイコウギョウ",
+          "(株)東海工業",
+          "katakana_reading"
+        ],
+        [
+          "(株)ナゴヤコーキ",
+          "(株)名古屋工機",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)ニッポンコウギョウ",
+          "(株)日本興業",
+          "katakana_reading"
+        ],
+        [
+          "(株)ニッポンコウギョウ",
+          "日本興業（株）",
+          "katakana_reading"
+        ],
+        [
+          "(株)ニツポンコーキ",
+          "(株)日本工機",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)フジテツコー",
+          "(株)富士鉄工",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)丸一製作所",
+          "ﾏﾙｲﾁｾｲｻｸｼｮ(株)",
+          "halfwidth_katakana"
+        ],
+        [
+          "(株)北沢鋳造",
+          "キタザワチユウゾー株式会社",
+          "legal_form_notation"
+        ],
+        [
+          "(株)名古屋工機",
+          "Nagoya Koki Co., Ltd.",
+          "romaji"
+        ],
+        [
+          "(株)大阪技研",
+          "ｵｵｻｶｷﾞｹﾝ(株)",
+          "halfwidth_katakana"
+        ],
+        [
+          "(株)太平工業",
+          "TAIHEI KŌGYŌ K.K.",
+          "romaji_macron_upper"
+        ],
+        [
+          "(株)太平発条",
+          "TAIHEI HATSUJŌ K.K.",
+          "romaji_macron_upper"
+        ],
+        [
+          "(株)富士鉄工",
+          "FUJI TEKKŌ Co., Ltd.",
+          "romaji_macron_upper"
+        ],
+        [
+          "(株)富士鉄工",
+          "ﾌｼﾞﾃｯｺｳ(株)",
+          "halfwidth_katakana"
+        ],
+        [
+          "(株)広島技研",
+          "HIROSHIMA GIKEN Corporation",
+          "legal_form_notation"
+        ],
+        [
+          "(株)新橋技研",
+          "SHINBASHI GIKEN K.K.",
+          "legal_form_notation"
+        ],
+        [
+          "(株)新橋技研",
+          "Shinbashi Giken K.K.",
+          "legal_form_notation"
+        ]
+      ],
+      "pair_recall": 0.4497354497354497,
+      "params": {
+        "m": [
+          [
+            0.6408421626323245,
+            0.020774514533056718,
+            6.333861958847434e-7,
+            0.3383826894484229
+          ],
+          [
+            0.7015542627193392,
+            0.29844572753685156,
+            9.743809286639915e-9
+          ],
+          [
+            0.7213296996390889,
+            0.27275822235553693,
+            0.005912078005374282
+          ]
+        ],
+        "p": 0.03901369931486652,
+        "u": [
+          [
+            6.75756581791179e-11,
+            0.0017244804038211178,
+            0.1064316359181764,
+            0.8918438836104268
+          ],
+          [
+            2.156859443092117e-10,
+            0.01906032518899871,
+            0.9809396745953154
+          ],
+          [
+            0.5488255297405742,
+            0.15117583690554606,
+            0.2999986333538797
+          ]
+        ]
+      },
+      "surfaced_recall": 0.4497354497354497,
+      "t_match": 6.951954312546797,
+      "t_possible": 2.9649997719601995,
+      "true_blocked": 425,
+      "true_in_review_queue": 424,
+      "true_pairs": 945,
+      "true_surfaced": 425
+    },
+    {
+      "all_pairs": 910575,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 25988,
+      "candidates_surfaced": 916,
+      "dataset": "ja_suppliers_seed20261107_450",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 26,
+        "fallback_reason": null,
+        "iterations": 193,
+        "log_likelihood": -45227.64069299343,
+        "monotone": true,
+        "training_pairs": 31385,
+        "used": "estimated"
+      },
+      "keys": 1350,
+      "missed_by_blocking_by_script": {
+        "kana-kanji": 473,
+        "kana-latin": 1,
+        "kanji-latin": 388
+      },
+      "missed_by_blocking_by_variant": {
+        "fullwidth_space": 19,
+        "halfwidth_katakana": 121,
+        "kana_small_or_long_vowel": 107,
+        "kanji_variant": 10,
+        "katakana_reading": 154,
+        "legal_form_dropped": 28,
+        "legal_form_notation": 44,
+        "romaji": 176,
+        "romaji_macron_upper": 203
+      },
+      "missed_examples": [
+        [
+          "(有)サクライキカイ",
+          "(有)桜井機械",
+          "katakana_reading"
+        ],
+        [
+          "(有)サクライキカイ",
+          "桜井　機械(有)",
+          "katakana_reading"
+        ],
+        [
+          "(有)シヨーワコーギヨー",
+          "(有)昭和工業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(有)ニツポンセイサクシヨ",
+          "(有)日本製作所",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(有)ニツポンセイサクシヨ",
+          "日本製作所",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(有)ニツポンセイサクシヨ",
+          "日本製作所有限会社",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(有)ヒロシマチユウゾー",
+          "(有)広島鋳造",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(有)富士工業",
+          "フジコウギョウ有限会社",
+          "legal_form_notation"
+        ],
+        [
+          "(有)富士工業",
+          "ﾌｼﾞｺｳｷﾞｮｳ有限会社",
+          "legal_form_notation"
+        ],
+        [
+          "(有)昭和工業",
+          "SHŌWA KŌGYŌ Y.K.",
+          "romaji_macron_upper"
+        ],
+        [
+          "(有)昭和工業",
+          "ｼｮｳﾜｺｳｷﾞｮｳ有限会社",
+          "halfwidth_katakana"
+        ],
+        [
+          "(有)桜井機械",
+          "Sakurai Kikai Y.K.",
+          "romaji"
+        ],
+        [
+          "(有)静岡工業",
+          "SHIZUOKA KŌGYŌ Y.K.",
+          "legal_form_notation"
+        ],
+        [
+          "(有)静岡工業",
+          "シズオカコウギョウ㈲",
+          "legal_form_notation"
+        ],
+        [
+          "(株)キョウエイコウギョウ",
+          "(株)共栄工業",
+          "katakana_reading"
+        ],
+        [
+          "(株)キョウエイコウギョウ",
+          "共栄工業株式会社",
+          "katakana_reading"
+        ],
+        [
+          "(株)キヨーエイコーギヨー",
+          "(株)共栄興業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)キヨーエイコーギヨー",
+          "共栄　興業(株)",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)サイトーチユウゾー",
+          "(株)斎藤鋳造",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)サイトーチユウゾー",
+          "斎藤鋳造",
+          "kana_small_or_long_vowel"
+        ]
+      ],
+      "pair_recall": 0.43064729194187584,
+      "params": {
+        "m": [
+          [
+            0.44255061308545734,
+            0.06001483652430875,
+            7.902689528706474e-10,
+            0.49743454959996497
+          ],
+          [
+            0.6111383907033602,
+            0.3888616063849772,
+            2.911662545073822e-9
+          ],
+          [
+            0.7091105463234846,
+            0.2534995583158585,
+            0.03738989536065688
+          ]
+        ],
+        "p": 0.04031836820739538,
+        "u": [
+          [
+            3.3200963290431895e-11,
+            0.0017947679390926878,
+            0.11915825722050434,
+            0.8790469748072021
+          ],
+          [
+            9.293623563216174e-6,
+            0.01928382897182792,
+            0.9807068774046089
+          ],
+          [
+            0.6237032430417483,
+            0.1313172365520503,
+            0.24497952040620147
+          ]
+        ]
+      },
+      "surfaced_recall": 0.43064729194187584,
+      "t_match": 5.491645508059931,
+      "t_possible": 3.697510599036534,
+      "true_blocked": 652,
+      "true_in_review_queue": 648,
+      "true_pairs": 1514,
+      "true_surfaced": 652
+    },
+    {
+      "all_pairs": 170236,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 8777,
+      "candidates_surfaced": 340,
+      "dataset": "ja_suppliers_unseen_seed20261105_200",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 25,
+        "fallback_reason": null,
+        "iterations": 118,
+        "log_likelihood": -16722.844100732615,
+        "monotone": true,
+        "training_pairs": 11109,
+        "used": "estimated"
+      },
+      "keys": 584,
+      "missed_by_blocking_by_script": {
+        "kana-kanji": 189,
+        "kanji-latin": 156
+      },
+      "missed_by_blocking_by_variant": {
+        "fullwidth_space": 12,
+        "halfwidth_katakana": 49,
+        "kana_small_or_long_vowel": 45,
+        "kanji_variant": 3,
+        "katakana_reading": 64,
+        "legal_form_dropped": 11,
+        "legal_form_notation": 9,
+        "romaji": 68,
+        "romaji_macron_upper": 84
+      },
+      "missed_examples": [
+        [
+          "(有)徳島精密",
+          "Tokushima Seimitsu Y.K.",
+          "legal_form_notation"
+        ],
+        [
+          "(有)徳島精密",
+          "ﾄｸｼﾏｾｲﾐﾂ有限会社",
+          "legal_form_notation"
+        ],
+        [
+          "(有)福井工機",
+          "FUKUI KŌKI Y.K.",
+          "romaji_macron_upper"
+        ],
+        [
+          "(有)福井工機",
+          "Fukui Koki Y.K.",
+          "romaji"
+        ],
+        [
+          "(株)アキタコーギヨー",
+          "(株)秋田工業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)コウフテッコウ",
+          "(株)甲府鉄工",
+          "katakana_reading"
+        ],
+        [
+          "(株)コウフテッコウ",
+          "(株)甲府鐵工",
+          "katakana_reading"
+        ],
+        [
+          "(株)トクシマセイサクシヨ",
+          "(株)徳島製作所",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)トクシマセイサクシヨ",
+          "徳島製作所㈱",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)トツトリサンギヨー",
+          "(株)鳥取産業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)トツトリサンギヨー",
+          "鳥取産業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)トヤマセイキ",
+          "(株)富山精機",
+          "katakana_reading"
+        ],
+        [
+          "(株)マツエサンギョウ",
+          "(株)松江産業",
+          "katakana_reading"
+        ],
+        [
+          "(株)マツエサンギョウ",
+          "松江　産業(株)",
+          "katakana_reading"
+        ],
+        [
+          "(株)マツエサンギョウ",
+          "松江産業（株）",
+          "katakana_reading"
+        ],
+        [
+          "(株)ヤマガタチュウゾウ",
+          "(株)山形鋳造",
+          "katakana_reading"
+        ],
+        [
+          "(株)ヤマガタチュウゾウ",
+          "(株)山形鑄造",
+          "katakana_reading"
+        ],
+        [
+          "(株)ヤマガタチュウゾウ",
+          "山形鋳造",
+          "katakana_reading"
+        ],
+        [
+          "(株)富山精機",
+          "TOYAMA SEIKI K.K.",
+          "romaji_macron_upper"
+        ],
+        [
+          "(株)富山金属",
+          "TOYAMA KINZOKU K.K.",
+          "legal_form_notation"
+        ]
+      ],
+      "pair_recall": 0.45151033386327505,
+      "params": {
+        "m": [
+          [
+            0.5138373909872658,
+            0.023242591038480052,
+            3.696745112261965e-6,
+            0.46291632122914195
+          ],
+          [
+            0.6570507483930754,
+            0.3429492394519074,
+            1.215501733348293e-8
+          ],
+          [
+            0.6530000469550381,
+            0.32679206599515215,
+            0.020207887049809838
+          ]
+        ],
+        "p": 0.043446121156874004,
+        "u": [
+          [
+            9.410562775184439e-11,
+            0.0019557151134427225,
+            0.11697312739152842,
+            0.8810711574009232
+          ],
+          [
+            0.0025971801679210414,
+            0.020853552907898264,
+            0.9765492669241808
+          ],
+          [
+            0.5644299454541506,
+            0.18673154896865285,
+            0.24883850557719653
+          ]
+        ]
+      },
+      "surfaced_recall": 0.45151033386327505,
+      "t_match": 7.820921284185639,
+      "t_possible": 3.32141140268289,
+      "true_blocked": 284,
+      "true_in_review_queue": 284,
+      "true_pairs": 629,
+      "true_surfaced": 284
+    },
+    {
+      "all_pairs": 2659971,
+      "blocked_but_dropped_by_scoring_by_script": {
+        "latin-latin": 5
+      },
+      "blocked_pairs": 25008,
+      "candidates_surfaced": 2327,
+      "dataset": "ja_parts_seed20261105_1000",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 23,
+        "fallback_reason": null,
+        "iterations": 6,
+        "log_likelihood": -55180.28560463536,
+        "monotone": true,
+        "training_pairs": 34234,
+        "used": "estimated"
+      },
+      "keys": 2307,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.3318250372069003,
+            0.2036199091951434,
+            0.25842131685507086,
+            0.2061337352345896,
+            5.027652078892429e-10,
+            5.027652078892429e-10,
+            5.027652078892429e-10
+          ],
+          [
+            0.9999999994972347,
+            5.027652083947887e-10
+          ],
+          [
+            0.9431875314228255,
+            0.05681246857717446
+          ],
+          [
+            0.7616892911010558,
+            0.22423328305681248,
+            0.014077425842131725
+          ]
+        ],
+        "p": 0.058100134369340424,
+        "u": [
+          [
+            3.101256008298805e-11,
+            3.101256008298805e-11,
+            3.101256008298805e-11,
+            3.101256008298805e-11,
+            0.024127771744564704,
+            0.004806946812863148,
+            0.9710652813185219
+          ],
+          [
+            3.101256008587339e-11,
+            0.9999999999689875
+          ],
+          [
+            0.5108699023104357,
+            0.4891300976895643
+          ],
+          [
+            0.8185765234920143,
+            0.17413552488757947,
+            0.0072879516204062645
+          ]
+        ]
+      },
+      "surfaced_recall": 0.9975669099756691,
+      "t_match": 64.32851194946365,
+      "t_possible": 64.32851194946365,
+      "true_blocked": 2055,
+      "true_in_review_queue": 1391,
+      "true_pairs": 2055,
+      "true_surfaced": 2050
+    },
+    {
+      "all_pairs": 68439150,
+      "blocked_but_dropped_by_scoring_by_script": {
+        "latin-latin": 34
+      },
+      "blocked_pairs": 163862,
+      "candidates_surfaced": 11981,
+      "dataset": "ja_parts_seed20261106_5000",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 31,
+        "fallback_reason": null,
+        "iterations": 13,
+        "log_likelihood": -348621.77035075484,
+        "monotone": true,
+        "training_pairs": 210659,
+        "used": "estimated"
+      },
+      "keys": 11700,
+      "missed_by_blocking_by_script": {
+        "latin-latin": 8
+      },
+      "missed_by_blocking_by_variant": {
+        "keying_error": 6,
+        "keying_transposition": 1,
+        "ocr_confusion": 1
+      },
+      "missed_examples": [
+        [
+          "CVR-0972-B",
+          "CVR-9077-B",
+          "keying_transposition"
+        ],
+        [
+          "CVR-4161",
+          "CVR-466l",
+          "keying_error"
+        ],
+        [
+          "CVR69-6S1",
+          "CVR96-651",
+          "ocr_confusion"
+        ],
+        [
+          "GER-1793-D",
+          "GER-I743-D",
+          "keying_error"
+        ],
+        [
+          "GER-4326-D",
+          "GER-48Z6-D",
+          "keying_error"
+        ],
+        [
+          "JIS12-371",
+          "JISI7-371",
+          "keying_error"
+        ],
+        [
+          "VLV-4555-B",
+          "VLV-9505-B",
+          "keying_error"
+        ],
+        [
+          "VLV-8575-A",
+          "VLV-B525-A",
+          "keying_error"
+        ]
+      ],
+      "pair_recall": 0.9992452118124351,
+      "params": {
+        "m": [
+          [
+            0.2983568321915905,
+            0.202983652109509,
+            0.2584399513221838,
+            0.2389185570284233,
+            0.0013009912796903879,
+            9.712136464570416e-11,
+            1.59714816632056e-8
+          ],
+          [
+            0.9999999999028786,
+            9.712136464572218e-11
+          ],
+          [
+            0.9421156597876837,
+            0.0578843402123163
+          ],
+          [
+            0.7321523648366822,
+            0.2539592797112946,
+            0.013888355452023222
+          ]
+        ],
+        "p": 0.04887707472953109,
+        "u": [
+          [
+            4.990951297529191e-12,
+            4.990951297529191e-12,
+            4.990951297529191e-12,
+            4.990951297529191e-12,
+            0.025182366221282594,
+            0.02023830751148087,
+            0.9545793262472727
+          ],
+          [
+            0.00017769939992256527,
+            0.9998223006000775
+          ],
+          [
+            0.63898952014206,
+            0.3610104798579401
+          ],
+          [
+            0.7947564371823238,
+            0.1951568502609107,
+            0.010086712556765449
+          ]
+        ]
+      },
+      "surfaced_recall": 0.9960373620152845,
+      "t_match": 45.177522104510935,
+      "t_possible": 45.177522104510935,
+      "true_blocked": 10591,
+      "true_in_review_queue": 7487,
+      "true_pairs": 10599,
+      "true_surfaced": 10557
+    },
+    {
+      "all_pairs": 1191196,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 18713,
+      "candidates_surfaced": 694,
+      "dataset": "ja_parts_sparse_seed20261105_1000",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 21,
+        "fallback_reason": null,
+        "iterations": 5,
+        "log_likelihood": -32104.65819277562,
+        "monotone": true,
+        "training_pairs": 24884,
+        "used": "estimated"
+      },
+      "keys": 1544,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.36825885808200837,
+            0.19260400527301694,
+            0.22804314224325203,
+            0.21109398977922655,
+            1.5408320421841354e-9,
+            1.5408320421841354e-9,
+            1.5408320421841354e-9
+          ],
+          [
+            0.999999998459168,
+            1.540832046932462e-9
+          ],
+          [
+            0.9722650231124808,
+            0.027734976887519254
+          ],
+          [
+            0.7704160246533128,
+            0.2218798151001541,
+            0.00770416024653313
+          ]
+        ],
+        "p": 0.026081015913840225,
+        "u": [
+          [
+            4.126263667567358e-11,
+            4.126263667567358e-11,
+            4.126263667567358e-11,
+            4.126263667567358e-11,
+            0.005075304311107849,
+            0.001650505467026943,
+            0.9932741900568146
+          ],
+          [
+            4.1262636680781404e-11,
+            0.9999999999587373
+          ],
+          [
+            0.5910872704765835,
+            0.40891272952341656
+          ],
+          [
+            0.8595832473695069,
+            0.13604291314214978,
+            0.004373839488343305
+          ]
+        ]
+      },
+      "surfaced_recall": 1.0,
+      "t_match": 62.8201105507657,
+      "t_possible": 62.8201105507657,
+      "true_blocked": 668,
+      "true_in_review_queue": 429,
+      "true_pairs": 668,
+      "true_surfaced": 668
+    },
+    {
+      "all_pairs": 30112680,
+      "blocked_but_dropped_by_scoring_by_script": {
+        "latin-latin": 8
+      },
+      "blocked_pairs": 98876,
+      "candidates_surfaced": 3549,
+      "dataset": "ja_parts_sparse_seed20261106_5000",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 24,
+        "fallback_reason": null,
+        "iterations": 8,
+        "log_likelihood": -163880.03888461774,
+        "monotone": true,
+        "training_pairs": 129917,
+        "used": "estimated"
+      },
+      "keys": 7761,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.3452453051483067,
+            0.21744397289164893,
+            0.2280436094531966,
+            0.20926711040129947,
+            3.028467589020326e-10,
+            3.028467589020326e-10,
+            1.4998548777937525e-9
+          ],
+          [
+            0.9999999996971533,
+            3.0284675899374873e-10
+          ],
+          [
+            0.9648697744462565,
+            0.03513022555374339
+          ],
+          [
+            0.7740763177222499,
+            0.21714112626427168,
+            0.008782556013478326
+          ]
+        ],
+        "p": 0.025416227321692488,
+        "u": [
+          [
+            7.897958377818765e-12,
+            7.897958377818765e-12,
+            7.897958377818765e-12,
+            7.897958377818765e-12,
+            0.005015203569914916,
+            0.005599652489873505,
+            0.9893851439086198
+          ],
+          [
+            0.000047387711155168586,
+            0.9999526122888448
+          ],
+          [
+            0.6218536508555838,
+            0.37814634914441625
+          ],
+          [
+            0.8771314615123919,
+            0.11935394700936779,
+            0.003514591478240382
+          ]
+        ]
+      },
+      "surfaced_recall": 0.9976401179941002,
+      "t_match": 45.4370232743743,
+      "t_possible": 45.4370232743743,
+      "true_blocked": 3390,
+      "true_in_review_queue": 2244,
+      "true_pairs": 3390,
+      "true_surfaced": 3382
+    }
+  ],
+  "seed": 20261105,
+  "tool": "kizuna-er-blocking",
+  "worktree_dirty": false
+}

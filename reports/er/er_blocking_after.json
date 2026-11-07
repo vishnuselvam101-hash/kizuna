@@ -1,0 +1,780 @@
+{
+  "command": "./target/release/kizuna-er-blocking --out reports/er/er_blocking_after.json",
+  "commit": "f94b74d",
+  "environment": {
+    "commit": "f94b74d",
+    "cpu": "AMD EPYC 9354P 32-Core Processor",
+    "kernel": "7.0.0-38-generic",
+    "loadavg_at_start": "16.49 9.10 4.90 9/735 3125306",
+    "logical_cpus": 8,
+    "memory": "MemTotal:       32859784 kB",
+    "profile": "release",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "worktree_dirty": true
+  },
+  "note": "synthetic labelled sets; nothing is merged",
+  "results": [
+    {
+      "all_pairs": 385881,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 20505,
+      "candidates_surfaced": 1010,
+      "dataset": "ja_suppliers_seed20261105_300",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 27,
+        "fallback_reason": null,
+        "iterations": 108,
+        "log_likelihood": -35841.70306819134,
+        "monotone": true,
+        "training_pairs": 24015,
+        "used": "estimated"
+      },
+      "keys": 879,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.24032736919634612,
+            6.512936845666908e-10,
+            6.512936845666908e-10,
+            0.7596726295010665
+          ],
+          [
+            0.9999935767569675,
+            3.5351437695233233e-6,
+            2.888099262795418e-6
+          ],
+          [
+            0.7540675083549382,
+            0.23665258881701295,
+            0.009279902828048777
+          ]
+        ],
+        "p": 0.06393527561331151,
+        "u": [
+          [
+            4.448478847706683e-11,
+            0.0017349067506034585,
+            0.07077529844020411,
+            0.9274897947647076
+          ],
+          [
+            0.002513274616592433,
+            0.04565915032867137,
+            0.9518275750547363
+          ],
+          [
+            0.5666561544666974,
+            0.1592396296296617,
+            0.2741042159036409
+          ]
+        ]
+      },
+      "surfaced_recall": 1.0,
+      "t_match": 8.919824418177697,
+      "t_possible": 8.760473245450187,
+      "true_blocked": 949,
+      "true_in_review_queue": 946,
+      "true_pairs": 949,
+      "true_surfaced": 949
+    },
+    {
+      "all_pairs": 386760,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 19597,
+      "candidates_surfaced": 983,
+      "dataset": "ja_suppliers_seed20261106_300",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 27,
+        "fallback_reason": null,
+        "iterations": 130,
+        "log_likelihood": -35158.899430894155,
+        "monotone": true,
+        "training_pairs": 23111,
+        "used": "estimated"
+      },
+      "keys": 880,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.24957313437656006,
+            6.482419085272803e-10,
+            6.482419085272803e-10,
+            0.7504268643269562
+          ],
+          [
+            0.9999941174137347,
+            4.116909890523992e-6,
+            1.7656763747011908e-6
+          ],
+          [
+            0.7744463886502347,
+            0.2177231516135328,
+            0.007830459736232412
+          ]
+        ],
+        "p": 0.06674890683288996,
+        "u": [
+          [
+            4.636419835072466e-11,
+            0.001761839537325497,
+            0.07543455068657762,
+            0.9228036097297327
+          ],
+          [
+            0.000384456190518582,
+            0.05119303444306421,
+            0.9484225093664173
+          ],
+          [
+            0.53255367945454,
+            0.1552334963446109,
+            0.312212824200849
+          ]
+        ]
+      },
+      "surfaced_recall": 1.0,
+      "t_match": 11.53462743930881,
+      "t_possible": 11.53462743930881,
+      "true_blocked": 945,
+      "true_in_review_queue": 944,
+      "true_pairs": 945,
+      "true_surfaced": 945
+    },
+    {
+      "all_pairs": 910575,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 35549,
+      "candidates_surfaced": 2523,
+      "dataset": "ja_suppliers_seed20261107_450",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 28,
+        "fallback_reason": null,
+        "iterations": 98,
+        "log_likelihood": -62321.153058736876,
+        "monotone": true,
+        "training_pairs": 40946,
+        "used": "estimated"
+      },
+      "keys": 1350,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.20322647766985297,
+            0.019271361486545003,
+            3.6290442484410553e-10,
+            0.7775021604806975
+          ],
+          [
+            0.8273897716879344,
+            0.1726083672406609,
+            1.8610714047488602e-6
+          ],
+          [
+            0.7642424579853128,
+            0.2052180423839168,
+            0.030539499630770614
+          ]
+        ],
+        "p": 0.06594050700923167,
+        "u": [
+          [
+            2.618455417665711e-11,
+            0.002013510212607061,
+            0.09083421842403078,
+            0.9071522713371776
+          ],
+          [
+            0.0024888821446330893,
+            0.041254520643975744,
+            0.9562565972113912
+          ],
+          [
+            0.6037659222258251,
+            0.14078157371829536,
+            0.2554525040558794
+          ]
+        ]
+      },
+      "surfaced_recall": 1.0,
+      "t_match": 8.57129245257372,
+      "t_possible": 2.1824213052258212,
+      "true_blocked": 1514,
+      "true_in_review_queue": 1510,
+      "true_pairs": 1514,
+      "true_surfaced": 1514
+    },
+    {
+      "all_pairs": 170236,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 8772,
+      "candidates_surfaced": 292,
+      "dataset": "ja_suppliers_unseen_seed20261105_200",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 25,
+        "fallback_reason": null,
+        "iterations": 40,
+        "log_likelihood": -16749.36905990656,
+        "monotone": true,
+        "training_pairs": 11104,
+        "used": "estimated"
+      },
+      "keys": 584,
+      "missed_by_blocking_by_script": {
+        "kana-kanji": 189,
+        "kanji-latin": 156
+      },
+      "missed_by_blocking_by_variant": {
+        "fullwidth_space": 12,
+        "halfwidth_katakana": 49,
+        "kana_small_or_long_vowel": 45,
+        "kanji_variant": 3,
+        "katakana_reading": 64,
+        "legal_form_dropped": 11,
+        "legal_form_notation": 9,
+        "romaji": 68,
+        "romaji_macron_upper": 84
+      },
+      "missed_examples": [
+        [
+          "(有)徳島精密",
+          "Tokushima Seimitsu Y.K.",
+          "legal_form_notation"
+        ],
+        [
+          "(有)徳島精密",
+          "ﾄｸｼﾏｾｲﾐﾂ有限会社",
+          "legal_form_notation"
+        ],
+        [
+          "(有)福井工機",
+          "FUKUI KŌKI Y.K.",
+          "romaji_macron_upper"
+        ],
+        [
+          "(有)福井工機",
+          "Fukui Koki Y.K.",
+          "romaji"
+        ],
+        [
+          "(株)アキタコーギヨー",
+          "(株)秋田工業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)コウフテッコウ",
+          "(株)甲府鉄工",
+          "katakana_reading"
+        ],
+        [
+          "(株)コウフテッコウ",
+          "(株)甲府鐵工",
+          "katakana_reading"
+        ],
+        [
+          "(株)トクシマセイサクシヨ",
+          "(株)徳島製作所",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)トクシマセイサクシヨ",
+          "徳島製作所㈱",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)トツトリサンギヨー",
+          "(株)鳥取産業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)トツトリサンギヨー",
+          "鳥取産業",
+          "kana_small_or_long_vowel"
+        ],
+        [
+          "(株)トヤマセイキ",
+          "(株)富山精機",
+          "katakana_reading"
+        ],
+        [
+          "(株)マツエサンギョウ",
+          "(株)松江産業",
+          "katakana_reading"
+        ],
+        [
+          "(株)マツエサンギョウ",
+          "松江　産業(株)",
+          "katakana_reading"
+        ],
+        [
+          "(株)マツエサンギョウ",
+          "松江産業（株）",
+          "katakana_reading"
+        ],
+        [
+          "(株)ヤマガタチュウゾウ",
+          "(株)山形鋳造",
+          "katakana_reading"
+        ],
+        [
+          "(株)ヤマガタチュウゾウ",
+          "(株)山形鑄造",
+          "katakana_reading"
+        ],
+        [
+          "(株)ヤマガタチュウゾウ",
+          "山形鋳造",
+          "katakana_reading"
+        ],
+        [
+          "(株)富山精機",
+          "TOYAMA SEIKI K.K.",
+          "romaji_macron_upper"
+        ],
+        [
+          "(株)富山金属",
+          "TOYAMA KINZOKU K.K.",
+          "legal_form_notation"
+        ]
+      ],
+      "pair_recall": 0.45151033386327505,
+      "params": {
+        "m": [
+          [
+            0.5421998765555922,
+            2.1862898462226643e-9,
+            1.1248051487978938e-7,
+            0.45780000877760313
+          ],
+          [
+            0.9999999513971682,
+            1.4963692445972553e-8,
+            3.3639139282728966e-8
+          ],
+          [
+            0.6480272862554025,
+            0.341832170207001,
+            0.010140543537596391
+          ]
+        ],
+        "p": 0.041191993297143834,
+        "u": [
+          [
+            2.2802459250947498e-10,
+            0.0030056532277865327,
+            0.11684476440715366,
+            0.8801495821370353
+          ],
+          [
+            0.002010828650650804,
+            0.029975515317165274,
+            0.9680136560321839
+          ],
+          [
+            0.5647429847338877,
+            0.18650523201644525,
+            0.24875178324966699
+          ]
+        ]
+      },
+      "surfaced_recall": 0.45151033386327505,
+      "t_match": 8.889034897429323,
+      "t_possible": 8.213422940182706,
+      "true_blocked": 284,
+      "true_in_review_queue": 284,
+      "true_pairs": 629,
+      "true_surfaced": 284
+    },
+    {
+      "all_pairs": 2659971,
+      "blocked_but_dropped_by_scoring_by_script": {
+        "latin-latin": 5
+      },
+      "blocked_pairs": 25008,
+      "candidates_surfaced": 2327,
+      "dataset": "ja_parts_seed20261105_1000",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 23,
+        "fallback_reason": null,
+        "iterations": 6,
+        "log_likelihood": -55180.28560463536,
+        "monotone": true,
+        "training_pairs": 34234,
+        "used": "estimated"
+      },
+      "keys": 2307,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.3318250372069003,
+            0.2036199091951434,
+            0.25842131685507086,
+            0.2061337352345896,
+            5.027652078892429e-10,
+            5.027652078892429e-10,
+            5.027652078892429e-10
+          ],
+          [
+            0.9999999994972347,
+            5.027652083947887e-10
+          ],
+          [
+            0.9431875314228255,
+            0.05681246857717446
+          ],
+          [
+            0.7616892911010558,
+            0.22423328305681248,
+            0.014077425842131725
+          ]
+        ],
+        "p": 0.058100134369340424,
+        "u": [
+          [
+            3.101256008298805e-11,
+            3.101256008298805e-11,
+            3.101256008298805e-11,
+            3.101256008298805e-11,
+            0.024127771744564704,
+            0.004806946812863148,
+            0.9710652813185219
+          ],
+          [
+            3.101256008587339e-11,
+            0.9999999999689875
+          ],
+          [
+            0.5108699023104357,
+            0.4891300976895643
+          ],
+          [
+            0.8185765234920143,
+            0.17413552488757947,
+            0.0072879516204062645
+          ]
+        ]
+      },
+      "surfaced_recall": 0.9975669099756691,
+      "t_match": 64.32851194946365,
+      "t_possible": 64.32851194946365,
+      "true_blocked": 2055,
+      "true_in_review_queue": 1391,
+      "true_pairs": 2055,
+      "true_surfaced": 2050
+    },
+    {
+      "all_pairs": 68439150,
+      "blocked_but_dropped_by_scoring_by_script": {
+        "latin-latin": 34
+      },
+      "blocked_pairs": 163862,
+      "candidates_surfaced": 11981,
+      "dataset": "ja_parts_seed20261106_5000",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 31,
+        "fallback_reason": null,
+        "iterations": 13,
+        "log_likelihood": -348621.77035075484,
+        "monotone": true,
+        "training_pairs": 210659,
+        "used": "estimated"
+      },
+      "keys": 11700,
+      "missed_by_blocking_by_script": {
+        "latin-latin": 8
+      },
+      "missed_by_blocking_by_variant": {
+        "keying_error": 6,
+        "keying_transposition": 1,
+        "ocr_confusion": 1
+      },
+      "missed_examples": [
+        [
+          "CVR-0972-B",
+          "CVR-9077-B",
+          "keying_transposition"
+        ],
+        [
+          "CVR-4161",
+          "CVR-466l",
+          "keying_error"
+        ],
+        [
+          "CVR69-6S1",
+          "CVR96-651",
+          "ocr_confusion"
+        ],
+        [
+          "GER-1793-D",
+          "GER-I743-D",
+          "keying_error"
+        ],
+        [
+          "GER-4326-D",
+          "GER-48Z6-D",
+          "keying_error"
+        ],
+        [
+          "JIS12-371",
+          "JISI7-371",
+          "keying_error"
+        ],
+        [
+          "VLV-4555-B",
+          "VLV-9505-B",
+          "keying_error"
+        ],
+        [
+          "VLV-8575-A",
+          "VLV-B525-A",
+          "keying_error"
+        ]
+      ],
+      "pair_recall": 0.9992452118124351,
+      "params": {
+        "m": [
+          [
+            0.2983568321915905,
+            0.202983652109509,
+            0.2584399513221838,
+            0.2389185570284233,
+            0.0013009912796903879,
+            9.712136464570416e-11,
+            1.59714816632056e-8
+          ],
+          [
+            0.9999999999028786,
+            9.712136464572218e-11
+          ],
+          [
+            0.9421156597876837,
+            0.0578843402123163
+          ],
+          [
+            0.7321523648366822,
+            0.2539592797112946,
+            0.013888355452023222
+          ]
+        ],
+        "p": 0.04887707472953109,
+        "u": [
+          [
+            4.990951297529191e-12,
+            4.990951297529191e-12,
+            4.990951297529191e-12,
+            4.990951297529191e-12,
+            0.025182366221282594,
+            0.02023830751148087,
+            0.9545793262472727
+          ],
+          [
+            0.00017769939992256527,
+            0.9998223006000775
+          ],
+          [
+            0.63898952014206,
+            0.3610104798579401
+          ],
+          [
+            0.7947564371823238,
+            0.1951568502609107,
+            0.010086712556765449
+          ]
+        ]
+      },
+      "surfaced_recall": 0.9960373620152845,
+      "t_match": 45.177522104510935,
+      "t_possible": 45.177522104510935,
+      "true_blocked": 10591,
+      "true_in_review_queue": 7487,
+      "true_pairs": 10599,
+      "true_surfaced": 10557
+    },
+    {
+      "all_pairs": 1191196,
+      "blocked_but_dropped_by_scoring_by_script": {},
+      "blocked_pairs": 18713,
+      "candidates_surfaced": 694,
+      "dataset": "ja_parts_sparse_seed20261105_1000",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 21,
+        "fallback_reason": null,
+        "iterations": 5,
+        "log_likelihood": -32104.65819277562,
+        "monotone": true,
+        "training_pairs": 24884,
+        "used": "estimated"
+      },
+      "keys": 1544,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.36825885808200837,
+            0.19260400527301694,
+            0.22804314224325203,
+            0.21109398977922655,
+            1.5408320421841354e-9,
+            1.5408320421841354e-9,
+            1.5408320421841354e-9
+          ],
+          [
+            0.999999998459168,
+            1.540832046932462e-9
+          ],
+          [
+            0.9722650231124808,
+            0.027734976887519254
+          ],
+          [
+            0.7704160246533128,
+            0.2218798151001541,
+            0.00770416024653313
+          ]
+        ],
+        "p": 0.026081015913840225,
+        "u": [
+          [
+            4.126263667567358e-11,
+            4.126263667567358e-11,
+            4.126263667567358e-11,
+            4.126263667567358e-11,
+            0.005075304311107849,
+            0.001650505467026943,
+            0.9932741900568146
+          ],
+          [
+            4.1262636680781404e-11,
+            0.9999999999587373
+          ],
+          [
+            0.5910872704765835,
+            0.40891272952341656
+          ],
+          [
+            0.8595832473695069,
+            0.13604291314214978,
+            0.004373839488343305
+          ]
+        ]
+      },
+      "surfaced_recall": 1.0,
+      "t_match": 62.8201105507657,
+      "t_possible": 62.8201105507657,
+      "true_blocked": 668,
+      "true_in_review_queue": 429,
+      "true_pairs": 668,
+      "true_surfaced": 668
+    },
+    {
+      "all_pairs": 30112680,
+      "blocked_but_dropped_by_scoring_by_script": {
+        "latin-latin": 8
+      },
+      "blocked_pairs": 98876,
+      "candidates_surfaced": 3549,
+      "dataset": "ja_parts_sparse_seed20261106_5000",
+      "em": {
+        "converged": true,
+        "distinct_patterns": 24,
+        "fallback_reason": null,
+        "iterations": 8,
+        "log_likelihood": -163880.03888461774,
+        "monotone": true,
+        "training_pairs": 129917,
+        "used": "estimated"
+      },
+      "keys": 7761,
+      "missed_by_blocking_by_script": {},
+      "missed_by_blocking_by_variant": {},
+      "missed_examples": [],
+      "pair_recall": 1.0,
+      "params": {
+        "m": [
+          [
+            0.3452453051483067,
+            0.21744397289164893,
+            0.2280436094531966,
+            0.20926711040129947,
+            3.028467589020326e-10,
+            3.028467589020326e-10,
+            1.4998548777937525e-9
+          ],
+          [
+            0.9999999996971533,
+            3.0284675899374873e-10
+          ],
+          [
+            0.9648697744462565,
+            0.03513022555374339
+          ],
+          [
+            0.7740763177222499,
+            0.21714112626427168,
+            0.008782556013478326
+          ]
+        ],
+        "p": 0.025416227321692488,
+        "u": [
+          [
+            7.897958377818765e-12,
+            7.897958377818765e-12,
+            7.897958377818765e-12,
+            7.897958377818765e-12,
+            0.005015203569914916,
+            0.005599652489873505,
+            0.9893851439086198
+          ],
+          [
+            0.000047387711155168586,
+            0.9999526122888448
+          ],
+          [
+            0.6218536508555838,
+            0.37814634914441625
+          ],
+          [
+            0.8771314615123919,
+            0.11935394700936779,
+            0.003514591478240382
+          ]
+        ]
+      },
+      "surfaced_recall": 0.9976401179941002,
+      "t_match": 45.4370232743743,
+      "t_possible": 45.4370232743743,
+      "true_blocked": 3390,
+      "true_in_review_queue": 2244,
+      "true_pairs": 3390,
+      "true_surfaced": 3382
+    }
+  ],
+  "seed": 20261105,
+  "tool": "kizuna-er-blocking",
+  "worktree_dirty": false
+}

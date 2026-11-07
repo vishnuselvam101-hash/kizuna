@@ -219,6 +219,193 @@ pub fn baseline_order(weights: &[f64], reviewed: &[bool]) -> Vec<usize> {
     v
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Pattern-stratified active learning (ER v3)
+// ---------------------------------------------------------------------------------------------------------------
+//
+// Why plain uncertainty sampling fails on the large part sets: the comparison vectors take only a dozen distinct
+// patterns, and every item of one pattern has the same log-odds. The factorized model above is confident (and wrong)
+// on some patterns — e.g. "one character apart, digits differ" is 30 % true matches but predicted non-match with a
+// large |log-odds| — so uncertainty sampling never queries them; it spends its reviews on the least-confident
+// patterns (all true matches there), and those biased labels push the global match share p and the m counts further.
+//
+// The stratified model estimates the match rate of each pattern directly: θ_γ ~ Beta(s·q(γ), s·(1 − q(γ))), with
+// q(γ) the EM Fellegi–Sunter posterior (clamped to [floor, 1 − floor]) and s a weak prior strength, updated only by decisions on that pattern. Items
+// of one pattern are exchangeable under this model and are reviewed in seeded random order, so each pattern's
+// estimate comes from a random sample of that pattern (no cross-pattern sampling bias). Queue: first `probes` items
+// of every pattern (largest pattern first), then the pattern with the highest min(θ̂, 1 − θ̂) (expected errors fixed
+// per review), ties by more remaining items. Humans decide; the model only orders and suggests.
+
+/// Settings of the stratified strategy.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StratifiedConfig {
+    /// Pseudo-counts of the Fellegi–Sunter posterior in each pattern's Beta prior.
+    pub prior_strength: f64,
+    /// Seeded random reviews per pattern before uncertainty ordering (exploration of confident patterns).
+    pub probes: u32,
+    /// The FS posterior used as each pattern's prior mean is clamped to [floor, 1 − floor]: EM posteriors of
+    /// 1e-19 would otherwise keep a pattern at "certain" after a few probes even when 1 in 10 of it matches.
+    pub prior_floor: f64,
+}
+
+impl Default for StratifiedConfig {
+    fn default() -> Self {
+        StratifiedConfig {
+            prior_strength: 2.0,
+            probes: 3,
+            prior_floor: 0.05,
+        }
+    }
+}
+
+/// Per-pattern Beta model seeded by the EM Fellegi–Sunter posterior.
+#[derive(Debug, Clone)]
+pub struct PatternModel {
+    base: ActiveModel,
+    cfg: StratifiedConfig,
+    /// (matches, non-matches) decided per pattern.
+    counts: std::collections::BTreeMap<Gamma, (u32, u32)>,
+    decisions: Vec<Decision>,
+}
+
+impl PatternModel {
+    pub fn new(prior: &FsParams, cfg: StratifiedConfig) -> Self {
+        let strength = if cfg.prior_strength.is_finite() && cfg.prior_strength > 0.0 {
+            cfg.prior_strength
+        } else {
+            1e-6
+        };
+        PatternModel {
+            // Strength is irrelevant for the base: it is never updated, so it equals the FS posterior.
+            base: ActiveModel::new(prior, 1.0),
+            cfg: StratifiedConfig {
+                prior_strength: strength,
+                ..cfg
+            },
+            counts: std::collections::BTreeMap::new(),
+            decisions: Vec::new(),
+        }
+    }
+
+    /// Records one reviewer decision (append-only).
+    pub fn record(&mut self, gamma: &Gamma, is_match: bool) {
+        let c = self.counts.entry(gamma.clone()).or_insert((0, 0));
+        if is_match {
+            c.0 += 1;
+        } else {
+            c.1 += 1;
+        }
+        self.decisions.push(Decision {
+            gamma: gamma.clone(),
+            is_match,
+        });
+    }
+
+    pub fn decisions(&self) -> &[Decision] {
+        &self.decisions
+    }
+
+    fn reviews(&self, g: &Gamma) -> u32 {
+        self.counts.get(g).map_or(0, |c| c.0 + c.1)
+    }
+
+    fn mean(&self, q: f64, g: &Gamma) -> f64 {
+        let (a, b) = self.counts.get(g).copied().unwrap_or((0, 0));
+        let s = self.cfg.prior_strength;
+        let f = self.cfg.prior_floor.clamp(0.0, 0.5);
+        let q = if q.is_finite() { q.clamp(f, 1.0 - f) } else { 0.5 };
+        (s * q + f64::from(a)) / (s + f64::from(a) + f64::from(b))
+    }
+
+    /// Posterior mean match rate of pattern γ.
+    pub fn posterior(&self, g: &Gamma) -> f64 {
+        self.mean(self.base.posterior(g), g)
+    }
+
+    pub fn suggest(&self, g: &Gamma) -> Suggestion {
+        let p_match = self.posterior(g);
+        Suggestion {
+            p_match,
+            is_match: p_match >= 0.5,
+        }
+    }
+
+    /// Suggested label (posterior mean ≥ 0.5) for every item.
+    pub fn suggest_all(&self, items: &[Gamma]) -> Vec<bool> {
+        let t = self.base.table();
+        items
+            .iter()
+            .map(|g| self.mean(sigmoid(t.log_odds(g)), g) >= 0.5)
+            .collect()
+    }
+}
+
+/// Next item of the stratified strategy (see the section comment), or None when everything is reviewed.
+/// Deterministic for (model, items, reviewed, seed).
+pub fn next_item_stratified(model: &PatternModel, items: &[Gamma], reviewed: &[bool], seed: u64) -> Option<usize> {
+    // Per pattern: remaining items and the unreviewed item with the smallest seeded key.
+    let mut groups: std::collections::BTreeMap<&Gamma, (usize, (u64, usize))> = std::collections::BTreeMap::new();
+    for i in (0..items.len()).filter(|&i| unreviewed(reviewed, i)) {
+        let key = (tie_key(seed, i), i);
+        let e = groups.entry(&items[i]).or_insert((0, key));
+        e.0 += 1;
+        e.1 = e.1.min(key);
+    }
+    let probing = groups
+        .iter()
+        .filter(|(g, _)| model.reviews(g) < model.cfg.probes)
+        .max_by(|a, b| a.1.0.cmp(&b.1.0).then(b.1.1.cmp(&a.1.1)));
+    if let Some((_, (_, (_, i)))) = probing {
+        return Some(*i);
+    }
+    let t = model.base.table();
+    groups
+        .iter()
+        .map(|(g, (left, key))| {
+            let q = model.mean(sigmoid(t.log_odds(g)), g);
+            (q.min(1.0 - q), *left, *key)
+        })
+        .max_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)).then(b.2.cmp(&a.2)))
+        .map(|(_, _, (_, i))| i)
+}
+
+/// Sort key of [`order_queue_stratified`]: (phase, probe index, −uncertainty, MAX − remaining, (tie key, item)).
+type QueueKey = (u8, u32, f64, usize, (u64, usize));
+
+/// Whole queue in stratified order for the current model (no refit between items; the API recomputes it after
+/// every decision). Probe items first — the j-th probe of every pattern before any (j+1)-th, larger patterns first
+/// — then the rest by min(θ̂, 1 − θ̂) descending, more remaining items, seeded key. Its first item is
+/// [`next_item_stratified`]. Deterministic for (model, items, reviewed, seed).
+pub fn order_queue_stratified(model: &PatternModel, items: &[Gamma], reviewed: &[bool], seed: u64) -> Vec<usize> {
+    let mut groups: std::collections::BTreeMap<&Gamma, Vec<(u64, usize)>> = std::collections::BTreeMap::new();
+    for i in (0..items.len()).filter(|&i| unreviewed(reviewed, i)) {
+        groups.entry(&items[i]).or_default().push((tie_key(seed, i), i));
+    }
+    let t = model.base.table();
+    let mut keyed: Vec<QueueKey> = Vec::new();
+    for (g, mut members) in groups {
+        members.sort_unstable();
+        let left = members.len();
+        let need = model.cfg.probes.saturating_sub(model.reviews(g)) as usize;
+        let q = model.mean(sigmoid(t.log_odds(g)), g);
+        for (j, key) in members.into_iter().enumerate() {
+            if j < need {
+                keyed.push((0, j as u32, 0.0, usize::MAX - left, key));
+            } else {
+                keyed.push((1, 0, -q.min(1.0 - q), usize::MAX - left, key));
+            }
+        }
+    }
+    keyed.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then(a.1.cmp(&b.1))
+            .then(a.2.total_cmp(&b.2))
+            .then(a.3.cmp(&b.3))
+            .then(a.4.cmp(&b.4))
+    });
+    keyed.into_iter().map(|k| k.4.1).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,6 +549,36 @@ mod tests {
         m
     }
 
+    #[test]
+    fn stratified_probes_a_confident_but_wrong_pattern() {
+        // Pattern `bad` has FS posterior ≈ 0 but 1 in 5 of it matches; `good` is all matches.
+        let par = params();
+        let bad: Gamma = vec![Some(2), Some(1), Some(1)];
+        let good: Gamma = vec![Some(0), Some(0), Some(0)];
+        assert!(ActiveModel::new(&par, 10.0).posterior(&bad) < 0.01);
+        let items: Vec<Gamma> = (0..50)
+            .map(|i| if i % 2 == 0 { bad.clone() } else { good.clone() })
+            .collect();
+        let m = PatternModel::new(&par, StratifiedConfig::default());
+        let order = order_queue_stratified(&m, &items, &[], 3);
+        assert_eq!(order.len(), items.len());
+        // The first two probes per pattern come first, so the `bad` pattern is queried at once.
+        assert!(
+            order[..6].iter().filter(|&&i| items[i] == bad).count() >= 3,
+            "{order:?}"
+        );
+        // Plain uncertainty sampling never reaches it while `good` items are left.
+        let plain = order_queue(&ActiveModel::new(&par, 10.0), &items, &[], 3);
+        assert!(plain[..25].iter().all(|&i| items[i] == good));
+        // After probes with one match, the estimate moves off zero (the clamped prior is what allows it).
+        let mut m = m;
+        m.record(&bad, true);
+        m.record(&bad, false);
+        m.record(&bad, false);
+        assert!(m.posterior(&bad) > 0.2, "{}", m.posterior(&bad));
+        assert!(next_item_stratified(&m, &items, &[], 3).is_some());
+    }
+
     proptest! {
         #[test]
         fn posterior_in_unit_interval(labels in labels_strategy(), g in gamma_strategy(), s in 0.01f64..1000.0) {
@@ -423,6 +640,38 @@ mod tests {
             let before = m.posterior(&g);
             m.record(&g, true);
             prop_assert!(m.posterior(&g) >= before - 1e-12, "{before} -> {}", m.posterior(&g));
+        }
+
+        #[test]
+        fn stratified_order_is_a_deterministic_permutation(
+            labels in labels_strategy(),
+            items in proptest::collection::vec(gamma_strategy(), 0..60),
+            mask in proptest::collection::vec(any::<bool>(), 0..60),
+            seed in any::<u64>(),
+            s in 0.01f64..50.0,
+            probes in 0u32..5,
+        ) {
+            let mut m = PatternModel::new(&params(), StratifiedConfig { prior_strength: s, probes, prior_floor: 0.05 });
+            for (g, y) in &labels {
+                m.record(g, *y);
+            }
+            let a = order_queue_stratified(&m, &items, &mask, seed);
+            prop_assert_eq!(&a, &order_queue_stratified(&m.clone(), &items, &mask, seed));
+            let mut sorted = a.clone();
+            sorted.sort_unstable();
+            let open: Vec<usize> = (0..items.len()).filter(|&i| !mask.get(i).copied().unwrap_or(false)).collect();
+            prop_assert_eq!(sorted, open);
+            prop_assert_eq!(a.first().copied(), next_item_stratified(&m, &items, &mask, seed));
+            for g in &items {
+                let p = m.posterior(g);
+                prop_assert!((0.0..=1.0).contains(&p));
+            }
+            // Decisions are append-only and untouched by ordering or suggesting.
+            prop_assert_eq!(m.decisions().len(), labels.len());
+            for (d, (g, y)) in m.decisions().iter().zip(&labels) {
+                prop_assert_eq!(&d.gamma, g);
+                prop_assert_eq!(d.is_match, *y);
+            }
         }
     }
 }

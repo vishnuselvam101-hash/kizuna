@@ -102,6 +102,10 @@ pub struct CompanyKey {
     pub core: String,
     /// Canonical romaji when the name is kana or Latin (None for names containing kanji: no reading dictionary).
     pub romaji: Option<String>,
+    /// Folded romaji of dictionary readings when the name contains kanji and every character is covered by the
+    /// reading dictionary (`super::reading`); empty otherwise. A guess, used for blocking and as a separate
+    /// comparison field, never as identity.
+    pub reading: Vec<String>,
     pub legal: Option<LegalForm>,
 }
 
@@ -430,6 +434,30 @@ fn kana_to_romaji(s: &str) -> Option<String> {
     Some(out)
 }
 
+/// Enlarged sokuon: ツ written full-size before a k/p/t/s kana reads "tu" + consonant after folding; between a
+/// vowel and one of those consonants it is dropped (ニツポン "nitupon" → "nipon" = ニッポン). Approximate: a real
+/// "tsu" in that position (マツカワ) folds the same way; this key only finds candidates, a human decides.
+fn fold_enlarged_sokuon(s: &str) -> String {
+    let c: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < c.len() {
+        if i > 0
+            && i + 2 < c.len()
+            && c[i] == 't'
+            && c[i + 1] == 'u'
+            && "aeiou".contains(c[i - 1])
+            && "kpts".contains(c[i + 2])
+        {
+            i += 2;
+            continue;
+        }
+        out.push(c[i]);
+        i += 1;
+    }
+    out
+}
+
 /// Canonical romaji: Hepburn/Kunrei/wāpuro spellings and long vowels folded so "Kantou", "Kantō", "Kanto" agree.
 pub fn fold_romaji(s: &str) -> String {
     let mut r: String = s
@@ -469,9 +497,19 @@ pub fn fold_romaji(s: &str) -> String {
             ("iya", "ya"),
             ("iyu", "yu"),
             ("iyo", "yo"),
+            // Sh/ch already lose the y of yōon above ("sho" → "so"), so the enlarged form must too ("siyo" → "syo"
+            // → "so"): シヨウワ = ショウワ.
+            ("sy", "s"),
+            ("ty", "t"),
+            // Geminates: "Nippon" = "Nipon", "Tekkō" = "Tekō".
+            ("kk", "k"),
+            ("pp", "p"),
+            ("tt", "t"),
+            ("ss", "s"),
         ] {
             r = r.replace(from, to);
         }
+        r = fold_enlarged_sokuon(&r);
         if r == before {
             return r;
         }
@@ -508,7 +546,23 @@ pub fn company_key(s: &str) -> CompanyKey {
     } else {
         None
     };
-    CompanyKey { core, romaji, legal }
+    let mut reading: Vec<String> = if romaji.is_none() {
+        super::reading::readings(&core)
+            .iter()
+            .filter_map(|r| kana_to_romaji(r))
+            .map(|r| fold_romaji(&r))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    reading.sort();
+    reading.dedup();
+    CompanyKey {
+        core,
+        romaji,
+        reading,
+        legal,
+    }
 }
 
 /// Canonical company name (core only); `canonical_company(canonical_company(x)) == canonical_company(x)`.
@@ -582,5 +636,23 @@ mod tests {
         assert_eq!(r("シンバシ"), r("Simbasi"));
         assert_eq!(r("チュウゾウ"), r("Chuzo"));
         assert!(r("東海精機").is_none());
+        // Enlarged small kana (old registrations) fold like the small forms.
+        assert_eq!(r("シヨーワコーギヨー"), r("ショウワコウギョウ"));
+        assert_eq!(r("ニツポンセイサクシヨ"), r("Nippon Seisakusho"));
+        assert_eq!(r("テツコー"), r("Tekkō"));
+        assert_eq!(r("チユウゾウ"), r("Chuzo"));
+    }
+
+    #[test]
+    fn kanji_names_get_dictionary_readings() {
+        let k = company_key("株式会社東海精機");
+        assert_eq!(k.reading, vec![fold_romaji("toukaiseiki")]);
+        assert_eq!(k.reading[0], company_key("トウカイセイキ").romaji.unwrap_or_default());
+        assert_eq!(
+            k.reading[0],
+            company_key("Tokai Seiki Co., Ltd.").romaji.unwrap_or_default()
+        );
+        assert!(company_key("甲府精機").reading.is_empty());
+        assert!(company_key("トウカイセイキ").reading.is_empty());
     }
 }
