@@ -10,6 +10,7 @@ pub mod block;
 pub mod context;
 pub mod em;
 pub mod normalize;
+pub mod reading;
 
 use crate::Outcome;
 use block::{BlockConfig, RecordKeys, qgrams};
@@ -162,7 +163,24 @@ fn block_keys(kind: Kind, p: &Prepared) -> RecordKeys {
                 k.sort_keys.push(r.clone());
                 k.prefixes.push(format!("r:{}", r.chars().take(3).collect::<String>()));
                 k.qgrams.extend(qgrams(r).into_iter().map(|q| format!("r:{q}")));
+                k.exact.push(format!("r={r}"));
             }
+            // Dictionary readings of kanji names share the romaji key space, so 東海精機 meets トウカイセイキ and
+            // Tokai Seiki Co., Ltd. (ER v3).
+            for r in c.reading.iter().filter(|r| !r.is_empty()) {
+                k.sort_keys.push(r.clone());
+                k.prefixes.push(format!("r:{}", r.chars().take(3).collect::<String>()));
+                k.qgrams.extend(qgrams(r).into_iter().map(|q| format!("r:{q}")));
+                k.exact.push(format!("r={r}"));
+            }
+            // Exact reading blocks: every name with the same folded reading is compared, however crowded the
+            // sorted neighbourhood is (both 神田工業 and 神田興業 read kandakogyo).
+            k.exact.sort();
+            k.exact.dedup();
+            k.qgrams.sort();
+            k.qgrams.dedup();
+            k.prefixes.sort();
+            k.prefixes.dedup();
             k
         }
         _ => {
@@ -282,15 +300,26 @@ pub fn gamma(kind: Kind, a: &Prepared, b: &Prepared) -> Gamma {
             } else {
                 3
             };
-            let romaji = match (&x.romaji, &y.romaji) {
-                (Some(r), Some(s)) if !r.is_empty() && !s.is_empty() => Some(if r == s {
+            // Reading: written romaji on both sides (kana/Latin names), or — ER v3 — the dictionary reading of a
+            // kanji name against the written reading of the other (best level over the alternatives). Two kanji
+            // names are never compared by dictionary reading (工業 and 興業 read alike).
+            let level = |r: &str, s: &str| {
+                if r == s {
                     0
                 } else if jw(r, s) >= 0.92 {
                     1
                 } else {
                     2
-                }),
-                _ => None,
+                }
+            };
+            fn written(k: &CompanyKey) -> Option<&str> {
+                k.romaji.as_deref().filter(|r| !r.is_empty())
+            }
+            let romaji = match (written(x), written(y)) {
+                (Some(r), Some(s)) => Some(level(r, s)),
+                (None, Some(w)) => x.reading.iter().map(|r| level(r, w)).min(),
+                (Some(w), None) => y.reading.iter().map(|r| level(r, w)).min(),
+                (None, None) => None,
             };
             let legal = match (x.legal, y.legal) {
                 (Some(l), Some(r)) if l == r => 0,
@@ -672,6 +701,34 @@ mod tests {
             "{r:?}"
         );
         assert_eq!(outcome_of(&r, "大阪金属工業", "東海精機㈱"), None);
+    }
+
+    #[test]
+    fn kanji_names_meet_their_kana_and_latin_forms() {
+        let r = resolve(
+            Kind::Company,
+            &keys(&[
+                "株式会社東海精機",
+                "トウカイセイキ(株)",
+                "Tokai Seiki Co., Ltd.",
+                "大阪金属工業",
+            ]),
+            &Config::default(),
+        );
+        for b in ["トウカイセイキ(株)", "Tokai Seiki Co., Ltd."] {
+            assert!(outcome_of(&r, "株式会社東海精機", b).is_some(), "{b}: {r:?}");
+        }
+        assert!(
+            r.candidates.iter().all(|c| !c.safe),
+            "a reading never makes a pair safe"
+        );
+        let pr = |s: &str| prepare(Kind::Company, s);
+        // Kana vs kanji: the dictionary reading fills the reading field.
+        assert_eq!(gamma(Kind::Company, &pr("東海精機"), &pr("トウカイセイキ"))[1], Some(0));
+        // Two kanji names are never compared by dictionary reading (工業 and 興業 both read コウギョウ).
+        assert_eq!(gamma(Kind::Company, &pr("東海工業"), &pr("東海興業"))[1], None);
+        // Unknown kanji: no reading, as before.
+        assert_eq!(gamma(Kind::Company, &pr("甲府精機"), &pr("コウフセイキ"))[1], None);
     }
 
     #[test]
